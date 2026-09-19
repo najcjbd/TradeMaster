@@ -625,6 +625,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		 * region silently disabled the staging guard). Applied on focus loss or at
 		 * close instead. */
 		private boolean pendingClear = false;
+		/** A non-empty edit is a draft too: a half-typed but already parsable
+		 * coordinate must not move the sand-wheel / region under a running job. */
+		private boolean pendingApply = false;
 		final EditBox field;
 
 		PosRow(String labelKey, Supplier<BlockPos> getter, Consumer<BlockPos> setter, @Nullable PositionPicker.Slot slot) {
@@ -646,17 +649,15 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.field.setResponder(text -> {
 				if (text.trim().isEmpty()) {
 					// required positions (picker-backed) must not be clearable: an empty
-					// field that saves null silently breaks the rig on the next run.
-					// Deferred, so the empty moment while retyping never reaches the
-					// live config
+					// field that saves null silently breaks the rig on the next run
 					this.pendingClear = true;
+					this.pendingApply = false;
 					return;
 				}
+				// deferred: a running job must not see a value the player is still
+				// typing (a cleared or half-typed grindstone coordinate stops the run)
 				this.pendingClear = false;
-				BlockPos parsed = parsePos(text, Minecraft.getInstance().player);
-				if (parsed != null) {
-					this.setter.accept(parsed);
-				}
+				this.pendingApply = true;
 			});
 		}
 
@@ -746,10 +747,19 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.field.setFocused(false);
 		}
 
+		/** Commits whichever draft is pending (the name is historical): an emptied
+		 * field clears when it is clearable, a typed value is parsed and applied. */
 		private void applyPendingClear() {
-			if (!this.pendingClear) return;
-			this.pendingClear = false;
-			if (this.slot == null || this.clearable) this.setter.accept(null);
+			if (this.pendingClear) {
+				this.pendingClear = false;
+				this.pendingApply = false;
+				if (this.slot == null || this.clearable) this.setter.accept(null);
+				return;
+			}
+			if (!this.pendingApply) return;
+			this.pendingApply = false;
+			BlockPos parsed = parsePos(this.field.getValue(), Minecraft.getInstance().player);
+			if (parsed != null) this.setter.accept(parsed);
 		}
 
 		@Override
@@ -780,6 +790,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		private final Consumer<BlockPos> setter;
 		/** Deferred clear: see PosRow.pendingClear. */
 		private boolean pendingClear = false;
+		/** Deferred value: see PosRow.pendingApply. */
+		private boolean pendingApply = false;
 		final EditBox field;
 
 		DeltaRow(String labelKey, Supplier<BlockPos> getter, Consumer<BlockPos> setter) {
@@ -796,20 +808,28 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 					// config — an emptied region silently disables the staging guard,
 					// which then lets the summon button fire with nobody in the region
 					this.pendingClear = true;
+					this.pendingApply = false;
 					return;
 				}
+				// deferred as well: a half-typed extent would resize the staging area
+				// under a running job
 				this.pendingClear = false;
-				BlockPos parsed = parsePos(text, null);
-				if (parsed != null && inDeltaRange(parsed)) {
-					this.setter.accept(parsed);
-				}
+				this.pendingApply = true;
 			});
 		}
 
+		/** Commits whichever draft is pending (name kept from the clear-only version). */
 		private void applyPendingClear() {
-			if (!this.pendingClear) return;
-			this.pendingClear = false;
-			this.setter.accept(null);
+			if (this.pendingClear) {
+				this.pendingClear = false;
+				this.pendingApply = false;
+				this.setter.accept(null);
+				return;
+			}
+			if (!this.pendingApply) return;
+			this.pendingApply = false;
+			BlockPos parsed = parsePos(this.field.getValue(), null);
+			if (parsed != null && inDeltaRange(parsed)) this.setter.accept(parsed);
 		}
 
 		@Override
@@ -894,6 +914,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 	private class DirectionRow extends Row {
 		/** Deferred clear: see PosRow.pendingClear. */
 		private boolean pendingClear = false;
+		/** Deferred value: see PosRow.pendingApply. */
+		private boolean pendingApply = false;
 		final EditBox field;
 
 		DirectionRow() {
@@ -902,24 +924,36 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.field.setMaxLength(24);
 			this.field.setValue(format(c.curseDropYaw, c.curseDropPitch));
 			this.field.setResponder(text -> {
-				float[] parsed = parse(text);
-				if (parsed != null) {
-					c.curseDropYaw = parsed[0];
-					c.curseDropPitch = parsed[1];
-				} else if (text.trim().isEmpty()) {
+				if (text.trim().isEmpty()) {
 					// deferred: nothing may punch a null into the live config while
 					// typing, or a cursed book reaching DROP_AIM aborts the recycle
 					this.pendingClear = true;
+					this.pendingApply = false;
+					return;
 				}
+				// deferred as well: a half-typed direction would be used by a drop
+				// that happens to run at that very moment
+				this.pendingClear = false;
+				this.pendingApply = true;
 			});
 		}
 
 		private void applyPendingClear() {
-			if (!this.pendingClear) return;
-			this.pendingClear = false;
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-			c.curseDropYaw = null;
-			c.curseDropPitch = null;
+			if (this.pendingClear) {
+				this.pendingClear = false;
+				this.pendingApply = false;
+				c.curseDropYaw = null;
+				c.curseDropPitch = null;
+				return;
+			}
+			if (!this.pendingApply) return;
+			this.pendingApply = false;
+			float[] parsed = parse(this.field.getValue());
+			if (parsed != null) {
+				c.curseDropYaw = parsed[0];
+				c.curseDropPitch = parsed[1];
+			}
 		}
 
 		@Override

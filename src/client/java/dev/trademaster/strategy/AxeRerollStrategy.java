@@ -83,7 +83,10 @@ public class AxeRerollStrategy implements RerollStrategy {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		LocalPlayer player = mc.player;
 		BlockPos lecternPos = session.lecternPos;
-		Vec3 aimAt = Vec3.atCenterOf(lecternPos.below());
+		// aim at the lectern itself: a lectern block covers the block below it, so
+		// in normal play the crosshair rests on the lectern — servers that validate
+		// the look direction refuse a break aimed anywhere else
+		Vec3 aimAt = Vec3.atCenterOf(lecternPos);
 
 		if (!this.look.tick(player, aimAt)) return StepResult.RUNNING;
 

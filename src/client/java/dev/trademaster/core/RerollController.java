@@ -197,15 +197,21 @@ public final class RerollController {
 			return false;
 		}
 
+		// a proper region supersedes an earlier acknowledgement of the sphere
+		// fallback: once real coordinates are configured, a later loss of them must
+		// ask for confirmation again
+		if (regionConfigured()) regionFallbackConfirmed = false;
 		// the staging area always exists: the configured region, or the lectern
 		// sphere when its coords are not set. The fallback must be confirmed once
-		// with /trademaster goon; the request stays queued until then
+		// with /trademaster goon
 		if (!regionConfigured() && !regionFallbackConfirmed) {
 			regionFallbackPending = true;
 			chat(Component.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
 					.withStyle(ChatFormatting.YELLOW));
 			return false;
 		}
+		// a successful start consumes the pending request
+		regionFallbackPending = false;
 		if (!regionConfigured()) {
 			chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
 					.withStyle(ChatFormatting.YELLOW));
@@ -1282,6 +1288,7 @@ public final class RerollController {
 		// the server often closes the menu on rejection; stale interact state would
 		// send the menu-less branch into its 100-tick wait counter before retrying
 		lockInteracted = false;
+		lockSlotPrepared = false;
 		lockNoMenuTicks = 0;
 		lockAttempts++;
 		int maxRetries = TradeMasterConfig.INSTANCE.lockMaxRetries;
@@ -1631,7 +1638,6 @@ public final class RerollController {
 		// fail the material check and livelock against the reroll loop — so treat
 		// it as a miss and reroll; the miss branch's own material precheck stops
 		// the run once the emeralds fall below the floor
-		boolean comboTooPricey = false;
 		if (hit != null) {
 			LocalPlayer player = Minecraft.getInstance().player;
 			MerchantOffer matchedOffer = snapshot.offers().get(hit.offerIndex());
@@ -1640,10 +1646,9 @@ public final class RerollController {
 			if (!payable) {
 				// The matched book cannot be paid for. Locking the villager is what the
 				// run is after and a single purchase does it, so buy the cheapest OTHER
-				// book that IS affordable; only when nothing on the list is affordable
-				// does this become a miss.
+				// book that IS affordable; when nothing on the list is affordable the
+				// run stops instead of rerolling into the same unaffordable match.
 				int alt = player == null ? -1 : cheapestAffordableBookSlot(snapshot.offers(), player);
-				comboTooPricey = hit.purchase().parts().size() >= 2;
 				if (alt >= 0) {
 					MerchantOffer altOffer = snapshot.offers().get(alt);
 					debug("offers: matched " + hit.price() + " emeralds, unaffordable; emergency buy at slot " + alt);
@@ -1654,15 +1659,23 @@ public final class RerollController {
 					// the offer it actually buys, while locked ids / auto-disable / hunt
 					// marks still follow the matched targets
 				} else {
-					debug("offers: matched " + hit.price() + " emeralds and nothing is affordable, treating as miss");
-					// tryMatch already dequeued the matched targets' budget slots:
-					// return them, or the leaked slots keep those targets unmatchable
-					// until the next needs rebuild — with the leaked slots being the
-					// last needs, the run would reroll forever (a combo's price can
-					// legitimately exceed the emerald floor, so the miss-branch
-					// material precheck does not catch this)
+					debug("offers: matched " + hit.price() + " emeralds and nothing is affordable, stopping");
+					// a combo's price is the sum of its parts and can exceed an emerald
+					// floor that only knows single-target max prices — only seeing the
+					// offer reveals it, so name the switch that would have covered it
+					if (hit.purchase().parts().size() >= 2
+							&& !TradeMasterConfig.INSTANCE.multiEnchantProtection) {
+						chat(Component.translatable("trademaster.message.combo_shortage_hint")
+								.withStyle(ChatFormatting.YELLOW));
+					}
+					// tryMatch already dequeued the matched targets' budget slots: return
+					// them, then stop. Rerolling would only re-match the same unaffordable
+					// book — the miss branch's material precheck cannot catch a combo
+					// priced above the emerald floor — so this must not fall through.
 					s.matcher.undoMatch(hit);
-					hit = null;
+					closeMerchantMenuIfOpen(Minecraft.getInstance());
+					stop(Component.translatable("trademaster.message.material_short"), ChatFormatting.RED);
+					return;
 				}
 			}
 		}
@@ -1692,13 +1705,6 @@ public final class RerollController {
 			// every new roll so the run stops instead of burning axe durability
 			Component materials = Preconditions.check();
 			if (materials != null) {
-				// a combo's price is the sum of its parts and can exceed an emerald
-				// floor that only knows single-target max prices: name the switch that
-				// would have covered it, so the stop is actionable
-				if (comboTooPricey && !TradeMasterConfig.INSTANCE.multiEnchantProtection) {
-					chat(Component.translatable("trademaster.message.combo_shortage_hint")
-							.withStyle(ChatFormatting.YELLOW));
-				}
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
 				stop(materials.copy().withStyle(ChatFormatting.RED), null);
 				return;
@@ -1907,11 +1913,17 @@ public final class RerollController {
 		}
 		Vec3 center = Vec3.atCenterOf(s.lecternPos);
 		double radius = sphereRadius();
-		return client.level.getEntitiesOfClass(Villager.class,
-						AABB.ofSize(center, radius * 2, radius * 2, radius * 2))
-				.stream()
+		List<Villager> result = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
+						AABB.ofSize(center, radius * 2, radius * 2, radius * 2)).stream()
 				.filter(v -> v.position().distanceToSqr(center) <= radius * radius)
-				.toList();
+				.toList());
+		// the rig parks the villager at the arrival point, which can lie outside a
+		// small radius: one standing there is certainly grabbable, so include it —
+		// otherwise a radius below ~3 would wait for a villager that never counts
+		for (Villager arrived : villagersAtArrivalPoint(client, s.lecternPos)) {
+			if (!result.contains(arrived)) result.add(arrived);
+		}
+		return result;
 	}
 
 	/** The matched offer drifted or vanished while the villager was still
@@ -2139,8 +2151,16 @@ public final class RerollController {
 			guardian = null;
 		}
 		SmoothRotation.reset();
-		summonPresser = null;
-		sendAwayPresser = null;
+		// a press can be interrupted mid-way with the hotbar selection parked on its
+		// temporary empty slot: hand it back instead of just dropping the reference
+		if (summonPresser != null) {
+			summonPresser.abortCleanly();
+			summonPresser = null;
+		}
+		if (sendAwayPresser != null) {
+			sendAwayPresser.abortCleanly();
+			sendAwayPresser = null;
+		}
 		lockExecutor = null;
 		if (namingExecutor != null) {
 			namingExecutor.abortCleanly();

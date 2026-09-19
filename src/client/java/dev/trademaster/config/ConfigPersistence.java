@@ -323,7 +323,8 @@ public final class ConfigPersistence {
 		if (grindstone != null) {
 			c.grindstoneEnabled = readBool(grindstone, "enabled", c.grindstoneEnabled);
 			c.grindstonePos = readPos(grindstone.get("pos"));
-			c.grindstoneOpenRetries = Math.max(-1, readInt(grindstone, "openRetries", c.grindstoneOpenRetries));
+			c.grindstoneOpenRetries = Math.min(Math.max(-1,
+					readInt(grindstone, "openRetries", c.grindstoneOpenRetries)), 999);
 			c.curseDropYaw = readFloat(grindstone.get("curseDropYaw"));
 			c.curseDropPitch = readFloat(grindstone.get("curseDropPitch"));
 			JsonElement customCurses = grindstone.get("customCurses");

@@ -45,6 +45,9 @@ public class TradeMasterScreen extends Screen {
 		// discards the entry widgets: commit in-flight edits first or keystrokes
 		// typed into a price/level field are silently lost
 		if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
+		// same for the settings tab: its rows only commit their draft on blur, and
+		// the rebuild never blurs them
+		if (this.settingsList != null) this.settingsList.flushEdits();
 		// same rebuild resets scroll to the top: remember where the user was.
 		// Tab switches never capture here — the tab is already flipped by then
 		if (this.tab == Tab.SETTINGS && this.settingsList != null) {
@@ -71,6 +74,10 @@ public class TradeMasterScreen extends Screen {
 							// the start reads the config immediately: commit in-flight
 							// field edits first or the typed price/level is ignored
 							if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
+							// and the settings drafts: a deferred clear (region/grindstone
+							// coordinate) would otherwise land AFTER start() snapshotted
+							// the config and stop the run on the very next tick
+							if (this.settingsList != null) this.settingsList.flushEdits();
 							// a refused start (missing coordinates, all targets done...)
 							// must keep this screen open: it is the only place the
 							// user can fix the reported problem
@@ -93,6 +100,9 @@ public class TradeMasterScreen extends Screen {
 		this.addRenderableWidget(Button.builder(
 						Component.translatable("trademaster.button.save"),
 						button -> {
+							// commit in-flight settings drafts first: the rebuild discards
+							// the widgets, and saving without them wrote the OLD value
+							if (this.settingsList != null) this.settingsList.flushEdits();
 							TradeMasterConfig.INSTANCE.save();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
@@ -108,6 +118,7 @@ public class TradeMasterScreen extends Screen {
 			// the rebuild below discards the entry widgets; commit their
 			// in-flight edits first or the keystrokes are lost (R20-2)
 			if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
+			if (this.settingsList != null) this.settingsList.flushEdits();
 			this.tab = tab;
 			// defer: rebuilding mid-dispatch would mutate Screen.children while iterating
 			this.pendingRebuild = true;

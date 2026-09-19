@@ -381,6 +381,16 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.state = State.CHEST_SEEK;
 					return StepResult.RUNNING;
 				}
+				// the open menu can be swapped for a SMALLER one while we wait (the
+				// player right-clicks another chest): the recorded slot index would
+				// then be out of range — treat it as a menu change, don't crash on get()
+				if (this.stashSlot >= player.containerMenu.slots.size()) {
+					this.stashSlot = -1;
+					player.closeContainer();
+					this.look.reset();
+					this.state = State.CHEST_SEEK;
+					return StepResult.RUNNING;
+				}
 				if (this.stashSlot < 0) {
 					Slot target = findBookSlot(player, true);
 					if (target == null) {

@@ -158,6 +158,14 @@ public class ButtonPresser {
 		return -1;
 	}
 
+	/** Stop-time cleanup: put the hotbar selection back where it was before the press
+	 * started. Dropping the reference alone (a bare {@code presser = null} in stop())
+	 * would strand the selection on the temporary empty slot the press parks it in. */
+	public void abortCleanly() {
+		LocalPlayer player = Minecraft.getInstance().player;
+		if (player != null) restoreSlot(player);
+	}
+
 	private void restoreSlot(LocalPlayer player) {
 		if (this.originalSlot >= 0 && player.getInventory().getSelectedSlot() != this.originalSlot) {
 			Interactions.selectHotbarSlot(player, this.originalSlot);
