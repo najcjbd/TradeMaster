@@ -1,0 +1,42 @@
+{
+	"schemaVersion": 1,
+	"id": "trade-master",
+	"version": "${mod_version}",
+	"name": "Trade Master",
+	"description": "Fuses LibrarianTradeFinder and LPCTools tradeReroller: fully configurable librarian enchantment book rerolling pipeline.",
+	"authors": [
+		"mknbt"
+	],
+	"contact": {},
+	"license": "GPL-3.0",
+	"icon": "assets/trade-master/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"dev.trademaster.TradeMaster"
+		],
+		"modmenu": [
+			"dev.trademaster.compat.ModMenuImpl"
+		]
+	},
+	"mixins": [
+		{
+			"config": "trade-master.mixins.json",
+			"environment": "client"
+		}
+	],
+	"accessWidener": "trade-master.accesswidener",
+	"depends": {
+		"fabricloader": ">=0.19.0",
+		"minecraft": [
+			"26.2"
+		],
+		"java": ">=25",
+		"malilib": "*",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*",
+		"clientcommands": "*"
+	}
+}

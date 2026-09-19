@@ -1,0 +1,2227 @@
+package dev.trademaster.core;
+
+import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.anticheat.SmoothRotation;
+import dev.trademaster.config.ConfigPersistence;
+import dev.trademaster.config.DetectionMode;
+import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.RerollMechanism;
+import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.detection.DetectionHub;
+import dev.trademaster.detection.OfferSnapshot;
+import dev.trademaster.exec.BookDisposal;
+import dev.trademaster.exec.ButtonPresser;
+import dev.trademaster.exec.ChestDepositor;
+import dev.trademaster.exec.GrindstoneRecycler;
+import dev.trademaster.exec.LockTradeExecutor;
+import dev.trademaster.exec.NamingExecutor;
+import dev.trademaster.gui.PositionPicker;
+import dev.trademaster.matching.TradeMatcher;
+import dev.trademaster.strategy.AxeRerollStrategy;
+import dev.trademaster.strategy.LecternRestock;
+import dev.trademaster.strategy.RerollStrategy;
+import dev.trademaster.strategy.TaskChainRerollStrategy;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.contents.TranslatableContents;
+import net.minecraft.resources.Identifier;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.inventory.ChestMenu;
+import net.minecraft.world.inventory.MerchantMenu;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.trading.MerchantOffer;
+import net.minecraft.world.item.trading.MerchantOffers;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Static orchestrator for the whole pipeline. Drives the state machine:
+ * PRECHECK -> SUMMON -> AWAIT_VILLAGER -> ENSURE_LECTERN -> WAIT_PROFESSION
+ * -> CHECK_TRADE -> (hit: LOCK -> NAME? -> SEND_AWAY) / (miss: REROLL).
+ */
+public final class RerollController {
+
+	private static Phase phase = Phase.IDLE;
+	private static @Nullable RunSession session = null;
+
+	private static @Nullable RerollStrategy strategy = null;
+	private static @Nullable LecternGuardian guardian = null;
+	private static @Nullable ButtonPresser summonPresser = null;
+	private static @Nullable ButtonPresser sendAwayPresser = null;
+	private static @Nullable LockTradeExecutor lockExecutor = null;
+	private static @Nullable NamingExecutor namingExecutor = null;
+	private static @Nullable BookDisposal depositor = null;
+	/** Countdown of the stray-chest guard window after a depositor was active. */
+	private static int strayChestTicks = 0;
+	/** One-shot chat gate for the sneak-pause announcement. */
+	private static boolean sneakPaused = false;
+	/** Chat gate for the XP-based naming pause announcement; reset whenever XP is
+	 * sufficient again, so each new XP-short episode announces itself once. */
+	private static boolean xpNamingPaused = false;
+
+	private static boolean detectionPending = false;
+	private static boolean lockInteracted = false;
+	/** The lock trade was sent to the server this LOCK attempt; never buy again. */
+	private static boolean lockPurchaseInitiated = false;
+	private static final LookStep checkLook = new LookStep();
+	private static boolean restSummonPending = false;
+	/** Set after send-away: wait until the lectern spot is empty again before the next cycle. */
+	private static boolean awaitingRigClear = false;
+	/** ENSURE_LECTERN is running its post-dispatch refresh: continue into AWAIT_VILLAGER when done. */
+	private static boolean postDispatchRefresh = false;
+	/** This LOCK attempt already ran its pre-lock inventory/deposit check. */
+	private static boolean lockSlotPrepared = false;
+	/** Running sand-wheel mode definition captured at start() (see
+	 * grindstoneConfigChanged). */
+	private static boolean grindstoneSnapshotValid = false;
+	private static boolean snapGrindstoneEnabled = false;
+	private static @Nullable BlockPos snapGrindstonePos = null;
+	/** Whether the double-coordinate staging region was complete when the run
+	 * started: losing it mid-run stops the run (see the check in tick()). */
+	private static boolean snapRegionConfigured = false;
+	/** The lectern-sphere fallback was confirmed with /trademaster goon. */
+	private static boolean regionFallbackConfirmed = false;
+	/** A start was refused because the region coords are incomplete and waits for the
+	 * goon command; the command is invalid while this is false. */
+	private static boolean regionFallbackPending = false;
+	/** WAIT_PROFESSION self-heal refreshes for the current villager; capped per villager. */
+	private static int professionHealCycles = 0;
+	/** Consecutive ticks of rejected villager interactions in CHECK_TRADE. */
+	private static int interactFailTicks = 0;
+	/** Consecutive ticks the CHECK_TRADE villager read as non-librarian (re-claim grace). */
+	private static int nonLibrarianTicks = 0;
+	private static boolean urgentProfessionHeal = false;
+	/** How often the current run already swapped villagers over a blocked lectern placement. */
+	private static int placementFailRetries = 0;
+	/** Consecutive ticks in LOCK with lockInteracted set but no merchant menu opening. */
+	private static int lockNoMenuTicks = 0;
+	/** Ticks to wait before rebuilding the lock executor after a rejected purchase. */
+	private static int lockRetryDelayTicks = 0;
+	/** Server-rejected lock purchase attempts for the current matched trade. */
+	private static int lockAttempts = 0;
+	/** Hunt-cheaper mode: locked price per enchantment this run (the user-facing
+	 * "price table"). A marked target only matches a strictly cheaper copy; the
+	 * table resets on start/stop like the needs table itself. */
+	private static final Map<Identifier, Integer> huntMarkedPrices = new LinkedHashMap<>();
+	/** Hunt-cheaper mode: temporary combo needs this run — a purchased
+	 * multi-enchantment book records its qualifying-part set (id AND level) and
+	 * price, and a later book with the SAME set only matches strictly cheaper
+	 * (combo ratchet). Resets on start/stop together with the single-book price
+	 * table. */
+	private static final Map<Set<TradeMatcher.MatchPart>, Integer> comboHuntPrices = new LinkedHashMap<>();
+	/** Whether the current needs table was built with the hunt overrides applied.
+	 * Flips off when the user disables hunt-cheaper mid-run, triggering a plain
+	 * rebuild (locked vouchers, named-villager deduction) on the next precheck. */
+	private static boolean huntAppliedToNeeds = false;
+	/** Fingerprint (id/level/maxPrice of every enabled target) of the config the
+	 * current needs table was built from: any mid-run edit triggers a one-shot
+	 * rebuild, same pattern as the hunt flip above. */
+	private static @Nullable String needsFingerprint = null;
+	/** Lock retries exhausted with a full inventory: draining chests before rerolling on. */
+	private static boolean lockExhaustionDepositPending = false;
+	/** Ticks to wait before the next post-dispatch break attempt (spaces out retries). */
+	private static int breakRetryTicks = 0;
+	/** A villager further than this from the arrival point counts as gone (radius 2 blocks). */
+	private static final double AWAY_DISTANCE_SQR = 4.0;
+	private static int phaseTicks = 0;
+	private static int runTicks = 0;
+	private static int slowInteractDelay = 0;
+	private static int detectionArmedTick = 0;
+	// statusText() is polled every tick (HUD + screen): cache it per (phase, tries)
+	private static @Nullable String cachedStatusText = null;
+	private static Phase cachedStatusPhase = Phase.IDLE;
+	private static int cachedStatusTries = -1;
+	private static @Nullable String cachedStatusLang = null;
+	private static @Nullable String lastOverlayText = null;
+	private static @Nullable Component lastOverlayComponent = null;
+
+	private RerollController() {}
+
+	// ---- public API ----------------------------------------------------------
+
+	public static boolean isRunning() {
+		return phase != Phase.IDLE;
+	}
+
+	/** Largest outstanding hunt budget (marked-1) across this run's marked prices.
+	 * The hunt can demand more emeralds than any configured maxPrice, so the
+	 * precheck's emerald floor must account for it. */
+	public static int maxHuntBudget() {
+		int max = 0;
+		for (int marked : huntMarkedPrices.values()) {
+			if (marked - 1 > max) max = marked - 1;
+		}
+		return max;
+	}
+
+	public static void toggle() {
+		if (isRunning()) stopManual();
+		else start();
+	}
+
+	public static boolean start() {
+		Minecraft mc = Minecraft.getInstance();
+		LocalPlayer player = mc.player;
+		if (isRunning()) {
+			chat(Component.translatable("commands.trademaster.already_running").withStyle(ChatFormatting.RED));
+			return false;
+		}
+		if (player == null || mc.level == null) return false;
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// name the position that is actually missing: always saying "lectern"
+		// sends the user re-picking the wrong slot
+		String missingPosKey = config.lecternPos == null ? "trademaster.settings.lecternPos"
+				: config.summonButtonPos == null ? "trademaster.settings.summonButtonPos"
+				: config.sendAwayButtonPos == null ? "trademaster.settings.sendAwayButtonPos" : null;
+		if (missingPosKey != null) {
+			chat(Component.translatable("trademaster.message.precheck_failed",
+					Component.translatable(missingPosKey)).withStyle(ChatFormatting.RED));
+			return false;
+		}
+
+		// the staging area always exists: the configured region, or the lectern
+		// sphere when its coords are not set. The fallback must be confirmed once
+		// with /trademaster goon; the request stays queued until then
+		if (!regionConfigured() && !regionFallbackConfirmed) {
+			regionFallbackPending = true;
+			chat(Component.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
+					.withStyle(ChatFormatting.YELLOW));
+			return false;
+		}
+		if (!regionConfigured()) {
+			chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
+					.withStyle(ChatFormatting.YELLOW));
+		}
+
+		RunSession s = new RunSession(config.lecternPos, config.summonButtonPos,
+				config.sendAwayButtonPos);
+		s.movementGuard.start(player.position());
+		// sand-wheel mode definition snapshot: a mid-run change to the enable flag
+		// or the grindstone position stops the run (see grindstoneConfigChanged)
+		snapGrindstoneEnabled = config.grindstoneEnabled;
+		snapGrindstonePos = config.grindstonePos;
+		grindstoneSnapshotValid = true;
+		snapRegionConfigured = regionConfigured();
+		huntMarkedPrices.clear();
+		comboHuntPrices.clear();
+		s.matcher.setHuntPrices(huntMarkedPrices);
+		s.matcher.setComboHuntPrices(comboHuntPrices);
+		refreshNeeds(mc, s);
+		if (s.matcher.isEmpty()) {
+			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
+			return false;
+		}
+		warnUnmatchableTargets(mc);
+		// material/axe/lectern failures must reject the start right here: deferring
+		// them to the first precheck tick reported "started", closed the GUI and the
+		// user's in-progress pick, then stopped one tick later
+		Component preconditionFailure = Preconditions.check();
+		if (preconditionFailure != null) {
+			chat(preconditionFailure.copy().withStyle(ChatFormatting.RED));
+			return false;
+		}
+
+		// An open trade GUI would block lectern breaking/interacting; close it only
+		// now that the start survived every rejection (a refused start must keep
+		// the player's own merchant screen and picker alive)
+		if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
+			mc.gui.setScreen(null);
+		}
+		closeMerchantMenuIfOpen(mc);
+
+		// second line of defence for the picker hijack: an armed pick would
+		// capture the pipeline's own button presses into the rig positions —
+		// cancel only now that the run actually proceeds, so a failed start
+		// keeps the user's in-progress pick alive
+		PositionPicker.cancel();
+		session = s;
+		runTicks = 0;
+		professionHealCycles = 0;
+		strayChestTicks = 0;
+		sneakPaused = false;
+		xpNamingPaused = false;
+		LecternRestock.resetRestock();
+		enter(Phase.PRECHECK);
+		chat(Component.translatable("trademaster.message.started").withStyle(ChatFormatting.GREEN));
+		return true;
+	}
+
+	public static void stopManual() {
+		if (!isRunning()) {
+			chat(Component.translatable("commands.trademaster.not_running").withStyle(ChatFormatting.RED));
+			return;
+		}
+		stop(Component.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
+	}
+
+	public static String statusText() {
+		RunSession s = session;
+		int tries = s == null ? 0 : s.tries;
+		// the language joins the cache key: switching it mid-run (e.g. resting in
+		// AWAIT_VILLAGER for minutes) must refresh the text, not serve the stale one
+		String lang = Minecraft.getInstance().options.languageCode;
+		if (cachedStatusText != null && cachedStatusPhase == phase && cachedStatusTries == tries
+				&& lang.equals(cachedStatusLang)) {
+			return cachedStatusText;
+		}
+		String base = switch (phase) {
+			case IDLE -> Component.translatable("trademaster.status.idle").getString();
+			case PRECHECK, CHECK_TRADE -> Component.translatable("trademaster.status.check").getString();
+			case REROLL -> Component.translatable("trademaster.status.break").getString();
+			case SUMMON -> Component.translatable("trademaster.status.summon").getString();
+			case AWAIT_VILLAGER -> Component.translatable("trademaster.status.await_villager").getString();
+			case ENSURE_LECTERN -> Component.translatable("trademaster.status.place").getString();
+			case WAIT_PROFESSION -> Component.translatable("trademaster.status.wait_profession").getString();
+			case LOCK -> Component.translatable("trademaster.status.lock").getString();
+			case NAME -> Component.translatable("trademaster.status.name").getString();
+			case SEND_AWAY -> Component.translatable("trademaster.status.send_away").getString();
+			case DEPOSIT -> Component.translatable("trademaster.status.deposit").getString();
+		};
+		cachedStatusText = phase == Phase.IDLE || tries <= 0
+				? base
+				: base + Component.translatable("trademaster.status.tries", tries).getString();
+		cachedStatusPhase = phase;
+		cachedStatusTries = tries;
+		cachedStatusLang = lang;
+		return cachedStatusText;
+	}
+
+	// ---- main tick -------------------------------------------------------------
+
+	public static void tick(Minecraft client) {
+		if (phase == Phase.IDLE) return;
+		SmoothRotation.renderTick();
+
+		LocalPlayer player = client.player;
+		if (player == null || client.level == null || client.isPaused()) return;
+		// a dead player cannot finish any phase; AWAIT_VILLAGER is watchdog-exempt
+		// and would stall forever, and respawn would later trip the movement
+		// guard with a misleading "player moved" message
+		if (player.isDeadOrDying()) {
+			stop(Component.translatable("trademaster.message.player_died"), ChatFormatting.RED);
+			return;
+		}
+		// vanilla skips every block interaction while sneaking with a non-empty
+		// hand (and the offhand holds the lectern during runs): freeze the
+		// pipeline instead of burning retries into misleading failures
+		if (player.isShiftKeyDown()) {
+			if (!sneakPaused) {
+				sneakPaused = true;
+				chat(Component.translatable("trademaster.message.sneak_paused").withStyle(ChatFormatting.YELLOW));
+			}
+			return;
+		}
+		sneakPaused = false;
+		DetectionHub.tick();
+
+		RunSession s = session;
+		if (s == null) {
+			phase = Phase.IDLE;
+			return;
+		}
+
+		// hunt-cheaper can be turned off mid-run from ANY phase: this rebuild used
+		// to live in tickPrecheck, but region layouts loop without ever re-entering
+		// PRECHECK, leaving the stale hunt budget live (a cheaper copy of an
+		// already-locked enchantment could match again). One-shot on the flip tick.
+		if (!TradeMasterConfig.INSTANCE.huntCheaper && huntAppliedToNeeds) {
+			debug("hunt-cheaper disabled mid-run, rebuilding needs without hunt overrides");
+			huntMarkedPrices.clear();
+			comboHuntPrices.clear();
+			refreshNeeds(client, s);
+			if (s.matcher.isEmpty() && !finalizingRun()) {
+				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				return;
+			}
+		}
+
+		// live target edits (enable/disable, level, maxPrice) reshape the needs
+		// table immediately, not just at the next run: non-hunt runs in region
+		// layouts never re-enter PRECHECK, and a stale budget queue would keep
+		// matching above a lowered maxPrice. Same one-shot pattern as the hunt flip.
+		// Note: finishLock's autoDisableAfterLock writes the config itself — that
+		// self-edit lands here too, so the finalizing guard below is what keeps a
+		// just-locked single target running through NAME/SEND_AWAY instead of
+		// stopping before the villager is named and sent away.
+		String targetsNow = targetsFingerprint();
+		if (needsFingerprint != null && !targetsNow.equals(needsFingerprint)) {
+			debug("target config edited mid-run, rebuilding needs");
+			refreshNeeds(client, s);
+			if (s.matcher.isEmpty() && !finalizingRun()) {
+				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				return;
+			}
+		}
+
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// the sand-wheel mode definition belongs to the running rig: the deposit
+		// factory only re-reads it at deposit time, so a mid-run change would
+		// silently switch how books are disposed of — stop the normal way instead
+		if (grindstoneSnapshotValid && grindstoneConfigChanged(config)) {
+			stop(Component.translatable("trademaster.message.grindstone_config_changed"), ChatFormatting.RED);
+			return;
+		}
+		// the staging area is part of the running rig too: losing the region coords
+		// mid-run would silently move the staging wait to the lectern sphere
+		if (snapRegionConfigured && !regionConfigured()) {
+			stop(Component.translatable("trademaster.message.region_broken"), ChatFormatting.RED);
+			return;
+		}
+		if (!snapRegionConfigured && regionConfigured()) {
+			// region coords were completed mid-run: the staging search already uses
+			// them again, so a later loss must ask for confirmation afresh
+			regionFallbackConfirmed = false;
+		}
+		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
+		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
+			stop(Component.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
+			return;
+		}
+		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks) {
+			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			return;
+		}
+		phaseTicks++;
+		if (config.displayRolls) {
+			String text = statusText();
+			if (!text.equals(lastOverlayText)) {
+				lastOverlayText = text;
+				lastOverlayComponent = Component.literal(text);
+			}
+			client.gui.hud.setOverlayMessage(lastOverlayComponent, false);
+		}
+
+		// a dropped depositor can have a chest-open click in flight: the menu
+		// arrives after it was abandoned and would block inventory SWAPs (axe
+		// retrieval) in phases like REROLL. Only guard for a short window after
+		// a depositor was active — otherwise this would force-close any chest
+		// the user opens manually mid-run
+		if (depositor != null) {
+			strayChestTicks = 40;
+		} else if (strayChestTicks > 0) {
+			strayChestTicks--;
+			if (player.containerMenu instanceof ChestMenu) {
+				player.closeContainer();
+			}
+		}
+
+		switch (phase) {
+			case PRECHECK -> tickPrecheck(client, player, s);
+			case SUMMON -> tickSummon(s);
+			case AWAIT_VILLAGER -> tickAwaitVillager(client, s);
+			case ENSURE_LECTERN -> tickEnsureLectern(client, s);
+			case WAIT_PROFESSION -> tickWaitProfession(client, s);
+			case CHECK_TRADE -> tickCheckTrade(client, player, s);
+			case REROLL -> tickReroll(client, s);
+			case LOCK -> tickLock(client, player, s);
+			case NAME -> tickName(client, player, s);
+			case SEND_AWAY -> tickSendAway(client, s);
+			case DEPOSIT -> tickDeposit(player);
+		}
+	}
+
+	private static void enter(Phase next) {
+		if (phase == Phase.AWAIT_VILLAGER && next != Phase.AWAIT_VILLAGER && session != null) {
+			// re-baseline after resting: the player may have moved while exempt
+			Minecraft client = Minecraft.getInstance();
+			if (client.player != null) {
+				session.movementGuard.start(client.player.position());
+			}
+		}
+		if (next != phase) {
+			debug("phase " + phase + " -> " + next);
+		}
+		phase = next;
+		phaseTicks = 0;
+	}
+
+	/** Phase safety timeouts are optional; the global watchdog is separate. */
+	private static boolean phaseTimedOut(int limit) {
+		return TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && phaseTicks > limit;
+	}
+
+	// ---- phase ticks ---------------------------------------------------------
+
+	/**
+	 * Chooses the book-disposal flow. Grindstone mode replaces EVERY deposit
+	 * step, but only when it is fully armed (toggle + position + both drop
+	 * angles — the angles are the curse-book escape hatch, and dropping
+	 * without a configured direction is never allowed); any missing piece
+	 * falls back to the classic chest flow, and null means "no disposal
+	 * available at all".
+	 */
+	private static @Nullable BookDisposal createBookDisposal() {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		if (config.grindstoneEnabled && config.grindstonePos != null
+				&& config.curseDropYaw != null && config.curseDropPitch != null) {
+			return new GrindstoneRecycler();
+		}
+		if (config.chestPositions.isEmpty()) return null;
+		return new ChestDepositor(config.chestPositions);
+	}
+
+	private static void tickPrecheck(Minecraft client, LocalPlayer player, RunSession s) {
+		// hunt-cheaper honors live config edits: a target toggled off mid-run
+		// pauses its hunt, toggled back on resumes it — resync every precheck.
+		// Enabling hunt mid-run is refused at the config surfaces, so only the
+		// OFF transition can happen here: rebuild the needs table without the
+		// hunt overrides (locked vouchers and named-villager deduction return)
+		if (TradeMasterConfig.INSTANCE.huntCheaper) {
+			s.matcher.resyncTargets(s.lockedIds);
+		}
+		Component failure = Preconditions.check();
+		if (failure != null) {
+			stop(failure.copy().withStyle(ChatFormatting.RED), null);
+			return;
+		}
+		if (!Preconditions.hasFreeSlot(player)) {
+			depositor = createBookDisposal();
+			if (depositor == null) {
+				stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+			} else {
+				enter(Phase.DEPOSIT);
+			}
+			return;
+		}
+		// Baby freeze: while ANY baby occupies the arrival point, nothing else
+		// happens — no picking (even of a usable adult), no dispatching, no
+		// summoning. A baby grows into a usable villager on its own; once no
+		// babies remain, the normal flow resumes exactly where it left off.
+		boolean babyAtArrival = villagersAtArrivalPoint(client, s.lecternPos).stream()
+				.anyMatch(Villager::isBaby);
+		if (babyAtArrival) {
+			debug("precheck: baby at detection point, waiting until no babies remain");
+			guardian = null;
+			summonPresser = null;
+			restSummonPending = false;
+			enter(Phase.AWAIT_VILLAGER);
+			return;
+		}
+		// A librarian can be rolled directly; an unemployed villager already at the
+		// arrival point is just as usable — place the lectern and let it take the
+		// profession instead of summoning another villager.
+		s.villager = findArrivedVillager(client, s.lecternPos);
+		if (s.villager == null) {
+			// a nitwit (or a villager employed in any non-librarian profession)
+			// already squatting at the detection point would block later arrivals
+			// and can never become a librarian: send it away first
+			boolean blockerAtArrival = villagersAtArrivalPoint(client, s.lecternPos).stream()
+					.anyMatch(v -> !v.isBaby() && unusableProfession(v.getVillagerData().profession()));
+			if (blockerAtArrival) {
+				debug("precheck: unusable villager at detection point, sending away first");
+				sendAwayPresser = null;
+				restSummonPending = true;
+				enter(Phase.SEND_AWAY);
+				return;
+			}
+			guardian = null;
+			summonPresser = null;
+			// the minecart can only grab a villager standing in the staging area: wait
+			// for one to appear there before pressing summon (the area is the
+			// configured region, or the lectern sphere when it is not set)
+			restSummonPending = true;
+			enter(Phase.AWAIT_VILLAGER);
+			return;
+		}
+		guardian = new LecternGuardian();
+		professionHealCycles = 0;
+		enter(Phase.ENSURE_LECTERN);
+	}
+
+	private static void tickDeposit(LocalPlayer player) {
+		if (depositor == null) {
+			enter(Phase.PRECHECK);
+			return;
+		}
+		RerollStrategy.StepResult result = depositor.tick();
+		if (result.step() == RerollStrategy.Step.DONE) {
+			depositor = null;
+			if (!Preconditions.hasFreeSlot(player)) {
+				// everything depositable is gone but the inventory is still full
+				// (non-book items): re-running PRECHECK would bounce straight back
+				// here and open/close the chests forever
+				stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+				return;
+			}
+			enter(Phase.PRECHECK);
+		} else if (result.step() == RerollStrategy.Step.FAILED
+				|| result.step() == RerollStrategy.Step.FAILED_FULL) {
+			stop(result.reason(), ChatFormatting.RED);
+		}
+	}
+
+	private static void tickSummon(RunSession s) {
+		if (summonPresser == null) summonPresser = new ButtonPresser(s.summonButtonPos);
+		RerollStrategy.StepResult result = summonPresser.tick();
+		if (result.step() == RerollStrategy.Step.DONE) {
+			summonPresser = null;
+			enter(Phase.AWAIT_VILLAGER);
+		} else if (result.step() == RerollStrategy.Step.FAILED) {
+			stop(result.reason(), ChatFormatting.RED);
+		}
+	}
+
+	private static void tickAwaitVillager(Minecraft client, RunSession s) {
+		int interval = Math.max(1, TradeMasterConfig.INSTANCE.villagerCheckInterval);
+		if (phaseTicks % interval != 0) return;
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		BlockPos origin = config.villagerRegionOrigin;
+		BlockPos delta = config.villagerRegionDelta;
+
+		if (awaitingRigClear) {
+			// the send-away button was pressed; wait until the ray detection point
+			// is empty again, otherwise the departing (falling) entity gets
+			// re-targeted and the whole run loops on it
+			if (!villagersAtArrivalPoint(client, s.lecternPos).isEmpty()) return;
+			awaitingRigClear = false;
+			// keep resting here until a villager enters the staging area (the region
+			// box, or the lectern sphere when the region coords are not set)
+		}
+
+		List<Villager> villagers;
+		int blockerCount = 0;
+		if (restSummonPending) {
+			// Staging wait: the minecart can only grab a villager standing in the
+			// staging area (the configured region, or the lectern sphere when the
+			// region coords are not set), so only look there before summoning.
+			villagers = stagingVillagers(client, s);
+		} else {
+			// Arrival wait: the rig lines player -> lectern -> villager up on one
+			// ray; only villagers standing on the ray detection point count.
+			villagers = villagersAtArrivalPoint(client, s.lecternPos);
+		}
+		// Baby freeze (arrival wait): while ANY baby stands at the detection
+		// point, nothing else happens — not even picking a usable adult or
+		// dispatching a nitwit. Babies grow up on their own; the normal flow
+		// resumes once none are left.
+		if (!restSummonPending && villagers.stream().anyMatch(Villager::isBaby)) {
+			debug("await-villager: baby at detection point, waiting until no babies remain");
+			return;
+		}
+		if (restSummonPending) {
+			// a baby can never claim the lectern: wait indefinitely until it is
+			// gone from the staging region instead of summoning it into the rig,
+			// where it would trigger the endless profession-heal loop
+			for (Villager villager : villagers) {
+				if (villager.isBaby()) {
+					debug("await-villager: baby villager in the staging region, waiting");
+					return;
+				}
+			}
+		}
+		for (Villager villager : villagers) {
+			// a baby at the arrival point grows into a usable villager on its
+			// own: skip it and keep waiting (same trap as findArrivedVillager —
+			// it could never claim the lectern)
+			if (villager.isBaby()) continue;
+			var profession = villager.getVillagerData().profession();
+			if (unusableProfession(profession)) {
+				// a nitwit can never take a profession, and an employed
+				// non-librarian will never switch to one at this lectern: never
+				// treat either as rollable, just count it so the blockage gets
+				// cleared below
+				blockerCount++;
+				continue;
+			}
+			// PRECHECK only runs at start; materials (books/emeralds, axe,
+			// lectern, name tags) can run out after several locks. Re-check before
+			// spending another villager + rerolls on a lock that cannot happen.
+			Component materials = Preconditions.check();
+			if (materials != null) {
+				stop(materials.copy().withStyle(ChatFormatting.RED), null);
+				return;
+			}
+			if (restSummonPending) {
+				// a villager is back in the zone: dispatch it with the summon button
+				debug("await-villager: villager in staging zone, pressing summon");
+				restSummonPending = false;
+				summonPresser = null;
+				enter(Phase.SUMMON);
+				return;
+			}
+			debug("await-villager: villager arrived at detection point (profession=" + professionName(profession) + ")");
+			s.villager = villager;
+			professionHealCycles = 0;
+			guardian = new LecternGuardian();
+			enter(Phase.ENSURE_LECTERN);
+			return;
+		}
+		// No usable villager found but blocker(s) present: clear the blockage.
+		if (blockerCount > 0) {
+			if (restSummonPending) {
+				// staging zone: dispatch the blocker through the normal summon path;
+				// it gets sent away once it reaches the arrival point
+				debug("await-villager: " + blockerCount + " unusable villager(s) in staging zone, pressing summon");
+				restSummonPending = false;
+				summonPresser = null;
+				enter(Phase.SUMMON);
+			} else {
+				// arrival point: the blocker can never become a librarian — press the
+				// send-away button instead of waiting on it forever
+				debug("await-villager: " + blockerCount + " unusable villager(s) at detection point, sending away");
+				sendAwayPresser = null;
+				restSummonPending = true;
+				enter(Phase.SEND_AWAY);
+			}
+		}
+	}
+
+	/**
+	 * No villager available: pause the loop, like a cashier resting between
+	 * customers. The run keeps going and the matcher's needs list is preserved,
+	 * so already-found/auto-disabled/re-cheaper logic stays intact for the
+	 * session. The send-away button is pressed once to clear the rig, then the
+	 * run rests in AWAIT_VILLAGER; once a villager reappears in the detection
+	 * zone, the summon button is pressed to dispatch it (restSummonPending).
+	 */
+	private static void awaitNextVillager(Minecraft client, RunSession s) {
+		s.villager = null;
+		if (s.matchedTrade != null) {
+			// a locked target is out of the needs (dropLocked); restoring its budget
+			// would resurrect it via computeIfAbsent for a duplicate purchase (e.g.
+			// hunt turned off after a cheaper copy matched). Hunt-marked targets stay
+			// live through applyHuntOverrides and keep their restore path
+			if (!matchLockedDone(s)) {
+				s.matcher.restoreBudget(s.matchedTrade);
+			}
+		}
+		s.matchedTrade = null;
+		lockExecutor = null;
+		if (namingExecutor != null) {
+			namingExecutor.abortCleanly();
+			namingExecutor = null;
+		}
+		if (guardian != null) {
+			guardian.abort();
+			guardian = null;
+		}
+		if (strategy != null) {
+			strategy.abort();
+			strategy = null;
+		}
+		detectionPending = false;
+		DetectionHub.disarm();
+		// a non-delivery disarm leaves no screen in flight: drop the residual
+		// suppression so it cannot swallow a later legitimate merchant screen
+		DetectionHub.clearPostDisarmSuppression();
+		lockInteracted = false;
+		lockPurchaseInitiated = false;
+		checkLook.reset();
+		lockSlotPrepared = false;
+		professionHealCycles = 0;
+		interactFailTicks = 0;
+		nonLibrarianTicks = 0;
+		urgentProfessionHeal = false;
+		slowInteractDelay = 0;
+		if (client.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
+			client.gui.setScreen(null);
+		}
+		closeMerchantMenuIfOpen(client);
+		sendAwayPresser = null;
+		restSummonPending = true;
+		enter(Phase.SEND_AWAY);
+	}
+
+	private static void tickEnsureLectern(Minecraft client, RunSession s) {
+		if (breakRetryTicks > 0) {
+			breakRetryTicks--;
+			return;
+		}
+		if (guardian == null) guardian = new LecternGuardian();
+		RerollStrategy.StepResult result = guardian.tick(s);
+		if (result.step() == RerollStrategy.Step.DONE) {
+			guardian = null;
+			placementFailRetries = 0;
+			if (postDispatchRefresh) {
+				// the post-dispatch break is done and the lectern spot is empty; now
+				// rest until the dispatched villager is gone and a new one arrives —
+				// the lectern is re-placed on the arrival path, not here
+				postDispatchRefresh = false;
+				awaitingRigClear = true;
+				restSummonPending = true;
+				enter(Phase.AWAIT_VILLAGER);
+			} else {
+				enter(Phase.WAIT_PROFESSION);
+			}
+		} else if (result.step() == RerollStrategy.Step.FAILED) {
+			if (postDispatchRefresh) {
+				if (isPermanentAxeFailure(result.reason())) {
+					// no usable axe left: retrying can never succeed, and neither the
+					// global watchdog (off by default) nor a phase timeout bounds this
+					// loop — surface the reason and stop instead of hanging silently
+					stop(result.reason(), ChatFormatting.RED);
+					return;
+				}
+				// the post-dispatch break releases the old profession claim and must
+				// eventually succeed: restart the guardian and keep breaking until the
+				// lectern is actually gone, however long that takes (2s between
+				// attempts so instant failures like "no axe" do not busy-loop)
+				debug("ensure-lectern: post-dispatch break failed, retrying");
+				guardian.abort();
+				guardian = LecternGuardian.breakOnly();
+				breakRetryTicks = 40;
+				return;
+			}
+			// !postDispatchRefresh is always true here (audited 2026-09-19): both exits
+			// of the postDispatchRefresh branch above return.
+			if (!postDispatchRefresh && guardian.placementBlocked() && placementFailRetries < 2) {
+				// placement keeps failing with this villager around (it can sit on
+				// the spot and never move out of the way); dispatch it and try
+				// again with the next one instead of stopping the run
+				placementFailRetries++;
+				debug("ensure-lectern: placement blocked, dispatching villager (retry "
+						+ placementFailRetries + ")");
+				awaitNextVillager(client, s);
+				return;
+			}
+			stop(result.reason(), ChatFormatting.RED);
+		}
+	}
+
+	private static void tickWaitProfession(Minecraft client, RunSession s) {
+		if (s.villager == null || !s.villager.isAlive()) {
+			s.villager = findArrivedVillager(client, s.lecternPos);
+			if (s.villager == null) {
+				awaitNextVillager(client, s);
+			} else {
+				professionHealCycles = 0;
+				urgentProfessionHeal = false;
+			}
+			return;
+		}
+		if (s.villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+			urgentProfessionHeal = false;
+			checkLook.reset();
+			enter(Phase.CHECK_TRADE);
+			return;
+		}
+		// Not a librarian yet. Under heavy lag the stored reference can point at a
+		// stale/recreated entity whose profession never updates: re-scan the arrival
+		// point for a librarian and switch to it if one is there.
+		Villager found = findArrivedVillager(client, s.lecternPos);
+		if (found != null && found != s.villager
+				&& found.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+			debug("wait-profession: stale reference, switched to librarian at arrival point");
+			s.villager = found;
+			professionHealCycles = 0;
+			return;
+		}
+		// Self-heal after 10s (or immediately when CHECK_TRADE falls back with
+		// urgentProfessionHeal): if the lectern is missing re-place it; if it is
+		// present but the villager still has no profession, break+re-place it to
+		// drop any stale claim and force the villager to re-take the profession.
+		// This is recovery, not a timeout, so it always runs regardless of
+		// phaseTimeoutsEnabled.
+		if (urgentProfessionHeal || phaseTicks > Math.max(20, TradeMasterConfig.INSTANCE.lecternHealGrace)) {
+			urgentProfessionHeal = false;
+			TradeMasterConfig healConfig = TradeMasterConfig.INSTANCE;
+			if (healConfig.professionHealCapEnabled
+					&& professionHealCycles >= Math.max(1, healConfig.professionHealCap)) {
+				// repeated refreshes never produced a profession: this villager is
+				// unusable (stuck out of lectern range, claimed elsewhere...), so
+				// dispatch it and work with the next one instead of idling here
+				debug("wait-profession: no profession after " + professionHealCycles
+						+ " refresh cycles, dispatching villager");
+				awaitNextVillager(client, s);
+				return;
+			}
+			professionHealCycles++;
+			boolean lecternThere = LecternRestock.isLecternAt(client.level, s.lecternPos);
+			debug("wait-profession: no profession (read="
+					+ professionName(s.villager.getVillagerData().profession()) + ", lectern="
+					+ (lecternThere ? "present" : "missing") + ", cycle " + professionHealCycles + ") -> "
+					+ (lecternThere ? "refresh lectern" : "re-place lectern"));
+			guardian = lecternThere ? LecternGuardian.refresh() : new LecternGuardian();
+			enter(Phase.ENSURE_LECTERN);
+		}
+	}
+
+	private static void tickCheckTrade(Minecraft client, LocalPlayer player, RunSession s) {
+		if (phaseTimedOut(20 * 60)) {
+			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			return;
+		}
+		if (s.villager == null || !s.villager.isAlive()) {
+			awaitNextVillager(client, s);
+			return;
+		}
+		if (detectionPending) {
+			// wait for the armed detection; if no offers arrive in time the
+			// attempt is stale (villager not ready, menu didn't open...) —
+			// disarm and re-interact instead of sitting on one click. This must
+			// run before the profession check below: a transiently non-librarian
+			// read would otherwise leave the hub armed until its own timeout.
+			if (phaseTicks - detectionArmedTick > 3 * 20) {
+				DetectionHub.disarm();
+				DetectionHub.clearPostDisarmSuppression();
+				detectionPending = false;
+				closeMerchantMenuIfOpen(client);
+			} else {
+				return;
+			}
+		}
+		if (!s.villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+			// After a reroll the villager has to re-claim the lectern; under lag
+			// that can take a long time or fail outright. Waiting here used to
+			// stall until the phase timeout killed the run — instead, allow a
+			// grace period and then hand over to WAIT_PROFESSION, which heals
+			// the lectern (break+re-place) and forces the villager to re-bind.
+			int healGrace = Math.max(20, TradeMasterConfig.INSTANCE.lecternHealGrace);
+			if (++nonLibrarianTicks > healGrace) {
+				debug("check-trade: villager lost the librarian profession for "
+						+ (healGrace / 20) + "s"
+						+ " (read=" + professionName(s.villager.getVillagerData().profession())
+						+ "), falling back to wait-profession");
+				nonLibrarianTicks = 0;
+				urgentProfessionHeal = true;
+				interactFailTicks = 0;
+				checkLook.reset();
+				enter(Phase.WAIT_PROFESSION);
+			}
+			return;
+		}
+		nonLibrarianTicks = 0;
+
+		// A villager that wanders away from the arrival point can no longer be
+		// interacted with reliably; the phase used to retry silently until the
+		// watchdog killed the run. Recover: take over another LIBRARIAN at the
+		// arrival point if there is one, otherwise dispatch this villager and
+		// summon a replacement.
+		Vec3 arrival = arrivalPoint(client, s.lecternPos);
+		if (s.villager.position().distanceToSqr(arrival) > AWAY_DISTANCE_SQR) {
+			debug("check-trade: villager left the arrival point ("
+					+ String.format("%.1f", Math.sqrt(s.villager.position().distanceToSqr(arrival)))
+					+ " blocks away), recovering");
+			DetectionHub.disarm();
+			DetectionHub.clearPostDisarmSuppression();
+			detectionPending = false;
+			Villager replacement = findArrivedVillager(client, s.lecternPos);
+			if (replacement != null && replacement != s.villager
+					&& replacement.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+				// an EVENT-mode detection can have left the merchant menu open; the
+				// replacement villager needs a fresh interact, so clear it
+				closeMerchantMenuIfOpen(client);
+				s.villager = replacement;
+				professionHealCycles = 0;
+				interactFailTicks = 0;
+				checkLook.reset();
+			} else {
+				awaitNextVillager(client, s);
+			}
+			return;
+		}
+
+		// Like LTF: keep interacting until the trade offers were actually detected.
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		Vec3 eyes = s.villager.getEyePosition();
+		if (!checkLook.tick(player, eyes)) return;
+
+		if (config.slowMode) {
+			if (slowInteractDelay > 0) {
+				slowInteractDelay--;
+				return;
+			}
+			slowInteractDelay = config.interactDelay;
+		}
+
+		if (interactVillager(client, s.villager)) {
+			interactFailTicks = 0;
+			detectionPending = true;
+			detectionArmedTick = phaseTicks;
+			DetectionMode mode = config.detectionMode;
+			DetectionHub.arm(mode, mode == DetectionMode.PACKET, s.villager,
+					RerollController::handleOffers, RerollController::handleDetectionFail);
+		} else if (++interactFailTicks > 20 * 5) {
+			// 5s of rejected interactions: the client thinks the villager is in
+			// range but the server disagrees (stale position under lag) — stop
+			// staring at it and get a fresh villager
+			debug("check-trade: interactions rejected for 5s, recovering");
+			interactFailTicks = 0;
+			DetectionHub.disarm();
+			DetectionHub.clearPostDisarmSuppression();
+			detectionPending = false;
+			awaitNextVillager(client, s);
+		}
+		// a single failed interact is normal mid-movement: keep retrying
+	}
+
+	private static void tickReroll(Minecraft client, RunSession s) {
+		if (strategy == null) {
+			strategy = TradeMasterConfig.INSTANCE.rerollMechanism == RerollMechanism.TASK_CHAIN
+					? new TaskChainRerollStrategy()
+					: new AxeRerollStrategy();
+			strategy.begin(s);
+			return;
+		}
+		RerollStrategy.StepResult result = strategy.tick();
+		if (result.step() == RerollStrategy.Step.DONE) {
+			strategy.abort();
+			strategy = null;
+			checkLook.reset();
+			slowInteractDelay = 0;
+			enter(Phase.CHECK_TRADE);
+		} else if (result.step() == RerollStrategy.Step.FAILED
+				|| result.step() == RerollStrategy.Step.FAILED_FULL) {
+			if (s.villager == null || !s.villager.isAlive()) {
+				awaitNextVillager(client, s);
+			} else if (strategy.placementBlocked() && placementFailRetries < 2) {
+				// placement keeps failing with this villager around (it can sit on
+				// the lectern spot); dispatch it and retry with the next one,
+				// same recovery as the guardian ENSURE path
+				placementFailRetries++;
+				debug("reroll: placement blocked, dispatching villager (retry "
+						+ placementFailRetries + ")");
+				awaitNextVillager(client, s);
+			} else {
+				stop(result.reason(), ChatFormatting.RED);
+			}
+		}
+	}
+
+	private static void tickLock(Minecraft client, LocalPlayer player, RunSession s) {
+		if (lockExhaustionDepositPending) {
+			finishLockExhaustion(client, player);
+			return;
+		}
+		if (s.matchedTrade != null) {
+			// a mid-run maxPrice drop or level raise leaves the pending match outside
+			// the edited budget. Measured with the SAME ruler tryMatch admitted with:
+			// hunt-marked targets contribute mark-1 (not maxPrice), and a match
+			// admitted via a recorded combo need is only measured against that
+			// record — comparing either against the raw config sum would
+			// revert-reloop against a match tryMatch keeps re-admitting
+			boolean editedOut = s.matchedTrade.anyTargetGone()
+					|| s.matchedTrade.anyPartBelowConfigLevel()
+					|| priceOutOfAdmissionBudget(s.matchedTrade);
+			if (editedOut) {
+				if (lockPurchaseInitiated && lockExecutor != null && lockExecutor.purchaseSent()) {
+					if (lockExecutor.menu() != player.containerMenu) {
+						// menu already closed/replaced: same judgement as the
+						// menu-replaced branch — only a confirmed purchase counts
+						if (lockExecutor.purchaseConfirmed()) {
+							debug("lock: matched target was disabled mid-run, but the purchase was confirmed; finishing it");
+							finishLock(s);
+						} else {
+							revertDisabledMatch(client, s);
+						}
+						return;
+					}
+					// the click was SENT but stage 2 is still confirming the purchase:
+					// a trade the server refuses (e.g. exhausted offer) also reaches
+					// stage 2 and would end FAILED. Finishing now could celebrate a
+					// lock that never happened — let the executor's own verdict decide
+					switch (lockExecutor.tick()) {
+						case DONE -> {
+							debug("lock: matched target was disabled mid-run, but the purchase succeeded; finishing it");
+							finishLock(s);
+						}
+						case FAILED -> revertDisabledMatch(client, s);
+						case RUNNING -> {}
+					}
+					return;
+				}
+				// disabled before the purchase actually went out: discard the pending
+				// executor (it would otherwise buy on the next tick), give the budget
+				// back and reroll — the villager is still unlocked
+				revertDisabledMatch(client, s);
+				return;
+			}
+		}
+		if (!lockSlotPrepared) {
+			if (!Preconditions.hasFreeSlot(player) || depositor != null) {
+				if (depositor == null) {
+					depositor = createBookDisposal();
+				}
+				if (depositor != null) {
+					// keep ticking to a terminal state even after the first book frees
+					// a slot: abandoning a half-spent depositor (open chest menu,
+					// switched hotbar slot) leaks it into later phases
+					RerollStrategy.StepResult result = depositor.tick();
+					if (result.step() == RerollStrategy.Step.FAILED) {
+						stop(result.reason(), ChatFormatting.RED);
+						return;
+					}
+					if (result.step() == RerollStrategy.Step.RUNNING) {
+						// draining several chests can exceed the 20s LOCK timeout;
+						// keep the clock fresh so a half-spent depositor is not abandoned
+						phaseTicks = 0;
+						return;
+					}
+					// DONE or FAILED_FULL: either way the depositor is spent;
+					// the recheck below decides whether locking can proceed
+					depositor = null;
+					phaseTicks = 0;
+				}
+				if (!Preconditions.hasFreeSlot(player)) {
+					// no room for the book the lock purchase would yield: it would
+					// be dropped on the ground (possibly into the void). Stop before
+					// locking and leave the villager in place — once the player frees
+					// a slot the run resumes and re-locks the same villager
+					stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+					return;
+				}
+			}
+			lockSlotPrepared = true;
+		}
+		if (phaseTimedOut(20 * 20)) {
+			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			return;
+		}
+		if (s.villager == null || !s.villager.isAlive()) {
+			// judge by the executor's actual state: lockPurchaseInitiated is set
+			// at executor construction, before any click went out. Only once the
+			// purchase click was SENT may the buy already be applied server-side
+			// (the rig can dispatch the villager right after the sale) — finish
+			// without restoring the budget, otherwise the matcher would demand the
+			// same enchantment again and buy it a second time. Before that, the
+			// villager simply vanished: restore and wait for the next one.
+			if (lockExecutor != null && lockExecutor.purchaseSent()) {
+				finishLock(s);
+			} else {
+				awaitNextVillager(client, s);
+			}
+			return;
+		}
+		if (!(player.containerMenu instanceof MerchantMenu menu)) {
+			if (lockExecutor != null) {
+				// the executor closes the menu in its second-to-last stage and reports
+				// DONE one tick later; keep ticking it here or the lock never completes
+				switch (lockExecutor.tick()) {
+					case DONE -> finishLock(s);
+					case FAILED -> {
+						if (lockExecutor.drifted()) freeReroll(client, s);
+						else lockRejected(client, s);
+					}
+					case RUNNING -> {}
+				}
+				return;
+			}
+			if (lockPurchaseInitiated) {
+				finishLock(s);
+				return;
+			}
+			// a leftover non-merchant menu (e.g. anvil from naming) blocks the
+			// villager interaction; clear it before retrying
+			if (player.containerMenu != player.inventoryMenu) {
+				player.closeContainer();
+				return;
+			}
+			if (!lockInteracted) {
+				// same pacing as CHECK_TRADE: slow mode spaces interacts by the
+				// configured delay, normal mode retries every 5 ticks
+				boolean tryInteract = true;
+				TradeMasterConfig paceConfig = TradeMasterConfig.INSTANCE;
+				if (paceConfig.slowMode) {
+					if (slowInteractDelay > 0) {
+						slowInteractDelay--;
+						return;
+					}
+					slowInteractDelay = paceConfig.interactDelay;
+				} else {
+					tryInteract = phaseTicks % 5 == 1;
+				}
+				if (tryInteract && interactVillager(client, s.villager)) {
+					lockInteracted = true;
+					lockNoMenuTicks = 0;
+				}
+			} else {
+				// the interact landed client-side but no menu opened (position desync
+				// under lag): keep retrying forever, 5s apart — the only bounds are
+				// the global watchdog and the freshness check once the menu opens
+				if (++lockNoMenuTicks > 20 * 5) {
+					lockNoMenuTicks = 0;
+					lockInteracted = false;
+				}
+			}
+			return;
+		}
+
+		if (lockExecutor == null) {
+			// Defensive, unreachable today (audited 2026-09-19): the flag is set in the
+			// same statement pair that builds the executor (below), and every site
+			// that drops the executor also clears the flag.
+			if (lockPurchaseInitiated) {
+				finishLock(s);
+				return;
+			}
+			MerchantOffers offers = menu.getOffers();
+			if (offers.isEmpty()) return; // offers packet not applied yet
+			if (s.matchedTrade != null && !matchedOfferUnchanged(offers, s.matchedTrade)) {
+				// the offer recorded at detection is gone or drifted (profession
+				// auto-reroll regenerated the menu: same enchantment at a higher
+				// price, a different book at the old slot). The villager is NOT
+				// locked, so this counts as a free reroll — put the budget back
+				// and re-detect the fresh offers on the same villager under the
+				// proper budget instead of locking blindly or sending it away
+				// (a mid-run target disable is already handled at the top of this
+				// method before we ever get here)
+				freeReroll(client, s);
+				return;
+			}
+			int slot = resolveLockSlot(offers, s);
+			if (slot < 0) {
+				stop(Component.translatable("trademaster.message.material_short"), ChatFormatting.RED);
+				return;
+			}
+			MerchantOffer offer = offers.get(slot);
+			if (!Preconditions.checkLockMaterials(player, offer.getBaseCostA(), offer.getCostB())) {
+				// the matched offer became unaffordable (emeralds spent manually):
+				// the villager is still unlocked, so treat it like a drift — give the
+				// budget back and re-detect. The affordability gate in handleOffers
+				// keeps this same book from matching again; either another qualifying
+				// book takes over or the villager gets rerolled. (The old fallback of
+				// buying some other book could never pass the purchase fingerprint and
+				// only reignited the re-detect loop.)
+				freeReroll(client, s);
+				return;
+			}
+			if (lockRetryDelayTicks > 0) {
+				// spacing after a rejected purchase: do not hammer the server
+				lockRetryDelayTicks--;
+				return;
+			}
+			// the fingerprint must describe the offer this slot actually holds: for an
+			// emergency buy (the matched book is unaffordable) it is built from that
+			// offer, otherwise a stale matched-trade fingerprint drifts and livelocks
+			boolean buysMatched = s.matchedTrade != null && slot == s.matchedTrade.offerIndex();
+			TradeMatcher.MatchedTrade expectation = buysMatched ? s.matchedTrade
+					: new TradeMatcher.MatchedTrade(List.of(bookFingerprint(offer, slot)), List.of(),
+							s.matchedTrade == null ? 0 : s.matchedTrade.needsVersion());
+			lockExecutor = new LockTradeExecutor(menu, slot, expectation);
+			lockPurchaseInitiated = true;
+		}
+
+		if (lockExecutor.menu() != player.containerMenu) {
+			// the server closed or replaced the menu mid-execution; only a fully
+			// confirmed purchase (item seen on the cursor, menu closed) counts —
+			// "click sent" is not enough, because a trade the server refuses also
+			// reaches that stage. Finishing on an unconfirmed purchase would name
+			// and send away a villager that never locked and deduct the target
+			boolean paid = lockExecutor.purchaseConfirmed();
+			lockExecutor = null;
+			lockInteracted = false;
+			if (paid) {
+				finishLock(s);
+			} else {
+				lockRejected(client, s);
+			}
+			return;
+		}
+
+		switch (lockExecutor.tick()) {
+			case DONE -> finishLock(s);
+			case FAILED -> {
+				if (lockExecutor.drifted()) freeReroll(client, s);
+				else lockRejected(client, s);
+			}
+			case RUNNING -> {}
+		}
+	}
+
+	/**
+	 * The matched target was disabled, removed or edited out of budget mid-run
+	 * and the purchase is not (or no longer) viable: give the budget back and
+	 * reroll. Needs are rebuilt from the live config — the matcher snapshot was
+	 * taken at start(), and without the rebuild the stale enchantment would
+	 * keep matching and the run would loop revert-reroll forever.
+	 */
+	private static void revertDisabledMatch(Minecraft client, RunSession s) {
+		debug("lock: matched target was disabled or edited mid-run, reverting match and rerolling");
+		lockExecutor = null;
+		lockPurchaseInitiated = false;
+		lockInteracted = false;
+		// a deposit may be mid-flight to free a slot for a lock that is now
+		// cancelled: drop it here, otherwise the half-spent depositor leaks
+		// into the next LOCK/naming run — but let it close its open chest and
+		// restore the hotbar selection first
+		if (depositor != null) {
+			depositor.abortCleanly();
+			depositor = null;
+		}
+		s.matcher.undoMatch(s.matchedTrade);
+		s.matchedTrade = null;
+		closeMerchantMenuIfOpen(client);
+		refreshNeeds(client, s);
+		if (s.matcher.isEmpty()) {
+			stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+			return;
+		}
+		enter(Phase.REROLL);
+	}
+
+	/**
+	 * The lock purchase did not complete (server rejected it or the menu went
+	 * stale mid-execution): the villager stays unlocked and the trade intact.
+	 * Retry after a delay; once the configured retry cap (lockMaxRetries,
+	 * -1 = unlimited) is exceeded, undo the match-time state changes and keep
+	 * rerolling the same villager — it was never locked, so its trades can
+	 * still be rerolled.
+	 */
+	private static void lockRejected(Minecraft client, RunSession s) {
+		debug("lock: purchase rejected by the server, retrying");
+		lockExecutor = null;
+		lockPurchaseInitiated = false;
+		// the server often closes the menu on rejection; stale interact state would
+		// send the menu-less branch into its 100-tick wait counter before retrying
+		lockInteracted = false;
+		lockNoMenuTicks = 0;
+		lockAttempts++;
+		int maxRetries = TradeMasterConfig.INSTANCE.lockMaxRetries;
+		if (maxRetries >= 0 && lockAttempts > maxRetries) {
+			chat(Component.translatable("trademaster.message.lock_retry_exhausted", lockAttempts)
+					.withStyle(ChatFormatting.YELLOW));
+			if (s.matchedTrade != null) {
+				// same guard as awaitNextVillager: undoMatch's computeIfAbsent would
+				// resurrect a locked target that dropLocked removed after hunt was
+				// turned off mid-run; hunt-marked targets stay live and keep the undo
+				if (!matchLockedDone(s)) {
+					s.matcher.undoMatch(s.matchedTrade);
+				}
+				s.matchedTrade = null;
+			}
+			closeMerchantMenuIfOpen(client);
+			sendAwayPresser = null;
+			if (client.player != null && !Preconditions.hasFreeSlot(client.player)) {
+				// stash enchanted books to free a slot before rerolling on
+				depositor = createBookDisposal();
+				if (depositor == null) {
+					stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+					return;
+				}
+				lockExhaustionDepositPending = true;
+				return;
+			}
+			resumeAfterLockExhaustion(client);
+			return;
+		}
+		lockRetryDelayTicks = 40;
+		phaseTicks = 0;
+	}
+
+	/**
+	 * Completes the post-exhaustion flow when the inventory was full: the
+	 * depositor stashes enchanted books one per tick, then the freed slot is
+	 * rechecked and rerolling resumes. Runs at the top of tickLock so the
+	 * pending state can never fall through into villager interaction.
+	 */
+	private static void finishLockExhaustion(Minecraft client, LocalPlayer player) {
+		// Defensive, unreachable today (audited 2026-09-19): the flag is only set
+		// together with the depositor in lockRejected.
+		if (depositor != null) {
+			RerollStrategy.StepResult result = depositor.tick();
+			if (result.step() == RerollStrategy.Step.FAILED) {
+				stop(result.reason(), ChatFormatting.RED);
+				return;
+			}
+			if (result.step() == RerollStrategy.Step.RUNNING) return;
+			// DONE or FAILED_FULL: the recheck below decides whether to resume
+			depositor = null;
+		}
+		lockExhaustionDepositPending = false;
+		if (!Preconditions.hasFreeSlot(player)) {
+			stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+			return;
+		}
+		resumeAfterLockExhaustion(client);
+	}
+
+	private static void resumeAfterLockExhaustion(Minecraft client) {
+		Component materials = Preconditions.check();
+		if (materials != null) {
+			stop(materials.copy().withStyle(ChatFormatting.RED), null);
+			return;
+		}
+		lockAttempts = 0;
+		enter(Phase.REROLL);
+	}
+
+	/** axe_required / axe_breaking never self-resolve: retrying them is a silent hang. */
+	private static boolean isPermanentAxeFailure(@Nullable Component reason) {
+		if (reason == null) return false;
+		if (!(reason.getContents() instanceof TranslatableContents contents)) return false;
+		String key = contents.getKey();
+		return key.equals("trademaster.message.axe_required") || key.equals("trademaster.message.axe_breaking");
+	}
+
+	private static void finishLock(RunSession s) {
+		lockExecutor = null;
+		lockInteracted = false;
+		// session-level voucher: survives the needs rebuild even when the villager
+		// leaves unnamed and auto-disable is off (otherwise the same target would
+		// be re-demanded and locked endlessly). Every matched target of the combo
+		// is covered by this one villager, so all of them count as locked
+		// Defensive, unreachable today (audited 2026-09-19): finishLock only runs in
+		// LOCK, which is entered once with a non-null match. Guard kept against NPE.
+		if (s.matchedTrade != null) {
+			s.lockedIds.addAll(s.matchedTrade.matchedIds());
+			// hunt-cheaper: the locked enchantment stays live; mark its price so
+			// future matches only accept a strictly cheaper copy. Only a purchase
+			// with exactly one matched part has a price attributable to one target —
+			// a combo's price cannot seed a per-target ratchet
+			if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() == 1) {
+				int price = s.matchedTrade.price();
+				Integer marked = huntMarkedPrices.get(s.matchedTrade.id());
+				if (marked != null) {
+					EnchantmentTarget huntTarget = TradeMasterConfig.INSTANCE.enchantments.get(s.matchedTrade.id());
+					int maxPrice = huntTarget == null ? price : huntTarget.maxPrice();
+					// "marked above config" branch: the config price was lowered
+					// below the mark and this lock came in at/below the config
+					// price — the mark falls back to the config price, NOT the
+					// locked price (first lock keeps marking the locked price)
+					if (marked > maxPrice && price <= maxPrice) {
+						price = maxPrice;
+					}
+				}
+				huntMarkedPrices.put(s.matchedTrade.id(), price);
+			} else if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() >= 2) {
+				// the purchased book carries several matched enchantments: its price
+				// cannot be attributed, so record the combo itself as a temporary
+				// need (qualifying set + price). An identical set only matches
+				// strictly cheaper afterwards (combo ratchet); a book with a
+				// different-but-qualifying set records its own entry when purchased
+				TradeMatcher.MatchedBook purchased = s.matchedTrade.purchase();
+				Set<TradeMatcher.MatchPart> key = TradeMatcher.comboKey(purchased.parts());
+				Integer prev = comboHuntPrices.get(key);
+				if (prev == null || purchased.price() < prev) {
+					comboHuntPrices.put(key, purchased.price());
+					debug("hunt: combo need recorded " + key + " at " + purchased.price());
+					chat(Component.translatable("trademaster.message.combo_need_recorded",
+									describeBook(purchased), purchased.price())
+							.withStyle(ChatFormatting.YELLOW));
+				}
+			}
+			// every OTHER qualifying book of this villager counts as obtained too
+			// (one purchase locks it), so each additional single-target book must
+			// contribute its own offered price — otherwise a second qualifying book's
+			// cheaper-hunt was silently dropped. Combos are skipped: their price
+			// cannot seed a per-target ratchet (they go through comboHuntPrices).
+			if (TradeMasterConfig.INSTANCE.huntCheaper) {
+				int purchasedIndex = s.matchedTrade.offerIndex();
+				for (TradeMatcher.MatchedBook book : s.matchedTrade.books()) {
+					if (book.parts().size() != 1 || book.offerIndex() == purchasedIndex) continue;
+					Identifier id = book.parts().get(0).id();
+					Integer prevMark = huntMarkedPrices.get(id);
+					if (prevMark == null || book.price() < prevMark) {
+						huntMarkedPrices.put(id, book.price());
+					}
+				}
+			}
+		}
+		// an EVENT-mode detection can leave the merchant menu open; naming needs to
+		// open an anvil, so clear it out first
+		closeMerchantMenuIfOpen(Minecraft.getInstance());
+		TradeMasterConfig lockConfig = TradeMasterConfig.INSTANCE;
+		if (lockConfig.autoDisableAfterLock && s.matchedTrade != null) {
+			boolean changed = false;
+			for (Identifier id : s.matchedTrade.matchedIds()) {
+				EnchantmentTarget target = lockConfig.enchantments.get(id);
+				if (target != null && target.enabled()) {
+					lockConfig.enchantments.put(id, target.withEnabled(false));
+					changed = true;
+				}
+			}
+			if (changed) lockConfig.save();
+		}
+		if (lockConfig.namingEnabled) {
+			namingExecutor = null;
+			enter(Phase.NAME);
+		} else {
+			sendAwayPresser = null;
+			enter(Phase.SEND_AWAY);
+		}
+	}
+
+	private static void tickName(Minecraft client, LocalPlayer player, RunSession s) {
+		if (namingExecutor == null) {
+			// a fresh tag costs one level: below that, naming is temporarily turned
+			// off — the book stays locked, the villager goes away unnamed, and the
+			// next villager is named again once XP is back (no manual switch needed)
+			if (!player.hasInfiniteMaterials() && player.experienceLevel < 1) {
+				if (!xpNamingPaused) {
+					xpNamingPaused = true;
+					chat(Component.translatable("trademaster.message.xp_short").withStyle(ChatFormatting.YELLOW));
+				}
+				closeMerchantMenuIfOpen(client);
+				sendAwayPresser = null;
+				enter(Phase.SEND_AWAY);
+				return;
+			}
+			xpNamingPaused = false;
+			// The renamed name tag needs a free slot, but right after buying the book
+			// the inventory is often full. Deposit books into the bound chests first to
+			// make room, instead of failing at the anvil take step (take-tag).
+			if (!Preconditions.hasFreeSlot(player) || depositor != null) {
+				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+				if (depositor == null) {
+					debug("naming: inventory full, disposing books to free a slot");
+					depositor = createBookDisposal();
+				}
+				if (depositor != null) {
+					// as in tickLock: run to a terminal state, never abandon mid-run
+					RerollStrategy.StepResult result = depositor.tick();
+					if (result.step() == RerollStrategy.Step.RUNNING) return;
+					if (result.step() == RerollStrategy.Step.FAILED) {
+						// a hard deposit failure (swap rejected after its retries,
+						// phase timeout): stop like the other deposit sites do.
+						// FAILED_FULL stays lenient — the hasFreeSlot recheck below
+						// decides whether naming can still proceed
+						stop(result.reason(), ChatFormatting.RED);
+						return;
+					}
+					if (result.step() != RerollStrategy.Step.DONE) {
+						debug("naming: deposit ended early: " + result.reason().getString());
+					}
+					depositor = null;
+					phaseTicks = 0;
+				}
+				if (!Preconditions.hasFreeSlot(player)) {
+					// could not free a slot (no chests / chests full / nothing to deposit):
+					// naming would fail, so skip it and keep the already-locked book
+					debug("naming: could not free a slot (chests bound="
+							+ config.chestPositions.size() + "), skipping naming");
+					closeMerchantMenuIfOpen(client);
+					chat(Component.translatable("trademaster.message.naming_skipped", "inventory-full")
+							.withStyle(ChatFormatting.YELLOW));
+					sendAwayPresser = null;
+					enter(Phase.SEND_AWAY);
+					return;
+				}
+				debug("naming: slot freed, proceeding");
+			}
+			namingExecutor = new NamingExecutor(s, s.matchedTrade);
+			phaseTicks = 0; // the naming timeout starts when the executor actually begins
+			return;
+		}
+		switch (namingExecutor.tick()) {
+			case DONE -> {
+				// remember the display names actually used at naming time: if the game
+				// language changes later, deductNamedVillagers can still resolve them.
+				// A multi-book name covers every matched enchantment, so record each one
+				List<NamingExecutor.NameRecord> records = namingExecutor.nameRecords();
+				namingExecutor = null;
+				SmoothRotation.reset();
+				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+				for (NamingExecutor.NameRecord record : records) {
+					String displayName = record.displayName();
+					Identifier id = record.id();
+					Identifier previous = config.nameHistory.get(displayName);
+					if (previous != null && !previous.equals(id)) {
+						// same display name, different enchantment (custom-name collision):
+						// the entry is ambiguous — drop it instead of silently overwriting
+						config.nameHistory.remove(displayName);
+					} else {
+						// remove+put moves the entry to the tail so recency survives:
+						// a plain put on an existing key keeps its old insertion order,
+						// and the cap trim would evict still-recent names first
+						config.nameHistory.remove(displayName);
+						config.nameHistory.put(displayName, id);
+					}
+				}
+				while (config.nameHistory.size() > 256) {
+					config.nameHistory.remove(config.nameHistory.keySet().iterator().next());
+				}
+				ConfigPersistence.save(config);
+				closeMerchantMenuIfOpen(Minecraft.getInstance());
+				sendAwayPresser = null;
+				enter(Phase.SEND_AWAY);
+			}
+			case FAILED -> {
+				String reason = namingExecutor.failReason();
+				namingExecutor = null;
+				SmoothRotation.reset();
+				closeMerchantMenuIfOpen(Minecraft.getInstance());
+				chat(Component.translatable("trademaster.message.naming_skipped", "failed:" + reason)
+						.withStyle(ChatFormatting.YELLOW));
+				sendAwayPresser = null;
+				enter(Phase.SEND_AWAY);
+			}
+			case RUNNING -> {}
+		}
+		// checked AFTER the tick: a failure landing exactly on the timeout tick
+		// must get its chance to divert into RESTORE before being discarded.
+		// Deliberately not phaseTimedOut(): the executor has its own stage limits,
+		// but if it ever wedges anyway this backstop must not depend on the
+		// phase-timeouts config flag
+		if (namingExecutor != null && phaseTicks > 20 * 30 && !namingExecutor.isRestoring()) {
+			// abortCleanly fires the pending EQUIP swap-back if one is outstanding;
+			// a bare discard would strand the displaced hand item in the tag slot
+			namingExecutor.abortCleanly();
+			namingExecutor = null;
+			closeMerchantMenuIfOpen(Minecraft.getInstance());
+			chat(Component.translatable("trademaster.message.naming_skipped", "timeout")
+					.withStyle(ChatFormatting.YELLOW));
+			sendAwayPresser = null;
+			enter(Phase.SEND_AWAY);
+		}
+	}
+
+	private static void tickSendAway(Minecraft client, RunSession s) {
+		if (sendAwayPresser == null) sendAwayPresser = new ButtonPresser(s.sendAwayButtonPos);
+		RerollStrategy.StepResult result = sendAwayPresser.tick();
+		if (result.step() == RerollStrategy.Step.DONE) {
+			sendAwayPresser = null;
+			s.villager = null;
+			s.matchedTrade = null;
+			lockExecutor = null;
+			lockPurchaseInitiated = false;
+			namingExecutor = null;
+			guardian = null;
+			if (restSummonPending) {
+				// villager-gone cleanup: rest now, summon once a villager reappears
+				debug("send-away: rig cleared with no lock, resting for next villager");
+				awaitingRigClear = true;
+				enter(Phase.AWAIT_VILLAGER);
+				return;
+			}
+			// a locked villager was just dispatched: refresh the needs list the
+			// LPCTools way (named villagers count as already obtained), then rest
+			// until the rig is clear instead of immediately re-scanning — the
+			// departing villager is still a client entity while it falls and would
+			// otherwise be re-targeted, looping the run forever
+			refreshNeeds(client, s);
+			if (s.matcher.isEmpty()) {
+				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				return;
+			}
+			s.tries = 0;
+			// the sent-away villager keeps the lectern claimed until it is broken, so
+			// break it right now to release the claim. Do NOT re-place it yet: leaving
+			// the spot empty until the next villager actually arrives prevents the
+			// still-falling/passing villager from grabbing it and failing to re-roll.
+			// The arrival path (ENSURE_LECTERN) re-places it when a villager shows up.
+			debug("send-away: locked villager dispatched, breaking lectern (no re-place yet)");
+			guardian = LecternGuardian.breakOnly();
+			postDispatchRefresh = true;
+			enter(Phase.ENSURE_LECTERN);
+		} else if (result.step() == RerollStrategy.Step.FAILED) {
+			stop(result.reason(), ChatFormatting.RED);
+		}
+	}
+
+	// ---- detection callbacks ---------------------------------------------------
+
+	private static void handleOffers(OfferSnapshot snapshot) {
+		detectionPending = false;
+		RunSession s = session;
+		if (s == null || phase != Phase.CHECK_TRADE) return;
+
+		TradeMatcher.MatchedTrade hit = s.matcher.tryMatch(snapshot.offers());
+
+		// the match budget is the config's, not the player's: a combo's price can
+		// exceed the carried emeralds even though every single target fits its own
+		// max price. An unaffordable match must not enter LOCK — the purchase would
+		// fail the material check and livelock against the reroll loop — so treat
+		// it as a miss and reroll; the miss branch's own material precheck stops
+		// the run once the emeralds fall below the floor
+		boolean comboTooPricey = false;
+		if (hit != null) {
+			LocalPlayer player = Minecraft.getInstance().player;
+			MerchantOffer matchedOffer = snapshot.offers().get(hit.offerIndex());
+			boolean payable = player != null && Preconditions.checkLockMaterials(player,
+					matchedOffer.getBaseCostA(), matchedOffer.getCostB());
+			if (!payable) {
+				// The matched book cannot be paid for. Locking the villager is what the
+				// run is after and a single purchase does it, so buy the cheapest OTHER
+				// book that IS affordable; only when nothing on the list is affordable
+				// does this become a miss.
+				int alt = player == null ? -1 : cheapestAffordableBookSlot(snapshot.offers(), player);
+				comboTooPricey = hit.purchase().parts().size() >= 2;
+				if (alt >= 0) {
+					MerchantOffer altOffer = snapshot.offers().get(alt);
+					debug("offers: matched " + hit.price() + " emeralds, unaffordable; emergency buy at slot " + alt);
+					chat(Component.translatable("trademaster.message.emergency_purchase",
+									describeBook(bookFingerprint(altOffer, alt)), altOffer.getBaseCostA().getCount())
+							.withStyle(ChatFormatting.YELLOW));
+					// keep the match: LOCK re-picks the affordable slot and fingerprints
+					// the offer it actually buys, while locked ids / auto-disable / hunt
+					// marks still follow the matched targets
+				} else {
+					debug("offers: matched " + hit.price() + " emeralds and nothing is affordable, treating as miss");
+					// tryMatch already dequeued the matched targets' budget slots:
+					// return them, or the leaked slots keep those targets unmatchable
+					// until the next needs rebuild — with the leaked slots being the
+					// last needs, the run would reroll forever (a combo's price can
+					// legitimately exceed the emerald floor, so the miss-branch
+					// material precheck does not catch this)
+					s.matcher.undoMatch(hit);
+					hit = null;
+				}
+			}
+		}
+
+		if (hit != null) {
+			s.matchedTrade = hit;
+			debug("offers: matched " + hit.id() + " " + hit.level()
+					+ " for " + hit.price() + " on roll " + (s.tries + 1));
+			chat(Component.translatable("trademaster.message.found",
+							describeEnchantment(hit), hit.price(), s.tries + 1)
+					.withStyle(ChatFormatting.GREEN));
+			lockInteracted = false;
+			lockPurchaseInitiated = false;
+			lockExecutor = null;
+			lockSlotPrepared = false;
+			lockNoMenuTicks = 0;
+			lockRetryDelayTicks = 0;
+			lockAttempts = 0;
+			// the delivery's disarm left a merchant-screen suppression window; LOCK
+			// re-opens the menu on purpose within a few ticks, so drop it or the
+			// first interact's screen gets swallowed and the lock stalls ~5s
+			DetectionHub.clearPostDisarmSuppression();
+			enter(Phase.LOCK);
+		} else {
+			// materials can run out mid-run while one villager keeps being rerolled
+			// (the pre-summon recheck only runs between villagers); re-check before
+			// every new roll so the run stops instead of burning axe durability
+			Component materials = Preconditions.check();
+			if (materials != null) {
+				// a combo's price is the sum of its parts and can exceed an emerald
+				// floor that only knows single-target max prices: name the switch that
+				// would have covered it, so the stop is actionable
+				if (comboTooPricey && !TradeMasterConfig.INSTANCE.multiEnchantProtection) {
+					chat(Component.translatable("trademaster.message.combo_shortage_hint")
+							.withStyle(ChatFormatting.YELLOW));
+				}
+				closeMerchantMenuIfOpen(Minecraft.getInstance());
+				stop(materials.copy().withStyle(ChatFormatting.RED), null);
+				return;
+			}
+			s.tries++;
+			debug("offers: " + snapshot.offers().size() + " offers, no match (roll " + s.tries + ") -> reroll");
+			closeMerchantMenuIfOpen(Minecraft.getInstance());
+			// same reason as the hit path: the delivery's disarm left a suppression
+			// window, and if the detection mode is switched before the next check,
+			// that check's own merchant screen would be swallowed by the leftover
+			DetectionHub.clearPostDisarmSuppression();
+			enter(Phase.REROLL);
+		}
+	}
+
+	private static void handleDetectionFail(String reason) {
+		detectionPending = false;
+		RunSession s = session;
+		if (s == null) return;
+		debug("detection failed: " + reason);
+		// retry the interaction; the CHECK_TRADE phase timeout is the guard
+		closeMerchantMenuIfOpen(Minecraft.getInstance());
+	}
+
+	// ---- helpers ----------------------------------------------------------------
+
+	private static boolean interactVillager(Minecraft client, Villager villager) {
+		if (client.gameMode == null || client.player == null) return false;
+		return Interactions.interactEntity(client, client.player, villager) == InteractionResult.SUCCESS;
+	}
+
+	/** Rebuilds the matcher's needs list, counting named villagers as obtained. */
+	private static void refreshNeeds(Minecraft client, RunSession s) {
+		if (client.level == null) return;
+		List<Villager> villagers = client.level.getEntitiesOfClass(Villager.class,
+				AABB.ofSize(Vec3.atCenterOf(s.lecternPos), 256, 128, 256));
+		s.matcher.buildNeeds();
+		// hunt-cheaper automatically cancels the named-villager deduction: a
+		// named villager must never pause the hunt for a cheaper copy
+		if (!TradeMasterConfig.INSTANCE.huntCheaper) {
+			s.matcher.deductNamedVillagers(villagers);
+		}
+		s.matcher.dropLocked(s.lockedIds);
+		// hunt-cheaper runs last: it re-adds locked enchantments at marked-1 budget
+		s.matcher.setHuntPrices(huntMarkedPrices);
+		s.matcher.setComboHuntPrices(comboHuntPrices);
+		if (TradeMasterConfig.INSTANCE.huntCheaper) {
+			s.matcher.applyHuntOverrides();
+		}
+		huntAppliedToNeeds = TradeMasterConfig.INSTANCE.huntCheaper;
+		needsFingerprint = targetsFingerprint();
+	}
+
+	/** Stable description of the live target config: any enabled/disabled toggle
+	 * or level/maxPrice edit changes it, so the tick-top detector rebuilds once. */
+	private static String targetsFingerprint() {
+		StringBuilder sb = new StringBuilder();
+		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
+			sb.append(target.id()).append(':').append(target.level())
+					.append(':').append(target.maxPrice()).append(';');
+		}
+		return sb.toString();
+	}
+
+	/** A rebuild drained the needs while the run is already committed: a LOCK
+	 * purchase was sent (the server may have locked the villager) or the locked
+	 * villager is being named/sent away. Stopping now would strand it unnamed
+	 * and undispatched; these paths all end in their own refreshNeeds, which
+	 * stops the run once the finish is actually complete. */
+	private static boolean finalizingRun() {
+		return phase == Phase.NAME || phase == Phase.SEND_AWAY
+				|| (phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent());
+	}
+
+	/** Enabled targets whose vanilla minimum price exceeds the configured max can
+	 * never match: buildNeeds leaves them out, so the user sees why nothing is
+	 * rolled for them. */
+	private static void warnUnmatchableTargets(Minecraft mc) {
+		List<String> dead = new ArrayList<>();
+		List<String> unavailable = new ArrayList<>();
+		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
+			if (!TradeMatcher.registryTradeable(target.id())) {
+				unavailable.add(target.id().toString());
+				continue;
+			}
+			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) {
+				Enchantment enchantment = mc.level.registryAccess()
+						.lookupOrThrow(Registries.ENCHANTMENT).getValue(target.id());
+				dead.add(enchantment != null
+						? Enchantment.getFullname(Holder.direct(enchantment), target.level()).getString()
+						: target.id().toString());
+			}
+		}
+		if (!dead.isEmpty()) {
+			chat(Component.translatable("trademaster.message.unmatchable_targets", String.join(", ", dead))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+		if (!unavailable.isEmpty()) {
+			chat(Component.translatable("trademaster.message.unavailable_targets", String.join(", ", unavailable))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+	}
+
+	/** Closes a leftover merchant menu (EVENT/BOTH detection leaves it open).
+	 * Merchant menus only: closing ANY container would also tear down a chest
+	 * menu a depositor may be using or an anvil mid-naming. */
+	private static void closeMerchantMenuIfOpen(Minecraft client) {
+		if (client.player != null && client.player.containerMenu instanceof MerchantMenu) {
+			client.player.closeContainer();
+		}
+	}
+
+	/**
+	 * The villager to work with at the arrival point: a librarian if there is
+	 * one, otherwise the nearest unemployed villager (still usable — it can take
+	 * the lectern and become a librarian). Babies are skipped: they cannot trade
+	 * or take a profession, so picking one would stall the run.
+	 */
+	private static @Nullable Villager findArrivedVillager(Minecraft client, BlockPos lecternPos) {
+		if (client.level == null || client.player == null) return null;
+		Vec3 arrival = arrivalPoint(client, lecternPos);
+		Villager bestLibrarian = null;
+		Villager bestUnemployed = null;
+		double bestLibrarianDistance = Double.POSITIVE_INFINITY;
+		double bestUnemployedDistance = Double.POSITIVE_INFINITY;
+		for (Villager villager : villagersAtArrivalPoint(client, arrival)) {
+			if (villager.isBaby()) continue;
+			double distance = villager.position().distanceToSqr(arrival);
+			if (villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+				if (distance < bestLibrarianDistance) {
+					bestLibrarianDistance = distance;
+					bestLibrarian = villager;
+				}
+			} else if (villager.getVillagerData().profession().is(VillagerProfession.NONE)) {
+				if (distance < bestUnemployedDistance) {
+					bestUnemployedDistance = distance;
+					bestUnemployed = villager;
+				}
+			}
+		}
+		return bestLibrarian != null ? bestLibrarian : bestUnemployed;
+	}
+
+	/**
+	 * The ray detection point: player position as origin, lectern as direction,
+	 * extended one block past the lectern (two blocks along the ray in the rig
+	 * layout player -> lectern -> villager). This is the ONLY place that decides
+	 * whether a villager has arrived and is the one to roll.
+	 */
+	private static Vec3 arrivalPoint(Minecraft client, BlockPos lecternPos) {
+		Vec3 lecternCenter = Vec3.atCenterOf(lecternPos);
+		Vec3 dir = lecternCenter.subtract(client.player.position()).normalize();
+		return lecternCenter.add(dir);
+	}
+
+	private static List<Villager> villagersAtArrivalPoint(Minecraft client, BlockPos lecternPos) {
+		return villagersAtArrivalPoint(client, arrivalPoint(client, lecternPos));
+	}
+
+	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival) {
+		List<Villager> villagers = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
+				AABB.ofSize(arrival, 4, 4, 4)));
+		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > 2.25);
+		return villagers;
+	}
+
+	/** Whether the double-coordinate staging region is fully configured. */
+	private static boolean regionConfigured() {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		return config.villagerRegionOrigin != null && config.villagerRegionDelta != null;
+	}
+
+	/** Configured staging-sphere radius, clamped defensively. */
+	private static int sphereRadius() {
+		return Math.max(1, Math.min(64, TradeMasterConfig.INSTANCE.villagerSphereRadius));
+	}
+
+	/** /trademaster goon: confirms the lectern-sphere staging fallback that the last
+	 * refused start asked for, then starts. Invalid while nothing is pending. */
+	public static void confirmRegionFallback() {
+		if (!regionFallbackPending) {
+			chat(Component.translatable("trademaster.message.goon_nothing_pending")
+					.withStyle(ChatFormatting.RED));
+			return;
+		}
+		regionFallbackPending = false;
+		regionFallbackConfirmed = true;
+		chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
+				.withStyle(ChatFormatting.YELLOW));
+		start();
+	}
+
+	/** Villagers the minecart can grab: the configured region box when it is set,
+	 * otherwise a sphere around the lectern (the region spec's fallback). Read live,
+	 * so completing the region coords mid-run switches back to them automatically. */
+	private static List<Villager> stagingVillagers(Minecraft client, RunSession s) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		BlockPos origin = config.villagerRegionOrigin;
+		BlockPos delta = config.villagerRegionDelta;
+		if (origin != null && delta != null) {
+			BlockPos far = origin.offset(delta);
+			AABB box = new AABB(
+					Math.min(origin.getX(), far.getX()), Math.min(origin.getY(), far.getY()), Math.min(origin.getZ(), far.getZ()),
+					Math.max(origin.getX(), far.getX()) + 1, Math.max(origin.getY(), far.getY()) + 1, Math.max(origin.getZ(), far.getZ()) + 1);
+			return client.level.getEntitiesOfClass(Villager.class, box);
+		}
+		Vec3 center = Vec3.atCenterOf(s.lecternPos);
+		double radius = sphereRadius();
+		return client.level.getEntitiesOfClass(Villager.class,
+						AABB.ofSize(center, radius * 2, radius * 2, radius * 2))
+				.stream()
+				.filter(v -> v.position().distanceToSqr(center) <= radius * radius)
+				.toList();
+	}
+
+	/** The matched offer drifted or vanished while the villager was still
+	 * unlocked: give the budget back and re-detect the fresh offers on the same
+	 * villager (a free reroll — nothing was bought). */
+	private static void freeReroll(Minecraft client, RunSession s) {
+		debug("lock: offers changed before locking, treating as free reroll");
+		// same guard as awaitNextVillager: a locked target is out of the
+		// needs (dropLocked); resetting its budget would resurrect it for
+		// a duplicate purchase after hunt was turned off mid-run
+		if (!matchLockedDone(s)) {
+			s.matcher.resetBudget(s.matchedTrade);
+		}
+		s.matchedTrade = null;
+		closeMerchantMenuIfOpen(client);
+		enter(Phase.CHECK_TRADE);
+	}
+
+	/** Every matched target of the pending match is locked this run and none is
+	 * hunt-marked: the combo is fully covered, and returning its budget would
+	 * resurrect locked targets via computeIfAbsent for a duplicate purchase
+	 * (e.g. hunt turned off after a cheaper copy matched). Hunt-marked targets
+	 * stay live through applyHuntOverrides and keep their restore path. */
+	private static boolean matchLockedDone(RunSession s) {
+		if (s.matchedTrade == null) return true;
+		for (Identifier id : s.matchedTrade.matchedIds()) {
+			if (!s.lockedIds.contains(id) || huntMarkedPrices.containsKey(id)) return false;
+		}
+		return true;
+	}
+
+	/** Whether the pending purchase no longer fits the budget tryMatch admitted it
+	 * with. A combo admitted via its recorded need is measured against that record
+	 * alone; otherwise each part of the purchased book contributes its hunt mark-1
+	 * (when marked) or its live configured max price, capped at 64 like admission. */
+	private static boolean priceOutOfAdmissionBudget(TradeMatcher.MatchedTrade trade) {
+		TradeMatcher.MatchedBook purchase = trade.purchase();
+		if (purchase.parts().size() >= 2) {
+			Integer comboMark = comboHuntPrices.get(TradeMatcher.comboKey(purchase.parts()));
+			if (comboMark != null) return purchase.price() >= comboMark;
+		}
+		int budget = 0;
+		for (TradeMatcher.MatchPart part : purchase.parts()) {
+			Integer marked = huntMarkedPrices.get(part.id());
+			if (marked != null) {
+				budget += marked - 1;
+				continue;
+			}
+			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
+			if (target != null) budget += target.maxPrice();
+		}
+		return purchase.price() > Math.min(budget, 64);
+	}
+
+	/** Whether the exact offer that matched at detection is still sitting at the
+	 * recorded slot, unchanged: same enchantment, level and price. An unlocked
+	 * villager's profession can auto-reroll during the LOCK window (deposit
+	 * detours make it long), regenerating the offers — the same enchantment may
+	 * come back at a higher price, or a different book may take the old slot.
+	 * Any drift must go through the free-reroll re-match instead of locking
+	 * blindly at a price the budget never accepted. */
+	private static boolean matchedOfferUnchanged(MerchantOffers offers, TradeMatcher.MatchedTrade trade) {
+		if (trade.offerIndex() < 0 || trade.offerIndex() >= offers.size()) return false;
+		MerchantOffer offer = offers.get(trade.offerIndex());
+		if (offer.isOutOfStock()) return false;
+		if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
+				|| !offer.getResult().is(Items.ENCHANTED_BOOK)) return false;
+		if (offer.getBaseCostA().getCount() != trade.price()) return false;
+		// the book's FULL enchantment set must equal the set recorded at match time:
+		// datapack books carry several enchantments, and a regenerated offer could
+		// keep one matched part at the same price while silently changing the rest
+		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(offer.getResult());
+		var expected = trade.purchase().bookEnchantments();
+		if (enchantments.size() != expected.size()) return false;
+		for (var part : expected) {
+			boolean found = false;
+			for (var entry : enchantments.entrySet()) {
+				Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+				if (id != null && id.equals(part.id()) && entry.getIntValue() == part.level()) {
+					found = true;
+					break;
+				}
+			}
+			if (!found) return false;
+		}
+		return true;
+	}
+
+	private static int resolveLockSlot(MerchantOffers offers, RunSession s) {
+		TradeMatcher.MatchedTrade hit = s.matchedTrade;
+		LocalPlayer player = Minecraft.getInstance().player;
+		boolean matchedPayable = hit != null && player != null && hit.offerIndex() < offers.size()
+				&& Preconditions.checkLockMaterials(player,
+						offers.get(hit.offerIndex()).getBaseCostA(), offers.get(hit.offerIndex()).getCostB());
+		if (!matchedPayable && player != null) {
+			// the matched book is unaffordable (emeralds spent, or a combo priced
+			// above what the player carries while every single target still fits):
+			// the cheapest affordable book locks the villager just as well
+			int alt = cheapestAffordableBookSlot(offers, player);
+			if (alt >= 0) return alt;
+		}
+		if (hit != null && hit.offerIndex() < offers.size()
+				&& offers.get(hit.offerIndex()).getResult().is(Items.ENCHANTED_BOOK)) {
+			return hit.offerIndex();
+		}
+		// Defensive tail, unreachable today (audited 2026-09-19): LOCK is only entered
+		// from a detected match, and every branch above returns. Kept so a future
+		// caller without a matched trade still gets a sane slot instead of -1.
+		for (int i = 0; i < offers.size(); i++) {
+			if (offers.get(i).getResult().is(Items.ENCHANTED_BOOK)) return i;
+		}
+		return -1;
+	}
+
+	/** Cheapest enchanted-book offer the player can actually pay for, or -1. */
+	private static int cheapestAffordableBookSlot(MerchantOffers offers, LocalPlayer player) {
+		int bestSlot = -1;
+		int bestPrice = Integer.MAX_VALUE;
+		for (int i = 0; i < offers.size(); i++) {
+			MerchantOffer offer = offers.get(i);
+			if (offer.isOutOfStock()) continue;
+			if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
+					|| !offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
+			int price = offer.getBaseCostA().getCount();
+			if (price >= bestPrice) continue;
+			if (!Preconditions.checkLockMaterials(player, offer.getBaseCostA(), offer.getCostB())) continue;
+			bestSlot = i;
+			bestPrice = price;
+		}
+		return bestSlot;
+	}
+
+	/** Fingerprint of one offer, for buying a book that is NOT the matched one: the
+	 * executor then verifies the slot against the very offer it was chosen from. A
+	 * matched-trade fingerprint would fail the first stage, drift, and free-reroll
+	 * into matching the same unaffordable book again — the old livelock. */
+	private static TradeMatcher.MatchedBook bookFingerprint(MerchantOffer offer, int slot) {
+		java.util.ArrayList<TradeMatcher.MatchPart> parts = new java.util.ArrayList<>();
+		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(offer.getResult());
+		for (var entry : enchantments.entrySet()) {
+			Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+			if (id != null) parts.add(new TradeMatcher.MatchPart(id, entry.getIntValue()));
+		}
+		return new TradeMatcher.MatchedBook(List.copyOf(parts), List.copyOf(parts),
+				offer.getBaseCostA().getCount(), slot);
+	}
+
+	/** One book's matched parts joined with "+" (vanilla fullname per part). */
+	private static MutableComponent describeBook(TradeMatcher.MatchedBook book) {
+		Minecraft mc = Minecraft.getInstance();
+		MutableComponent bookText = null;
+		for (TradeMatcher.MatchPart part : book.parts()) {
+			MutableComponent partText = null;
+			if (mc.level != null) {
+				Enchantment enchantment = mc.level.registryAccess()
+						.lookupOrThrow(Registries.ENCHANTMENT).getValue(part.id());
+				if (enchantment != null) {
+					partText = Enchantment.getFullname(Holder.direct(enchantment), part.level()).copy();
+				}
+			}
+			if (partText == null) partText = Component.literal(part.id() + " " + part.level());
+			bookText = bookText == null ? partText : bookText.append(Component.literal("+")).append(partText);
+		}
+		return bookText == null ? Component.literal("?") : bookText;
+	}
+
+	private static Component describeEnchantment(TradeMatcher.MatchedTrade trade) {
+		List<TradeMatcher.MatchedBook> books = new java.util.ArrayList<>(trade.books());
+		books.sort(java.util.Comparator.comparingInt(TradeMatcher.MatchedBook::offerIndex));
+		MutableComponent result = null;
+		for (TradeMatcher.MatchedBook book : books) {
+			MutableComponent bookText = describeBook(book);
+			result = result == null ? bookText : result.append(Component.literal(" ")).append(bookText);
+		}
+		return result == null ? Component.literal("?") : result;
+	}
+
+	/** Readable registry id of a profession for debug output (e.g. "minecraft:librarian"). */
+	private static String professionName(Holder<VillagerProfession> profession) {
+		return String.valueOf(BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession.value()));
+	}
+
+	/** Nitwits can never take a profession, and villagers already employed in any
+	 * other non-librarian profession will not switch at this lectern: neither is
+	 * rollable, they must be dispatched. */
+	private static boolean unusableProfession(Holder<VillagerProfession> profession) {
+		return profession.is(VillagerProfession.NITWIT)
+				|| (!profession.is(VillagerProfession.NONE) && !profession.is(VillagerProfession.LIBRARIAN));
+	}
+
+	/** Whether the sand-wheel mode definition changed while the run was going. The
+	 * enable flag and the grindstone position define the mode itself, and the
+	 * deposit factory only re-reads them at deposit time — switching mid-run would
+	 * silently change how books are disposed of. The drop DIRECTION is deliberately
+	 * not checked: editing it mid-run is allowed, DROP_AIM re-reads it live. */
+	private static boolean grindstoneConfigChanged(TradeMasterConfig config) {
+		if (config.grindstoneEnabled != snapGrindstoneEnabled) return true;
+		if (config.grindstonePos == null) return snapGrindstonePos != null;
+		return !config.grindstonePos.equals(snapGrindstonePos);
+	}
+
+	/** The lectern the RUN started with, or the configured one when idle. Runtime
+	 * prechecks must judge this, not the live config: the settings rows commit per
+	 * keystroke, so typing a new lectern coordinate mid-run otherwise reported a
+	 * bogus lectern_lost and stopped a healthy run. */
+	public static @Nullable BlockPos runningLecternPos() {
+		RunSession s = session;
+		return s == null ? TradeMasterConfig.INSTANCE.lecternPos : s.lecternPos;
+	}
+
+	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
+		DetectionHub.disarm();
+		grindstoneSnapshotValid = false;
+		snapRegionConfigured = false;
+		regionFallbackPending = false;
+		// a stopped pipeline sends no more interacts: the residual suppression
+		// window would only swallow the player's own merchant screens
+		DetectionHub.clearPostDisarmSuppression();
+		if (strategy != null) {
+			strategy.abort();
+			strategy = null;
+		}
+		if (guardian != null) {
+			guardian.abort();
+			guardian = null;
+		}
+		SmoothRotation.reset();
+		summonPresser = null;
+		sendAwayPresser = null;
+		lockExecutor = null;
+		if (namingExecutor != null) {
+			namingExecutor.abortCleanly();
+			namingExecutor = null;
+		}
+		if (depositor != null) {
+			depositor.abortCleanly();
+			depositor = null;
+		}
+		// a manual stop can land mid-naming (anvil open) or mid-deposit (chest
+		// open): unlike the pipeline paths (which only clear merchant menus), a
+		// stop must tear down whatever container is open
+		{
+			Minecraft closeClient = Minecraft.getInstance();
+			if (closeClient.player != null && closeClient.player.containerMenu != closeClient.player.inventoryMenu) {
+				closeClient.player.closeContainer();
+			}
+		}
+		detectionPending = false;
+		lockInteracted = false;
+		lockPurchaseInitiated = false;
+		checkLook.reset();
+		restSummonPending = false;
+		awaitingRigClear = false;
+		postDispatchRefresh = false;
+		lockSlotPrepared = false;
+		lockExhaustionDepositPending = false;
+		professionHealCycles = 0;
+		interactFailTicks = 0;
+		nonLibrarianTicks = 0;
+		urgentProfessionHeal = false;
+		placementFailRetries = 0;
+		lockNoMenuTicks = 0;
+		lockRetryDelayTicks = 0;
+		lockAttempts = 0;
+		breakRetryTicks = 0;
+		slowInteractDelay = 0;
+		// hunt-cheaper price table is per-run: a stop (/trademaster stop etc.)
+		// wipes the marked prices, so the next start hunts from scratch
+		huntMarkedPrices.clear();
+		comboHuntPrices.clear();
+		huntAppliedToNeeds = false;
+		needsFingerprint = null;
+		cachedStatusText = null;
+		lastOverlayText = null;
+		session = null;
+		phase = Phase.IDLE;
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.isSameThread()) {
+			mc.gui.hud.setOverlayMessage(Component.literal(""), false);
+		}
+		if (message != null) {
+			chat(color == null ? message : message.copy().withStyle(color));
+		}
+	}
+
+	/** Silent stop used on disconnect: no chat, no overlay writes from foreign threads. */
+	public static void shutdown() {
+		stop(null, null);
+	}
+
+	/** Diagnostics go to the game log file, never to the chat bar. */
+	private static final org.apache.logging.log4j.Logger LOGGER =
+			org.apache.logging.log4j.LogManager.getLogger("TradeMaster");
+
+	public static void debug(String message) {
+		if (!TradeMasterConfig.INSTANCE.debugLog) return;
+		LOGGER.info("[TradeMaster] {}", message);
+	}
+
+	private static void chat(Component component) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player == null) return;
+		if (mc.isSameThread()) {
+			mc.player.sendSystemMessage(component);
+		} else {
+			// never touch the chat list from a foreign thread: quitting the world
+			// crashed with a ConcurrentModificationException in ChatComponent
+			mc.execute(() -> {
+				if (mc.player != null) mc.player.sendSystemMessage(component);
+			});
+		}
+	}
+}

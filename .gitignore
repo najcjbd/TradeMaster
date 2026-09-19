@@ -1,0 +1,35 @@
+# Gradle / Loom 构建产物（不应提交）
+.gradle/
+build/
+out/
+run/
+classes/
+
+# IDE 与编辑器
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+bin/
+*.launch
+
+# 编辑器临时文件 / Loom 源码重映射输出
+*.swp
+*.swo
+*~
+*.class
+remappedSrc/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 杂项
+*.log
+
+# 本地开发笔记（不公开）
+build-log.txt
+R32-05砂轮模式说明.txt
