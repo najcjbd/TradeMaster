@@ -99,6 +99,9 @@ public final class RerollController {
 	private static @Nullable BlockPos snapGrindstonePos = null;
 	/** Whether the double-coordinate staging region was complete when the run
 	 * started: losing it mid-run stops the run (see the check in tick()). */
+	/** Dimension the run started in: a change mid-run invalidates every stored
+	 * position, so the pipeline stops instead of flailing at empty coordinates. */
+	private static @Nullable Identifier sessionDimension = null;
 	private static boolean snapRegionConfigured = false;
 	/** The lectern-sphere fallback was confirmed with /trademaster goon. Persists
 	 * across runs, but only for the world it was granted in — RE-ENTERING a world
@@ -295,6 +298,7 @@ public final class RerollController {
 		// keeps the user's in-progress pick alive
 		PositionPicker.cancel();
 		session = s;
+		sessionDimension = mc.level == null ? null : mc.level.dimension().identifier();
 		runTicks = 0;
 		professionHealCycles = 0;
 		strayChestTicks = 0;
@@ -359,6 +363,14 @@ public final class RerollController {
 		// guard with a misleading "player moved" message
 		if (player.isDeadOrDying()) {
 			stop(Component.translatable("trademaster.message.player_died"), ChatFormatting.RED);
+			return;
+		}
+		// a dimension change mid-run (portal, server teleport) leaves every stored
+		// position behind: the pipeline would flail at empty coordinates. Compared by
+		// DIMENSION, not by level identity, so a same-dimension reconnect is untouched
+		if (sessionDimension != null
+				&& !client.level.dimension().identifier().equals(sessionDimension)) {
+			stop(Component.translatable("trademaster.message.dimension_changed"), ChatFormatting.RED);
 			return;
 		}
 		// vanilla skips every block interaction while sneaking with a non-empty
@@ -1299,8 +1311,22 @@ public final class RerollController {
 		switch (lockExecutor.tick()) {
 			case DONE -> finishLock(s);
 			case FAILED -> {
-				if (lockExecutor.drifted()) freeReroll(client, s);
-				else lockRejected(client, s);
+				if (!lockExecutor.drifted()) {
+					lockRejected(client, s);
+				} else if (lockExecutor.purchaseSent()) {
+					// the PICKUP click was already out when the offers turned out to
+					// have regenerated: the server applied it to the NEW offers, so a
+					// book WAS bought and the villager is locked for good (a traded
+					// profession never changes again). A free reroll here would spin
+					// on an unrerollable villager until the phase timeout, so dispatch
+					// it and continue with the next one
+					debug("lock: drift AFTER the purchase click — villager locked, dispatching");
+					chat(Component.translatable("trademaster.message.lock_drift_purchased")
+							.withStyle(ChatFormatting.YELLOW));
+					awaitNextVillager(client, s);
+				} else {
+					freeReroll(client, s);
+				}
 			}
 			case RUNNING -> {}
 		}
@@ -1780,6 +1806,9 @@ public final class RerollController {
 		RunSession s = session;
 		if (s == null) return;
 		debug("detection failed: " + reason);
+		// the hub disarmed on its way in; drop the suppression window it left behind
+		// like every other disarm site, or the next 2s of merchant screens are swallowed
+		DetectionHub.clearPostDisarmSuppression();
 		// retry the interaction; the CHECK_TRADE phase timeout is the guard
 		closeMerchantMenuIfOpen(Minecraft.getInstance());
 	}
@@ -2236,6 +2265,7 @@ public final class RerollController {
 		DetectionHub.disarm();
 		grindstoneSnapshotValid = false;
 		snapRegionConfigured = false;
+		sessionDimension = null;
 		regionFallbackPending = false;
 		// a stopped pipeline sends no more interacts: the residual suppression
 		// window would only swallow the player's own merchant screens

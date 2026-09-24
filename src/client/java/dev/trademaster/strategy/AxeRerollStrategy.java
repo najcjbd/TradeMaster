@@ -33,6 +33,9 @@ public class AxeRerollStrategy implements RerollStrategy {
 	private Phase phase = Phase.BREAK;
 	private int phaseTicks = 0;
 	private int delayCounter = 0;
+	/** slow-mode pacing between repeated break ticks, separate from the place
+	 * counter so the two never consume each other's budget. */
+	private int breakDelayCounter = 0;
 	private @Nullable Vec3 tpReturnPos = null;
 	private @Nullable ItemEntity lastPickupTarget = null;
 	private boolean seenDrop = false;
@@ -105,6 +108,14 @@ public class AxeRerollStrategy implements RerollStrategy {
 		}
 
 		if (LecternRestock.isLecternAt(mc.level, lecternPos)) {
+			// slow mode paces the break as well as the place
+			if (config.slowMode) {
+				if (this.breakDelayCounter > 0) {
+					this.breakDelayCounter--;
+					return StepResult.RUNNING;
+				}
+				this.breakDelayCounter = config.interactDelay;
+			}
 			LecternRestock.breakBlock(mc, player, lecternPos);
 			return StepResult.RUNNING;
 		}

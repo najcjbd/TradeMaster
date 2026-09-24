@@ -128,6 +128,8 @@
   "trademaster.message.sneak_paused": "检测到潜行，Trade Master 已暂停（松开潜行键即恢复）",
   "trademaster.message.xp_short": "经验等级不足，命名功能已暂时关闭（达到 1 级及以上后自动恢复）",
   "trademaster.message.lock_retry_exhausted": "锁定购买连续被拒绝 %d 次，已恢复该附魔目标并继续刷新该村民",
+  "trademaster.message.dimension_changed": "运行中检测到维度变化（传送门/服务端传送），已停止；请回到原维度重新启动",
+  "trademaster.message.lock_drift_purchased": "购买包发出后报价已刷新：服务端按新报价成交，该村民职业已被锁定且无法再刷新，已送走它并继续找下一只（这只没拿到目标附魔）",
   "trademaster.message.hunt_enable_blocked": "运行中不允许开启「找更便宜」，请在开始前开启（运行中可以关闭）",
   "trademaster.message.hunt_blocked_by_autodisable": "「锁定后自动停用」开启时不能开启「找更便宜」，请先关闭它",
   "trademaster.settings.enchantment_unavailable": "已失效",

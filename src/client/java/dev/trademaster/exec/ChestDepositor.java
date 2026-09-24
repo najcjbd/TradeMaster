@@ -324,7 +324,9 @@ public class ChestDepositor implements BookDisposal {
 		ItemStack displaced = this.stagedDisplaced;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
-		if (!this.offhandSwapped || slot < 0) return;
+		// NOT gated on offhandSwapped: advance() resets that per chest, while the
+		// displacement it describes outlives the chest it was made for
+		if (slot < 0) return;
 		if (!player.getInventory().getItem(slot).isEmpty()) return;
 		// the offhand must still carry exactly what the swap displaced: anything else
 		// means the player changed it, and moving it now would be theft

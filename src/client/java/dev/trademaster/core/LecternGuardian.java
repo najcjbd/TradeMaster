@@ -40,6 +40,8 @@ public class LecternGuardian {
 	private final LookStep look = new LookStep();
 	private int ticks = 0;
 	private int delay;
+	/** slow-mode pacing between repeated break ticks (0 = break immediately). */
+	private int breakDelay = 0;
 	private boolean brokenOnce = false;
 	private boolean announcedBreak = false;
 	private boolean announcedClearWait = false;
@@ -83,18 +85,19 @@ public class LecternGuardian {
 		// Terminal states for each mode.
 		if (present && this.mode == Mode.ENSURE) return StepResult.DONE;
 		if (present && this.mode == Mode.REFRESH && this.brokenOnce) {
-			// the pickup trip may have displaced the player, and the arrival point is
-			// defined relative to the PLAYER: send the return teleport first, or
-			// CHECK_TRADE reads the villager as having walked off the point
-			if (this.tpReturnPos != null && mc.getConnection() != null) {
-				session.movementGuard.permitTp(this.tpReturnPos);
-				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-						this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
-				this.tpReturnPos = null;
-			}
-			return StepResult.DONE;
+			return finishWithReturn(mc, session);
 		}
-		if (!present && this.mode == Mode.BREAK_ONLY) return StepResult.DONE;
+		if (!present && this.mode == Mode.BREAK_ONLY) {
+			// the lectern just broke: collect its drop first, exactly like REFRESH, or
+			// it stays on the ground and restock eventually burns the inventory stock.
+			// Nothing auto-collects it here (no hopper), so with tpToItem off this waits
+			// out the natural-pickup grace before finishing; with it on the guardian
+			// teleports to the drop and the return teleport is sent below
+			if (tickPickupDrops(mc, session, player, lecternPos)) {
+				return StepResult.RUNNING;
+			}
+			return finishWithReturn(mc, session);
+		}
 
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 20) {
@@ -123,6 +126,15 @@ public class LecternGuardian {
 			if (!this.announcedBreak) {
 				this.announcedBreak = true;
 				RerollController.debug("lectern guardian: breaking lectern at " + lecternPos.toShortString());
+			}
+			// slow mode paces the break too, not just the place: breaking is the most
+			// visible "contact" action and was the only one left ungated
+			if (config.slowMode) {
+				if (this.breakDelay > 0) {
+					this.breakDelay--;
+					return StepResult.RUNNING;
+				}
+				this.breakDelay = config.interactDelay;
 			}
 			LecternRestock.breakBlock(mc, player, lecternPos);
 			return StepResult.RUNNING;
@@ -236,6 +248,19 @@ public class LecternGuardian {
 					target.x, target.y, target.z, true, false));
 		}
 		return true;
+	}
+
+	/** Ends the guardian, first sending the return teleport a pickup trip left pending:
+	 * the arrival point is defined relative to the PLAYER, so finishing while still
+	 * displaced would make CHECK_TRADE read the villager as having walked off it. */
+	private StepResult finishWithReturn(Minecraft mc, RunSession session) {
+		if (this.tpReturnPos != null && mc.getConnection() != null) {
+			session.movementGuard.permitTp(this.tpReturnPos);
+			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
+					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+			this.tpReturnPos = null;
+		}
+		return StepResult.DONE;
 	}
 
 	/** True when the failure happened on the placement side (recoverable by swapping villagers). */

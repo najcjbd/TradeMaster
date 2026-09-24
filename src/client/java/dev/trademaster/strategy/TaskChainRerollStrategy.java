@@ -81,6 +81,8 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 
 	private class BreakLecternStep extends AbstractLookStep {
 		int ticks = 0;
+		/** slow-mode pacing between repeated break ticks (mirrors the place gate). */
+		int breakDelay = 0;
 
 		@Override
 		public StepResult tick(RunSession session) {
@@ -111,6 +113,13 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 				return StepResult.failed(Component.translatable("trademaster.message.axe_breaking"));
 			}
 
+			if (TradeMasterConfig.INSTANCE.slowMode) {
+				if (this.breakDelay > 0) {
+					this.breakDelay--;
+					return StepResult.RUNNING;
+				}
+				this.breakDelay = TradeMasterConfig.INSTANCE.interactDelay;
+			}
 			LecternRestock.breakBlock(mc, player, lecternPos);
 			return StepResult.RUNNING;
 		}

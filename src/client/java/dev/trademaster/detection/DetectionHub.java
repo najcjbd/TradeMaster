@@ -245,7 +245,16 @@ public final class DetectionHub {
 		DetectionHub hub = armed;
 		if (hub == null) return;
 		hub.ticksArmed++;
-		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && hub.ticksArmed > DEFAULT_TIMEOUT_TICKS) {
+		if (!TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled) return;
+		// the SAME window the packet feed enforces (3s wall clock): a packet arriving
+		// after it is discarded there, so the check can never succeed any more — end it
+		// now instead of making the controller wait for its own tick counter, which
+		// stalls exactly when the wall clock ran ahead (main-thread hitch)
+		if (System.nanoTime() - hub.armedAtNanos > 3_000_000_000L) {
+			hub.fail("detection window expired");
+			return;
+		}
+		if (hub.ticksArmed > DEFAULT_TIMEOUT_TICKS) {
 			hub.fail("detection timed out");
 		}
 	}

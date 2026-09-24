@@ -35,12 +35,17 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 		int resetX = Math.max(2, selectAllX - buttonWidth - 2);
 
 		this.resetButton = Button.builder(Component.translatable("trademaster.button.reset"), button -> {
-					// one save for the whole batch instead of ~4 per entry
+					// one save for the whole batch instead of ~4 per entry. try/finally:
+					// a throw mid-loop would otherwise leave batchSave true for the rest
+					// of the session, turning every save() into a silent no-op
 					TradeMasterConfig.INSTANCE.beginBatch();
-					for (EnchantmentEntry e : this.children()) {
-						e.resetToDefault();
+					try {
+						for (EnchantmentEntry e : this.children()) {
+							e.resetToDefault();
+						}
+					} finally {
+						TradeMasterConfig.INSTANCE.endBatch();
 					}
-					TradeMasterConfig.INSTANCE.endBatch();
 				})
 				// second row: y5 is occupied by the centered tabs, which overlap
 				// these buttons on narrow (Android) screens and swallow the clicks
@@ -50,10 +55,13 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 
 		this.selectAllButton = Button.builder(Component.translatable("trademaster.button.select_all"), button -> {
 					TradeMasterConfig.INSTANCE.beginBatch();
-					for (EnchantmentEntry e : this.children()) {
-						e.setEnabled(true);
+					try {
+						for (EnchantmentEntry e : this.children()) {
+							e.setEnabled(true);
+						}
+					} finally {
+						TradeMasterConfig.INSTANCE.endBatch();
 					}
-					TradeMasterConfig.INSTANCE.endBatch();
 				})
 				.bounds(selectAllX, 27, buttonWidth, 16)
 				.build();

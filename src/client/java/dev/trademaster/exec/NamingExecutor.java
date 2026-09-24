@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
@@ -70,6 +71,16 @@ public class NamingExecutor {
 	 * even when a later stage fails (e.g. verify-timeout), so the controller records
 	 * the nameHistory entry on failure only when this is set. */
 	private boolean tagSent = false;
+	/** Legit-rotation handshake for the anvil and the villager: in legit+slow mode
+	 * this waits for the smooth turn to land before the interact goes out. The old
+	 * call here was {@link SmoothRotation#snapLookAt}, which is the INSTANT variant
+	 * (documented for non-legit mode) — the interact then raced the turn. */
+	private final LookStep look = new LookStep();
+	/** The naming interact has been sent (tickApply runs its own stage counter). */
+	private boolean applied = false;
+	private int applyTicks = 0;
+	/** slow-mode pacing for the two world contacts (anvil open, naming interact). */
+	private int slowInteractDelay = 0;
 	private int insertAttempts = 0;
 	private String failReason = "unknown";
 
@@ -209,6 +220,7 @@ public class NamingExecutor {
 	private Result tickFindAnvil(Minecraft mc, LocalPlayer player) {
 		this.anvilPos = findAnvil(mc, player.blockPosition(), player.getEyePosition());
 		if (this.anvilPos == null) return failed("anvil-missing");
+		this.look.reset();
 		next(Stage.OPEN_ANVIL);
 		return Result.RUNNING;
 	}
@@ -246,11 +258,16 @@ public class NamingExecutor {
 
 		BlockPos anvil = this.anvilPos;
 		Vec3 aim = Vec3.atCenterOf(anvil);
-		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		if (config.legitMode && config.slowMode) {
-			SmoothRotation.snapLookAt(aim);
-		} else if (config.legitMode) {
-			player.lookAt(EntityAnchorArgument.Anchor.EYES, aim);
+		// legit+slow: rotate smoothly and only interact once the turn has landed.
+		// In legit-only mode this snaps instantly; with legit off it does nothing
+		if (!this.look.tick(player, aim)) return Result.RUNNING;
+		// slow mode paces the world contact points too, like every other phase
+		if (TradeMasterConfig.INSTANCE.slowMode) {
+			if (this.slowInteractDelay > 0) {
+				this.slowInteractDelay--;
+				return Result.RUNNING;
+			}
+			this.slowInteractDelay = TradeMasterConfig.INSTANCE.interactDelay;
 		}
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
 		mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
@@ -369,6 +386,7 @@ public class NamingExecutor {
 				Interactions.selectHotbarSlot(player, this.resultInvSlot);
 			}
 			this.equipSwapSlot = -1;
+			this.look.reset();
 			next(Stage.APPLY);
 			return Result.RUNNING;
 		}
@@ -385,29 +403,38 @@ public class NamingExecutor {
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
 		if (!player.getMainHandItem().is(Items.NAME_TAG)) return failed("equip-hand");
+		this.look.reset();
 		next(Stage.APPLY);
 		return Result.RUNNING;
 	}
 
 	private Result tickApply(Minecraft mc, LocalPlayer player) {
 		if (this.session.villager == null || !this.session.villager.isAlive()) return failed("apply-villager");
-		if (this.stageTicks == 1) {
+		// legit+slow: turn smoothly and wait for it to land first (snapLookAt is the
+		// instant variant and must not be used here); needs the villager alive
+		if (!this.look.tick(player, this.session.villager.getEyePosition())) return Result.RUNNING;
+		if (!this.applied) {
 			if (!player.getMainHandItem().is(Items.NAME_TAG)) return failed("apply-hand");
-			if (TradeMasterConfig.INSTANCE.legitMode) {
-				Vec3 eyes = this.session.villager.getEyePosition();
-				if (TradeMasterConfig.INSTANCE.slowMode) SmoothRotation.snapLookAt(eyes);
-				else player.lookAt(EntityAnchorArgument.Anchor.EYES, eyes);
+			if (TradeMasterConfig.INSTANCE.slowMode) {
+				if (this.slowInteractDelay > 0) {
+					this.slowInteractDelay--;
+					return Result.RUNNING;
+				}
+				this.slowInteractDelay = TradeMasterConfig.INSTANCE.interactDelay;
 			}
 			// mark BEFORE the send: from here on the server may have named the
 			// villager, and a later failure must still be recorded in nameHistory
+			this.applied = true;
+			this.applyTicks = 0;
 			this.tagSent = true;
 			Interactions.interactEntity(mc, player, this.session.villager);
 			return Result.RUNNING;
 		}
 		// The interact consumes the tag server-side; once the inventory sync lands
 		// the main hand is no longer a name tag. That is success, not failure —
-		// VERIFY confirms via the villager's custom name.
-		if (!player.getMainHandItem().is(Items.NAME_TAG) || this.stageTicks >= 6) {
+		// VERIFY confirms via the villager's custom name. The counter is relative to
+		// the SEND, not the stage: the smooth turn above can take several ticks first
+		if (!player.getMainHandItem().is(Items.NAME_TAG) || ++this.applyTicks >= 5) {
 			next(Stage.VERIFY);
 		}
 		return Result.RUNNING;

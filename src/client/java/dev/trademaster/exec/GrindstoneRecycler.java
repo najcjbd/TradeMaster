@@ -617,7 +617,11 @@ public class GrindstoneRecycler implements BookDisposal {
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
 		if (slot < 0) return;
-		if (!player.getInventory().getItem(slot).isEmpty()) return;
+		// the staged slot must hold either nothing (book dropped/deposited) or the
+		// plain book the grindstone produced from it. Requiring it to be EMPTY missed
+		// the grind path, whose result lands right back in that slot
+		ItemStack inSlot = player.getInventory().getItem(slot);
+		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK)) return;
 		// the offhand must still carry exactly what the swap displaced: anything else
 		// means the player changed it, and moving it now would be theft
 		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
