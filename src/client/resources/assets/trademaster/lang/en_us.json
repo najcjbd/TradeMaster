@@ -27,6 +27,8 @@
   "trademaster.settings.postDispatchBreakRetries": "Post-dispatch break retry limit",
   "trademaster.tab.aliases": "Aliases",
   "trademaster.column.alias": "Alias (blank = default name)",
+  "trademaster.alias.duplicate_alias": "Duplicate: another enchantment already uses this alias — not saved",
+  "trademaster.alias.duplicate_name": "Duplicate: another enchantment already has this name — not saved",
   "trademaster.settings.timeoutEnabled": "Run timeout (global watchdog)",
   "trademaster.settings.timeoutTicks": "Timeout duration",
   "trademaster.settings.phaseTimeoutsEnabled": "Phase safety timeouts (profession/detection/execution)",

@@ -26,6 +26,9 @@ public final class EnchantmentNamer {
 
 	private static final Map<String, String> FALLBACK_ZH = new LinkedHashMap<>();
 	private static boolean fallbackLoaded = false;
+	/** Load attempts made so far: the table is retried on failure, but only a few
+	 * times (see loadFallback) so a missing resource cannot spam the log. */
+	private static int fallbackAttempts = 0;
 
 	private EnchantmentNamer() {}
 
@@ -106,8 +109,12 @@ public final class EnchantmentNamer {
 	}
 
 	private static void loadFallback() {
-		if (fallbackLoaded) return;
-		fallbackLoaded = true;
+		// retry a few times instead of never: setting the flag before the load meant a
+		// single failure (resource packing, reload timing) silently disabled the
+		// Chinese fallback table forever. Bounded so a permanently missing resource
+		// cannot spam the log from the per-frame displayName path.
+		if (fallbackLoaded || fallbackAttempts >= 3) return;
+		fallbackAttempts++;
 		try (InputStream in = Minecraft.getInstance().getResourceManager()
 				// the file lives under assets/trademaster/, not the "trade-master"
 				// mod-id namespace — the two must not be conflated
@@ -116,8 +123,10 @@ public final class EnchantmentNamer {
 			for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
 				FALLBACK_ZH.put(entry.getKey(), entry.getValue().getAsString());
 			}
+			fallbackLoaded = true;
 		} catch (Exception e) {
-			TradeMaster.LOGGER.warn("Could not load enchant_names_zh.json: {}", e.getMessage());
+			TradeMaster.LOGGER.warn("Could not load enchant_names_zh.json (attempt {}): {}",
+					fallbackAttempts, e.getMessage());
 		}
 	}
 }

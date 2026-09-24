@@ -28,10 +28,11 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Item | Value |
 |---|---|
 | Game version | Minecraft **26.2** |
-| Loader | Fabric Loader **≥ 0.19.0** |
+| Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3) |
 | Java | **≥ 25** |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
-| Required | Fabric API, **maLiLib** |
+| Required | Fabric API (0.154.2+26.2), **maLiLib** (0.29.3) |
+| Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
 | Optional | Mod Menu (config screen entry), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
 
@@ -107,7 +108,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 - **Single-enchantment book**: price ≤ that enchantment's price slot.
 - **One book with several enchantments, or several qualifying books on one villager**: the budget is the sum of the matched enchantments' price slots (capped at **64**), and only the **cheapest qualifying book** is bought — one purchase is enough to lock the villager, and the villager is what matters.
 - **Reserve cheaper** (`reserveCheaperTraders`): leaves a "cheaper only" reservation slot behind after a match.
-- **Hunt cheaper** (`huntCheaper`): after a lock, that enchantment only accepts strictly cheaper copies; on a multi-book villager **each qualifying book records its own price**.
+- **Hunt cheaper** (`huntCheaper`): after a lock, that enchantment only accepts strictly cheaper copies; on a multi-book villager **each qualifying book records its own price**. The configured `maxPrice` **caps** the hunt (lowering it mid-run applies at once, raising it never loosens the hunt) and the mark only ever moves down.
 - **Mutual exclusion**: `huntCheaper` and `autoDisableAfterLock` are mutually exclusive — when both would be on, **auto-disable wins**; while running you may only **turn hunt off**, never on.
 - **Emerald floor**: `emeraldFloor` = the largest `maxPrice` among enabled targets (at least `minLockEmeralds`); raised to `maxHuntBudget` when hunt is on; forced to ≥ **64** when "Multi-enchantment book safeguard" is on.
 
@@ -138,7 +139,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 - the offhand swap has a **configurable retry** (`offhandSwapRetries`, −1 = forever); when retries are exhausted it stops through the normal flow.
 
 ### Sand-wheel (grindstone) mode
-- Entry conditions (**four elements**): `grindstoneEnabled` + grindstone coordinates + drop yaw/pitch;
+- Entry conditions (**four elements**): ① `grindstoneEnabled` ② grindstone coordinates ③ drop yaw ④ drop pitch;
 - Each book is pushed into the grindstone to be **disenchanted** back into a plain book (every step waits for the server's slot sync so lag cannot make it destroy the wrong item);
 - **Cursed books** (vanilla curse tag, or a curse id you configured) can never be disenchanted → they **go to a chest first**, and when every chest refuses them they are **dropped** while facing the configured direction;
 - Opening the grindstone has a configurable retry (`grindstoneOpenRetries`);
@@ -206,10 +207,8 @@ In the order of the in-game screen (all three entry points share one config):
 | Mechanism | Post-dispatch break retry limit | 2 | How often the lectern break is retried after a villager was dispatched before the run stops with an error; −1 = forever, ≤ 999 |
 | Mechanism | Sand-wheel (grindstone) mode | on | Only used when all four elements are set (see "Storage") |
 | Mechanism | Grindstone open retries | 1 | −1 = forever, ≤ 999 |
-| Naming | Custom curse enchantment ids | empty | Comma-separated; vanilla `minecraft:` ids are rejected (vanilla curses are tag-detected) |
+| Mechanism | Custom curse enchantment ids | empty | Comma-separated; vanilla `minecraft:` ids are rejected (vanilla curses are tag-detected) |
 | Display | Show roll count | on | HUD shows the current phase and the roll count |
-| Display | Enable naming | off | Requires an anvil + name tag |
-| Display | Force naming price to 1 | off | — |
 | Display | Debug log | off | Written to the log file |
 | Naming | Enable naming / force price 1 | off / off | — |
 | Anti-cheat | see the table above | — | — |
@@ -224,16 +223,18 @@ In the order of the in-game screen (all three entry points share one config):
 | `/trademaster` (alias `/tm`) | bare command = toggle start/stop |
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
-| Hotkey `V` | Opens the main menu (three tabs: enchanted books / settings / hotkeys) |
+| Hotkey `V` | Opens the main menu (four tabs: enchanted books / settings / keybinds / **aliases**) |
 | maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
 
 ## Config entry points
 
 All three share the **same** `config/trade-master.json`:
 
-1. the in-game main menu (hotkey `V`, touch-screen friendly);
+1. the in-game main menu (hotkey `V`, touch-screen friendly) — four tabs: **enchanted books / settings / keybinds / aliases**;
 2. **Mod Menu** (provides the config-screen entry);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
+
+> The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another enchantment's alias or name** (a duplicate turns the row red and is not saved). It only changes the display name, never any trade condition.
 
 On first launch, when this mod's config does not exist yet, the **enchantment table** and **four of the anti-cheat flags** (`preventAxeBreaking`, `tpToVillager`, `legitMode`, `slowMode`) are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`; the remaining flags (`tpToItem`, `stopOnPlayerMove`, `placeDelay`, `interactDelay`) are not migrated and keep this mod's defaults.
 

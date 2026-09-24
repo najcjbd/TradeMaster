@@ -27,6 +27,8 @@ public class TradeMasterScreen extends Screen {
 	private double pendingScroll = -1;
 	/** Same for the enchantments list on resize rebuilds (R23-09). */
 	private double pendingEnchantScroll = -1;
+	/** Same for the aliases list (no scroll restore would jump it back to the top). */
+	private double pendingAliasScroll = -1;
 
 	private EnchantmentsListWidget enchantmentsList;
 	private SettingsListWidget settingsList;
@@ -58,9 +60,13 @@ public class TradeMasterScreen extends Screen {
 		if (this.tab == Tab.ENCHANTMENTS && this.enchantmentsList != null) {
 			this.pendingEnchantScroll = this.enchantmentsList.scrollAmount();
 		}
+		if (this.tab == Tab.ALIASES && this.aliasesList != null) {
+			this.pendingAliasScroll = this.aliasesList.scrollAmount();
+		}
 		// four tabs must still fit a narrow (Android/FCL) screen: shrink them rather
-		// than let the last one clip off the right edge
-		int tabWidth = Math.max(48, Math.min(80, (this.width - 10) / 4 - 2));
+		// than let the last one clip off the right edge (no 48px floor — that floor
+		// alone produced a 198px row, wider than some logical screen widths)
+		int tabWidth = Math.max(34, Math.min(80, (this.width - 10) / 4 - 2));
 		int tabsWidth = (tabWidth + 2) * 4 - 2;
 		// narrow (Android/FCL) screens: a centered row wider than the screen
 		// would clip at both edges — clamp it fully on-screen instead
@@ -70,7 +76,9 @@ public class TradeMasterScreen extends Screen {
 		addTabButton(x + (tabWidth + 2) * 2, Tab.KEYBINDS, "trademaster.tab.keybinds", tabWidth);
 		addTabButton(x + (tabWidth + 2) * 3, Tab.ALIASES, "trademaster.tab.aliases", tabWidth);
 
-		int buttonsWidth = 288; // save(140) + gap + start(70) + gap + stop(70)
+		// the row must fit too: shrink the (widest) save button on narrow screens
+		int saveWidth = Math.max(60, Math.min(140, this.width - 152));
+		int buttonsWidth = saveWidth + 148; // save + 6 + start(70) + 2 + stop(70)
 		int left = Math.max(2, Math.min(this.width / 2 - buttonsWidth / 2, this.width - buttonsWidth - 2));
 
 		this.startButton = this.addRenderableWidget(Button.builder(
@@ -91,7 +99,7 @@ public class TradeMasterScreen extends Screen {
 								this.minecraft.gui.setScreen(this.parent);
 							}
 						})
-				.bounds(left + 146, this.height - 26, 70, 20)
+				.bounds(left + saveWidth + 6, this.height - 26, 70, 20)
 				.build());
 
 		this.stopButton = this.addRenderableWidget(Button.builder(
@@ -100,7 +108,7 @@ public class TradeMasterScreen extends Screen {
 							RerollController.stopManual();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
-				.bounds(left + 218, this.height - 26, 70, 20)
+				.bounds(left + saveWidth + 78, this.height - 26, 70, 20)
 				.build());
 
 		this.addRenderableWidget(Button.builder(
@@ -113,7 +121,7 @@ public class TradeMasterScreen extends Screen {
 							TradeMasterConfig.INSTANCE.save();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
-				.bounds(left, this.height - 26, 140, 20)
+				.bounds(left, this.height - 26, saveWidth, 20)
 				.build());
 
 		rebuildBody();
@@ -157,6 +165,7 @@ public class TradeMasterScreen extends Screen {
 		this.aliasesList = null;
 		if (this.tab != Tab.SETTINGS) this.pendingScroll = -1;
 		if (this.tab != Tab.ENCHANTMENTS) this.pendingEnchantScroll = -1;
+		if (this.tab != Tab.ALIASES) this.pendingAliasScroll = -1;
 		switch (this.tab) {
 			case ENCHANTMENTS -> {
 				this.enchantmentsList = new EnchantmentsListWidget(this.minecraft,
@@ -186,6 +195,10 @@ public class TradeMasterScreen extends Screen {
 			case ALIASES -> {
 				this.aliasesList = new AliasListWidget(this.minecraft,
 						this.width - 20, this.height - 82, 46, 22);
+				if (this.pendingAliasScroll >= 0) {
+					this.aliasesList.setScrollAmount(this.pendingAliasScroll);
+				}
+				this.pendingAliasScroll = -1;
 				this.addRenderableWidget(this.aliasesList);
 			}
 		}
@@ -266,6 +279,7 @@ public class TradeMasterScreen extends Screen {
 	/** Commits in-flight settings drafts. RerollController.start() calls this so the
 	 * command and hotkey start paths read the same config as the Start button. */
 	public void flushSettingsDrafts() {
+		if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 		if (this.settingsList != null) this.settingsList.flushEdits();
 		if (this.aliasesList != null) this.aliasesList.flushEdits();
 	}

@@ -16,6 +16,7 @@ import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Comparator;
+import java.util.Map;
 
 /**
  * Alias editor: one row per enchantment, each with a free-text field that overrides
@@ -124,6 +125,15 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 		this.suppressFocusClear = true;
 		try {
+			// Commit + unfocus every row the click did NOT land in. Without this two
+			// fields can hold focus at once, and editing() would route the keystrokes
+			// to whichever row comes first — i.e. the wrong enchantment's alias.
+			for (AliasRow row : this.children()) {
+				if (!row.field.isMouseOver(click.x(), click.y())) {
+					row.field.setFocused(false);
+					row.applyDraft();
+				}
+			}
 			return super.mouseClicked(click, doubled);
 		} finally {
 			this.suppressFocusClear = false;
@@ -154,14 +164,19 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		private boolean dirty = false;
 		/** An emptied field means "remove the alias", applied the same way. */
 		private boolean pendingClear = false;
+		/** Set when the draft collides with another enchantment's alias or display
+		 * name (see conflictKey): the row shows the reason in red and nothing is
+		 * written. Cleared as soon as the text changes again. */
+		private @Nullable String conflictKey = null;
 
 		public AliasRow(Identifier id) {
 			this.id = id;
 			this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
 			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("alias"));
-			this.field.setMaxLength(48);
+			this.field.setMaxLength(40);
 			this.field.setValue(TradeMasterConfig.INSTANCE.customEnchantNames.getOrDefault(id, ""));
 			this.field.setResponder(text -> {
+				this.conflictKey = null;
 				if (text.trim().isEmpty()) {
 					this.pendingClear = true;
 					this.dirty = false;
@@ -173,31 +188,56 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		}
 
 		/** Commits whichever draft is pending: empty removes the alias, otherwise the
-		 * trimmed text replaces it. A no-op when nothing changed. */
+		 * trimmed text replaces it — unless it collides with another enchantment's
+		 * alias or display name, in which case the row shows the reason and nothing is
+		 * written (the named-villager deduction matches by name, so a duplicate would
+		 * make both sides unresolvable). A no-op when nothing changed. */
 		void applyDraft() {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			if (this.pendingClear) {
-				this.pendingClear = false;
 				this.dirty = false;
+				// setValue fires the responder, which would set pendingClear again:
+				// clear the flag AFTER the text so the row does not stay "pending"
 				this.field.setValue("");
+				this.pendingClear = false;
 				if (config.customEnchantNames.remove(this.id) != null) config.save();
 				return;
 			}
 			if (!this.dirty) return;
 			this.dirty = false;
 			String value = this.field.getValue().trim();
-			if (value.isEmpty() || value.equals(config.customEnchantNames.get(this.id))) return;
-			config.customEnchantNames.put(this.id, value);
-			config.save();
+			if (value.isEmpty()) return;
+			String conflict = conflictKey(this.id, value);
+			if (conflict != null) {
+				this.conflictKey = conflict;
+				return;
+			}
+			if (!value.equals(config.customEnchantNames.get(this.id))) {
+				config.customEnchantNames.put(this.id, value);
+				config.save();
+			}
+			// re-sync: show exactly what was stored (trimmed) instead of the raw draft
+			if (!this.field.getValue().equals(value)) this.field.setValue(value);
 		}
 
-		/** Losing focus applies the draft, then re-syncs the text so the field never
-		 * keeps showing something that was not stored (e.g. a refused empty edit). */
-		private void reconcile() {
-			if (!this.field.isFocused()) return;
-			this.applyDraft();
-			String stored = TradeMasterConfig.INSTANCE.customEnchantNames.getOrDefault(this.id, "");
-			if (!this.field.getValue().equals(stored)) this.field.setValue(stored);
+		/** @return a lang key explaining why {@code value} is refused, or null when it
+		 * is usable. Refused when it duplicates another enchantment's alias, or
+		 * another enchantment's own display name. */
+		private static @Nullable String conflictKey(Identifier id, String value) {
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			for (Map.Entry<Identifier, String> entry : config.customEnchantNames.entrySet()) {
+				if (!entry.getKey().equals(id) && entry.getValue().trim().equalsIgnoreCase(value)) {
+					return "trademaster.alias.duplicate_alias";
+				}
+			}
+			for (Identifier other : config.enchantments.keySet()) {
+				if (other.equals(id)) continue;
+				String otherKey = "enchantment." + other.getNamespace() + "." + other.getPath();
+				if (EnchantmentNamer.displayName(other, otherKey).equalsIgnoreCase(value)) {
+					return "trademaster.alias.duplicate_name";
+				}
+			}
+			return null;
 		}
 
 		@Override
@@ -213,7 +253,12 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 					aliased ? 0x3F00FF00 : 0x1AC7C0C0);
 			String name = EnchantmentNamer.displayName(this.id, this.translationKey);
 			context.text(font, Component.literal(name), this.x + 4, this.y + 4, 0xFFFFFFFF);
-			context.text(font, Component.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
+			if (this.conflictKey != null) {
+				// refuse reason instead of the id: the row is red, nothing was stored
+				context.text(font, Component.translatable(this.conflictKey), this.x + 4, this.y + 12, 0xFFFF5555);
+			} else {
+				context.text(font, Component.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
+			}
 
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
 			this.field.setY(this.y + 2);

@@ -1164,8 +1164,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		 * chest list, sending the depositor to a block that is not the chest. */
 		private boolean pendingApply = false;
 		/** The binding this row was built for: a draft must never be written into
-		 * whatever chest slid into this index after a removal. */
-		private final BlockPos originalPos;
+		 * whatever chest slid into this index after a removal. Refreshed after every
+		 * successful write so a second edit of the same row is not mistaken for an
+		 * index shift (a refused start keeps the screen open and never rebuilds). */
+		private BlockPos originalPos;
 
 		ChestRow(int index, Runnable rebuild) {
 			this.index = index;
@@ -1191,7 +1193,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			BlockPos parsed = parsePos(this.field.getValue(), Minecraft.getInstance().player);
 			if (parsed != null && this.index < c.chestPositions.size()) {
-				c.chestPositions.set(this.index, parsed.immutable());
+				BlockPos stored = parsed.immutable();
+				c.chestPositions.set(this.index, stored);
+				this.originalPos = stored;
 			}
 		}
 

@@ -169,8 +169,12 @@ public final class RerollController {
 	 * precheck's emerald floor must account for it. */
 	public static int maxHuntBudget() {
 		int max = 0;
-		for (int marked : huntMarkedPrices.values()) {
-			if (marked - 1 > max) max = marked - 1;
+		for (Map.Entry<Identifier, Integer> entry : huntMarkedPrices.entrySet()) {
+			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
+			// same rule as TradeMatcher.budgetFor: the configured max price caps the
+			// hunt budget, so lowering it mid-run also lowers the emerald floor
+			int budget = Math.min(entry.getValue() - 1, target == null ? 64 : target.maxPrice());
+			if (budget > max) max = budget;
 		}
 		return max;
 	}
@@ -405,9 +409,10 @@ public final class RerollController {
 			// region coords were completed mid-run: the staging search already uses
 			// them again. Treat this run as region-based from here on, so losing them
 			// again stops the run (as documented) instead of silently reverting to
-			// the sphere
+			// the sphere. NOTE: regionFallbackConfirmed is deliberately NOT touched —
+			// it is a persistent acknowledgement and stop() does not reset it, so
+			// setting it here would let a later start skip the /tm goon gate.
 			snapRegionConfigured = true;
-			regionFallbackConfirmed = true;
 		}
 		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
 		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
@@ -641,14 +646,20 @@ public final class RerollController {
 			return;
 		}
 		if (restSummonPending) {
-			// a baby can never claim the lectern: wait indefinitely until it is
-			// gone from the staging region instead of summoning it into the rig,
-			// where it would trigger the endless profession-heal loop
+			// a baby can never claim the lectern: wait until it is gone from the
+			// staging region instead of summoning it into the rig, where it would
+			// trigger the endless profession-heal loop
 			for (Villager villager : villagers) {
 				if (villager.isBaby()) {
 					debug("await-villager: baby villager in the staging region, waiting");
 					return;
 				}
+			}
+			// the region box need not contain the arrival point, so check it too: a
+			// baby standing there blocks the rig exactly like one in the staging area
+			if (villagersAtArrivalPoint(client, s.lecternPos).stream().anyMatch(Villager::isBaby)) {
+				debug("await-villager: baby at the arrival point, waiting");
+				return;
 			}
 		}
 		for (Villager villager : villagers) {
@@ -1894,7 +1905,7 @@ public final class RerollController {
 	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival) {
 		List<Villager> villagers = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
 				AABB.ofSize(arrival, 4, 4, 4)));
-		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > 2.25);
+		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > AWAY_DISTANCE_SQR);
 		return villagers;
 	}
 
@@ -1996,7 +2007,11 @@ public final class RerollController {
 		for (TradeMatcher.MatchPart part : purchase.parts()) {
 			Integer marked = huntMarkedPrices.get(part.id());
 			if (marked != null) {
-				budget += marked - 1;
+				// same rule as TradeMatcher.budgetFor: the hunt lowers the budget and
+				// the configured max price caps it, so a mid-run maxPrice drop also
+				// invalidates an already-pending match
+				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
+				budget += Math.min(marked - 1, markedTarget == null ? 64 : markedTarget.maxPrice());
 				continue;
 			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
@@ -2179,9 +2194,6 @@ public final class RerollController {
 		}
 		SmoothRotation.reset();
 		strayChestTicks = 0;
-		// an interrupted run may have left the hand on the axe / lectern slot: hand
-		// it back the same way the presser does (H2 / N3)
-		LecternRestock.restoreOriginalSelection();
 		// a press can be interrupted mid-way with the hotbar selection parked on its
 		// temporary empty slot: hand it back instead of just dropping the reference
 		if (summonPresser != null) {
@@ -2192,6 +2204,9 @@ public final class RerollController {
 			sendAwayPresser.abortCleanly();
 			sendAwayPresser = null;
 		}
+		// AFTER the pressers: their abortCleanly restores the slot captured when the
+		// press started, so running this first would be overwritten
+		LecternRestock.restoreOriginalSelection();
 		lockExecutor = null;
 		if (namingExecutor != null) {
 			namingExecutor.abortCleanly();
