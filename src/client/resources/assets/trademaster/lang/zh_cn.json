@@ -161,7 +161,7 @@
   "trademaster.settings.professionHealCap": "转职次数上限值",
   "trademaster.settings.professionHealCap.comment": "等待转职时，对同一个村民最多刷新讲台的次数（需开启「启用转职次数上限」）",
   "trademaster.settings.autoDisableAfterLock.comment": "锁定购买完成后自动停用该附魔目标",
-  "trademaster.settings.huntCheaper.comment": "锁定成功后不停用该附魔，而是标记当前价格继续刷，直到刷出更便宜的同款再锁定更新；若中途把最大价格改到低于标记价，之后以低于新最大价的价格锁定，标记价回落为最大价而非成交价；与“锁定后自动停用”互斥，且“锁定后自动停用”优先：它开启时不能开启本功能（会红字提示，需先关闭它），反之开启“锁定后自动停用”会静默关闭本功能；开启本功能时“命名村民自动抵扣”自动取消（命名村民不会阻挡猎价），关闭本功能时自动恢复；价格表在停止（如 /trademaster stop）时清空；运行中在配置里关闭该附魔会暂停猎价，重新开启则恢复",
+  "trademaster.settings.huntCheaper.comment": "锁定成功后不停用该附魔，而是标记当前价格继续刷，直到刷出更便宜的同款再锁定更新；配置的最大价格是这次猎价的上限（运行中调低立即生效、调高不会放宽），标记只记录实付价且只降不升；与“锁定后自动停用”互斥，且“锁定后自动停用”优先：它开启时不能开启本功能（会红字提示，需先关闭它），反之开启“锁定后自动停用”会静默关闭本功能；开启本功能时“命名村民自动抵扣”自动取消（命名村民不会阻挡猎价），关闭本功能时自动恢复；价格表在停止（如 /trademaster stop）时清空；运行中在配置里关闭该附魔会暂停猎价，重新开启则恢复",
   "trademaster.settings.lockMaxRetries.comment": "锁定购买被服务器拒绝后的最大重试次数，填 -1 表示无限重试",
   "trademaster.settings.offhandSwapRetries.comment": "存书时副手交换被服务器拒绝但箱子仍有空位的重试次数（每个箱子），填 -1 表示无限重试",
   "trademaster.settings.displayRolls.comment": "在下方动作栏显示当前阶段和刷新次数",

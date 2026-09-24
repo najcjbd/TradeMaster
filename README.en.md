@@ -46,7 +46,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 1. **Build the rig**: lectern + summon button + send-away button (optional: chests / grindstone + anvil + name tags);
 2. **Fill in the coordinates**: press `V` to open the main menu → "Settings" tab → click the row's `[pick in game]` suffix to arm the picker, then right-click the target block (or use maLiLib's `P` key);
-3. **Pick targets**: on the "Enchanted books" tab, tick the enchantments you want and set **level** and **max price**;
+3. **Pick targets**: on the "Enchantments" tab, tick the enchantments you want and set **level** and **max price**;
 4. **Start**: hotkey `R`, or `/trademaster start`.
 
 ## The rig and coordinates
@@ -187,7 +187,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 
 ## Settings reference
 
-In the order of the in-game screen (all three entry points share one config):
+Grouped the way the in-game screen groups them (a few rows differ in order within their group):
 
 | Group | Setting | Default | Notes |
 |---|---|---|---|

@@ -1247,6 +1247,14 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				if (this.index < c.chestPositions.size() && this.clickInRemoveLabel(click.x())) {
+					if (!this.originalPos.equals(this.currentPos())) {
+						// a removal earlier in this tick already shifted the list (the
+						// rebuild is deferred to the next tick): this row no longer
+						// describes the chest at its index — rebuild instead of
+						// deleting the wrong chest
+						this.rebuild.run();
+						return false;
+					}
 					playClick();
 					this.removed = true;
 					c.chestPositions.remove(this.index);

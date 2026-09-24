@@ -1,6 +1,5 @@
 package dev.trademaster.gui;
 
-import dev.trademaster.config.MaliLibAdapter;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RerollController;
 import net.minecraft.ChatFormatting;
@@ -66,7 +65,7 @@ public class TradeMasterScreen extends Screen {
 		// four tabs must still fit a narrow (Android/FCL) screen: shrink them rather
 		// than let the last one clip off the right edge (no 48px floor — that floor
 		// alone produced a 198px row, wider than some logical screen widths)
-		int tabWidth = Math.max(34, Math.min(80, (this.width - 10) / 4 - 2));
+		int tabWidth = Math.max(24, Math.min(80, (this.width - 10) / 4 - 2));
 		int tabsWidth = (tabWidth + 2) * 4 - 2;
 		// narrow (Android/FCL) screens: a centered row wider than the screen
 		// would clip at both edges — clamp it fully on-screen instead
@@ -77,7 +76,7 @@ public class TradeMasterScreen extends Screen {
 		addTabButton(x + (tabWidth + 2) * 3, Tab.ALIASES, "trademaster.tab.aliases", tabWidth);
 
 		// the row must fit too: shrink the (widest) save button on narrow screens
-		int saveWidth = Math.max(60, Math.min(140, this.width - 152));
+		int saveWidth = Math.max(44, Math.min(140, this.width - 152));
 		int buttonsWidth = saveWidth + 148; // save + 6 + start(70) + 2 + stop(70)
 		int left = Math.max(2, Math.min(this.width / 2 - buttonsWidth / 2, this.width - buttonsWidth - 2));
 

@@ -204,14 +204,17 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				return;
 			}
 			if (!this.dirty) return;
-			this.dirty = false;
 			String value = this.field.getValue().trim();
 			if (value.isEmpty()) return;
 			String conflict = conflictKey(this.id, value);
 			if (conflict != null) {
+				// keep dirty: the collision may be resolved by editing ANOTHER row, and
+				// this draft must then be re-validated and committed (clearing dirty
+				// here left the row showing a red reason forever, never saving)
 				this.conflictKey = conflict;
 				return;
 			}
+			this.dirty = false;
 			if (!value.equals(config.customEnchantNames.get(this.id))) {
 				config.customEnchantNames.put(this.id, value);
 				config.save();
@@ -221,19 +224,32 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		}
 
 		/** @return a lang key explaining why {@code value} is refused, or null when it
-		 * is usable. Refused when it duplicates another enchantment's alias, or
-		 * another enchantment's own display name. */
+		 * is usable. Mirrors {@code TradeMatcher.buildDisplayNameIndex}: a name must not
+		 * collide with another enchantment's alias, its display name, its registry
+		 * path, or a name recorded in nameHistory — the deduction matches villagers by
+		 * name, and a collision drops BOTH sides from the index. Comparisons use the
+		 * same sanitizer the naming path uses. */
 		private static @Nullable String conflictKey(Identifier id, String value) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			String probe = EnchantmentNamer.sanitizeAlias(value);
 			for (Map.Entry<Identifier, String> entry : config.customEnchantNames.entrySet()) {
-				if (!entry.getKey().equals(id) && entry.getValue().trim().equalsIgnoreCase(value)) {
+				if (entry.getKey().equals(id)) continue;
+				if (EnchantmentNamer.sanitizeAlias(entry.getValue()).equalsIgnoreCase(probe)) {
 					return "trademaster.alias.duplicate_alias";
 				}
 			}
 			for (Identifier other : config.enchantments.keySet()) {
 				if (other.equals(id)) continue;
 				String otherKey = "enchantment." + other.getNamespace() + "." + other.getPath();
-				if (EnchantmentNamer.displayName(other, otherKey).equalsIgnoreCase(value)) {
+				if (other.getPath().equalsIgnoreCase(probe)
+						|| EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(other, otherKey))
+								.equalsIgnoreCase(probe)) {
+					return "trademaster.alias.duplicate_name";
+				}
+			}
+			for (Map.Entry<String, Identifier> entry : config.nameHistory.entrySet()) {
+				if (entry.getValue().equals(id)) continue;
+				if (EnchantmentNamer.sanitizeAlias(entry.getKey()).equalsIgnoreCase(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}

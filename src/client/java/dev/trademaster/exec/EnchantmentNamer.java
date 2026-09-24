@@ -29,11 +29,21 @@ public final class EnchantmentNamer {
 	/** Load attempts made so far: the table is retried on failure, but only a few
 	 * times (see loadFallback) so a missing resource cannot spam the log. */
 	private static int fallbackAttempts = 0;
+	/** Level the counters above belong to: a world change resets them. */
+	private static Object lastLevel = null;
 
 	private EnchantmentNamer() {}
 
 	public static String displayName(Identifier id, String translationKey) {
 		return sanitize(resolve(id, translationKey));
+	}
+
+	/** The name sanitizer, exposed for the alias editor: a candidate name must be
+	 * compared exactly as the naming path generates it ('+' -> '*', digits ->
+	 * superscripts), or two aliases differing only in the raw text would still
+	 * produce the same villager name and make both sides undeductable. */
+	public static String sanitizeAlias(String name) {
+		return sanitize(name);
 	}
 
 	private static String resolve(Identifier id, String translationKey) {
@@ -109,6 +119,16 @@ public final class EnchantmentNamer {
 	}
 
 	private static void loadFallback() {
+		// A world change / resource reload gets a fresh chance: the attempts counter is
+		// process-wide, so without this a few failures at startup disabled the Chinese
+		// fallback table for the rest of the session.
+		Object level = Minecraft.getInstance().level;
+		if (level != lastLevel) {
+			lastLevel = level;
+			fallbackAttempts = 0;
+			fallbackLoaded = false;
+			FALLBACK_ZH.clear();
+		}
 		// retry a few times instead of never: setting the flag before the load meant a
 		// single failure (resource packing, reload timing) silently disabled the
 		// Chinese fallback table forever. Bounded so a permanently missing resource

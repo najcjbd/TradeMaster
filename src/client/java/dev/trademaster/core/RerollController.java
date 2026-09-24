@@ -142,8 +142,11 @@ public final class RerollController {
 	private static boolean lockExhaustionDepositPending = false;
 	/** Ticks to wait before the next post-dispatch break attempt (spaces out retries). */
 	private static int breakRetryTicks = 0;
-	/** A villager further than this from the arrival point counts as gone (radius 2 blocks). */
-	private static final double AWAY_DISTANCE_SQR = 4.0;
+	/** A villager further than this from the arrival point counts as gone. Kept equal
+	 * to the arrival scan's radius (villagersAtArrivalPoint) so "is it on the point"
+	 * and "has it left the point" agree: the rig delivers the villager onto the ray
+	 * point, and a wider arrival scan would let an unrelated bystander be picked. */
+	private static final double AWAY_DISTANCE_SQR = 2.25;
 	private static int phaseTicks = 0;
 	private static int runTicks = 0;
 	private static int slowInteractDelay = 0;
@@ -171,9 +174,10 @@ public final class RerollController {
 		int max = 0;
 		for (Map.Entry<Identifier, Integer> entry : huntMarkedPrices.entrySet()) {
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
-			// same rule as TradeMatcher.budgetFor: the configured max price caps the
-			// hunt budget, so lowering it mid-run also lowers the emerald floor
-			int budget = Math.min(entry.getValue() - 1, target == null ? 64 : target.maxPrice());
+			// the mark-1 budget; an unknown target (disabled/removed mid-run) is left
+			// uncapped rather than pretending a 64 cap
+			int budget = target == null ? entry.getValue() - 1
+					: Math.min(entry.getValue() - 1, target.maxPrice());
 			if (budget > max) max = budget;
 		}
 		return max;
@@ -612,9 +616,6 @@ public final class RerollController {
 		int interval = Math.max(1, TradeMasterConfig.INSTANCE.villagerCheckInterval);
 		if (phaseTicks % interval != 0) return;
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		BlockPos origin = config.villagerRegionOrigin;
-		BlockPos delta = config.villagerRegionDelta;
-
 		if (awaitingRigClear) {
 			// the send-away button was pressed; wait until the ray detection point
 			// is empty again, otherwise the departing (falling) entity gets
@@ -2009,9 +2010,11 @@ public final class RerollController {
 			if (marked != null) {
 				// same rule as TradeMatcher.budgetFor: the hunt lowers the budget and
 				// the configured max price caps it, so a mid-run maxPrice drop also
-				// invalidates an already-pending match
+				// invalidates an already-pending match. An unknown target is left
+				// uncapped (it was disabled/removed mid-run).
 				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-				budget += Math.min(marked - 1, markedTarget == null ? 64 : markedTarget.maxPrice());
+				budget += markedTarget == null ? marked - 1
+						: Math.min(marked - 1, markedTarget.maxPrice());
 				continue;
 			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
