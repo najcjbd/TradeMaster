@@ -130,6 +130,7 @@
   "trademaster.message.lock_retry_exhausted": "锁定购买连续被拒绝 %d 次，已恢复该附魔目标并继续刷新该村民",
   "trademaster.message.config_screen_open": "maLiLib 配置界面还开着：它的改动只在关闭时才写回，请先关掉该界面再启动",
   "trademaster.message.dimension_changed": "运行中检测到维度变化（传送门/服务端传送），已停止；请回到原维度重新启动",
+  "trademaster.message.lock_unconfirmed": "购买包已发出但服务端迟迟没有回执：可能已成交也可能被拒，为避免重复购买，已送走这只村民并继续（该目标仍会继续寻找）",
   "trademaster.message.lock_drift_purchased": "购买包发出后报价已刷新：服务端按新报价成交，该村民职业已被锁定且无法再刷新，已送走它并继续找下一只（这只没拿到目标附魔）",
   "trademaster.message.hunt_enable_blocked": "运行中不允许开启「找更便宜」，请在开始前开启（运行中可以关闭）",
   "trademaster.message.hunt_blocked_by_autodisable": "「锁定后自动停用」开启时不能开启「找更便宜」，请先关闭它",

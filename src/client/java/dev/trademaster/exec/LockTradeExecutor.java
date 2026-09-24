@@ -3,6 +3,7 @@ package dev.trademaster.exec;
 import dev.trademaster.core.Preconditions;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.MerchantMenu;
@@ -30,20 +31,39 @@ public class LockTradeExecutor {
 	private final MerchantMenu menu;
 	private final int slot;
 	private final TradeMatcher.@Nullable MatchedTrade expected;
-	/** Enchanted books carried before the click, for the server-side confirmation. */
+	/** Books matching the purchased fingerprint carried before the click: measured the
+	 * same way as the confirmation, so an unrelated book picked up or dropped during
+	 * the wait cannot flip the verdict. */
 	private final int preBookCount;
 	private int stage = 0;
 	private int pickupWaitTicks = 0;
 	private int confirmTicks = 0;
 	private boolean drifted = false;
 	private boolean verified = false;
+	private boolean uncertain = false;
 
-	public LockTradeExecutor(MerchantMenu menu, int slot, TradeMatcher.@Nullable MatchedTrade expected,
-			int preBookCount) {
+	public LockTradeExecutor(MerchantMenu menu, int slot, TradeMatcher.@Nullable MatchedTrade expected) {
 		this.menu = menu;
 		this.slot = slot;
 		this.expected = expected;
-		this.preBookCount = preBookCount;
+		Minecraft mc = Minecraft.getInstance();
+		this.preBookCount = mc.player == null ? 0 : matchingBookCount(mc.player);
+	}
+
+	/** Books in the inventory matching the purchased fingerprint (every enchanted book
+	 * when there is no fingerprint, i.e. EVENT-mode detections). */
+	private int matchingBookCount(LocalPlayer player) {
+		int count = 0;
+		for (int i = 0; i < 36; i++) {
+			count += matchingCount(player.getInventory().getItem(i));
+		}
+		count += matchingCount(player.getOffhandItem());
+		return count;
+	}
+
+	private int matchingCount(ItemStack stack) {
+		if (this.expected == null) return stack.is(Items.ENCHANTED_BOOK) ? stack.getCount() : 0;
+		return bookHas(this.expected, stack) ? stack.getCount() : 0;
 	}
 
 	public MerchantMenu menu() {
@@ -69,6 +89,13 @@ public class LockTradeExecutor {
 	 * must not read the resulting menu mismatch as "the server closed it". */
 	public boolean closing() {
 		return this.stage >= 3;
+	}
+
+	/** True when the click was sent but the confirmation never arrived: the trade may
+	 * or may not have happened. Retrying the purchase would buy a SECOND book (the
+	 * offer still has uses left), so the caller must not treat this as a rejection. */
+	public boolean uncertain() {
+		return this.uncertain;
 	}
 
 	/** The failure was an offer drift (reroll in flight), not a server rejection:
@@ -131,7 +158,7 @@ public class LockTradeExecutor {
 				// therefore proof the trade really happened, and its absence means the
 				// server refused the click — a rejection the cursor check cannot see
 				if (client.player != null
-						&& Preconditions.countItem(client.player, Items.ENCHANTED_BOOK) > this.preBookCount) {
+						&& matchingBookCount(client.player) > this.preBookCount) {
 					this.verified = true;
 					return Result.DONE;
 				}
@@ -142,9 +169,13 @@ public class LockTradeExecutor {
 					this.verified = true;
 					return Result.DONE;
 				}
-				// 2s, in line with the other slot-sync waits: a slow-but-successful
-				// server must not be mis-reported as a rejection
-				if (++this.confirmTicks > 40) return Result.FAILED;
+				// 3s, in line with the other slot-sync waits. Timing out means the
+				// outcome is UNKNOWN, not that the trade failed: the caller must not
+				// re-click, or a slow-but-successful server gets a second purchase
+				if (++this.confirmTicks > 60) {
+					this.uncertain = true;
+					return Result.FAILED;
+				}
 				return Result.RUNNING;
 			}
 		}

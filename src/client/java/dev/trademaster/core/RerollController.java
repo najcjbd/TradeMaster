@@ -1102,7 +1102,10 @@ public final class RerollController {
 					|| priceOutOfAdmissionBudget(s.matchedTrade);
 			if (editedOut) {
 				if (lockPurchaseInitiated && lockExecutor != null && lockExecutor.purchaseSent()) {
-					if (lockExecutor.menu() != player.containerMenu) {
+					// !closing(): a menu mismatch we caused ourselves (stage 3, the
+					// server confirmation still running) must not read as "the server
+					// closed it" and revert a purchase that is about to be proven
+					if (lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
 						// menu already closed/replaced: same judgement as the
 						// menu-replaced branch — only a confirmed purchase counts
 						if (lockExecutor.purchaseConfirmed()) {
@@ -1154,8 +1157,10 @@ public final class RerollController {
 						phaseTicks = 0;
 						return;
 					}
-					// DONE or FAILED_FULL: either way the depositor is spent;
-					// the recheck below decides whether locking can proceed
+					// DONE or FAILED_FULL: either way the depositor is spent. FAILED_FULL
+					// skips its own end-of-run restore, so clean it up here or the item
+					// a staging swap displaced stays in the offhand
+					depositor.abortCleanly();
 					depositor = null;
 					phaseTicks = 0;
 				}
@@ -1175,15 +1180,18 @@ public final class RerollController {
 			return;
 		}
 		if (s.villager == null || !s.villager.isAlive()) {
-			// judge by the executor's actual state: lockPurchaseInitiated is set
-			// at executor construction, before any click went out. Only once the
-			// purchase click was SENT may the buy already be applied server-side
-			// (the rig can dispatch the villager right after the sale) — finish
-			// without restoring the budget, otherwise the matcher would demand the
-			// same enchantment again and buy it a second time. Before that, the
-			// villager simply vanished: restore and wait for the next one.
+			// judge by the executor's actual state: lockPurchaseInitiated is set at
+			// executor construction, before any click went out. Once the click IS out
+			// the villager vanishing must not end the judging — the server still
+			// completes (or refuses) the trade, and only its verdict may decide.
+			// Finishing on the click alone could celebrate a trade that never happened;
+			// before the click, the villager simply vanished: restore and wait
 			if (lockExecutor != null && lockExecutor.purchaseSent()) {
-				finishLock(s);
+				switch (lockExecutor.tick()) {
+					case DONE -> finishLock(s);
+					case FAILED -> awaitNextVillager(client, s);
+					case RUNNING -> {}
+				}
 			} else {
 				awaitNextVillager(client, s);
 			}
@@ -1294,19 +1302,18 @@ public final class RerollController {
 			TradeMatcher.MatchedTrade expectation = buysMatched ? s.matchedTrade
 					: new TradeMatcher.MatchedTrade(List.of(bookFingerprint(offer, slot)), List.of(),
 							s.matchedTrade == null ? 0 : s.matchedTrade.needsVersion());
-			lockExecutor = new LockTradeExecutor(menu, slot, expectation,
-					Preconditions.countItem(player, Items.ENCHANTED_BOOK));
+			lockExecutor = new LockTradeExecutor(menu, slot, expectation);
 			lockPurchaseInitiated = true;
 		}
 
 		// closing() = WE closed it, and the stage-3 server confirmation is still
 		// running: only a menu that vanished before that is the server's doing
 		if (lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
-			// the server closed or replaced the menu mid-execution; only a fully
-			// confirmed purchase (item seen on the cursor, menu closed) counts —
-			// "click sent" is not enough, because a trade the server refuses also
-			// reaches that stage. Finishing on an unconfirmed purchase would name
-			// and send away a villager that never locked and deduct the target
+			// the server closed or replaced the menu mid-execution; only a purchase
+			// the SERVER proved counts (the executor's own close is excluded above).
+			// "click sent" is not enough — a refused trade reaches that stage too —
+			// and finishing on an unproven purchase would name and send away a
+			// villager that never locked, deducting the target
 			boolean paid = lockExecutor.purchaseConfirmed();
 			lockExecutor = null;
 			lockInteracted = false;
@@ -1321,20 +1328,25 @@ public final class RerollController {
 		switch (lockExecutor.tick()) {
 			case DONE -> finishLock(s);
 			case FAILED -> {
-				if (!lockExecutor.drifted()) {
+				if (!lockExecutor.drifted() && !lockExecutor.uncertain()) {
+					// nothing was clicked, or the click was cleanly refused: retry
 					lockRejected(client, s);
 				} else if (lockExecutor.purchaseSent()) {
-					// the PICKUP click was already out when the offers turned out to
-					// have regenerated: the server applied it to the NEW offers, so a
-					// book WAS bought and the villager is locked for good (a traded
-					// profession never changes again). A free reroll here would spin
-					// on an unrerollable villager until the phase timeout, so dispatch
-					// it and continue with the next one
-					debug("lock: drift AFTER the purchase click — villager locked, dispatching");
-					chat(Component.translatable("trademaster.message.lock_drift_purchased")
+					// the click was already out, so a book may have been bought even
+					// though we could not confirm it (drift, or the confirmation ran
+					// out). Re-clicking would buy a SECOND one — a librarian offer
+					// still has uses left — so dispatch this villager and move on
+					boolean unconfirmed = lockExecutor.uncertain();
+					debug("lock: click sent, outcome " + (unconfirmed ? "unconfirmed" : "drifted")
+							+ " — dispatching the villager instead of re-buying");
+					chat(Component.translatable(unconfirmed
+									? "trademaster.message.lock_unconfirmed"
+									: "trademaster.message.lock_drift_purchased")
 							.withStyle(ChatFormatting.YELLOW));
 					awaitNextVillager(client, s);
 				} else {
+					// a drift detected BEFORE the click: nothing was bought, and the
+					// villager is still rerollable
 					freeReroll(client, s);
 				}
 			}
@@ -1440,6 +1452,7 @@ public final class RerollController {
 			}
 			if (result.step() == RerollStrategy.Step.RUNNING) return;
 			// DONE or FAILED_FULL: the recheck below decides whether to resume
+			depositor.abortCleanly();
 			depositor = null;
 		}
 		lockExhaustionDepositPending = false;
@@ -1595,6 +1608,7 @@ public final class RerollController {
 					if (result.step() != RerollStrategy.Step.DONE) {
 						debug("naming: deposit ended early: " + result.reason().getString());
 					}
+					depositor.abortCleanly();
 					depositor = null;
 					phaseTicks = 0;
 				}
@@ -2069,6 +2083,13 @@ public final class RerollController {
 			s.matcher.resetBudget(s.matchedTrade);
 		}
 		s.matchedTrade = null;
+		// same cleanup as lockRejected: a leftover executor/interact state would be
+		// read by the re-entered CHECK_TRADE as if this lock attempt were still live
+		lockExecutor = null;
+		lockPurchaseInitiated = false;
+		lockInteracted = false;
+		lockSlotPrepared = false;
+		checkLook.reset();
 		closeMerchantMenuIfOpen(client);
 		enter(Phase.CHECK_TRADE);
 	}

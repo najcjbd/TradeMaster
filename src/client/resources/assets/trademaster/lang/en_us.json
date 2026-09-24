@@ -130,6 +130,7 @@
   "trademaster.message.lock_retry_exhausted": "Lock purchase rejected %d times, restoring the matched enchantment and continuing to reroll this villager",
   "trademaster.message.config_screen_open": "The maLiLib config screen is still open: it only writes its edits back when closed, so close it first and start again",
   "trademaster.message.dimension_changed": "Dimension changed mid-run (portal / server teleport), stopping; return to the original dimension and start again",
+  "trademaster.message.lock_unconfirmed": "The purchase click went out but the server never confirmed it: the trade may or may not have happened. To avoid buying a second copy this villager has been sent away; the target stays on the list",
   "trademaster.message.lock_drift_purchased": "The offers regenerated after the purchase click: the server sold a book from the NEW offers and this villager is now locked for good (a traded profession never re-rolls). It has been sent away; the target was not obtained",
   "trademaster.message.hunt_enable_blocked": "Hunt-cheaper cannot be enabled while a run is active; enable it before starting (turning it off mid-run is allowed)",
   "trademaster.message.hunt_blocked_by_autodisable": "Hunt-cheaper cannot be enabled while \"Auto-disable after lock\" is on; turn it off first",

@@ -89,7 +89,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | **AXE** (default) | Repeatedly breaks the lectern with the main-hand axe and re-places it from the offhand; `preventAxeBreaking` refuses to keep breaking on low durability |
 | **TASK_CHAIN** | Break lectern → wait until the villager is unemployed → place lectern → wait for it to become a librarian (strictly waits for the profession state changes) |
 
-Both mechanisms **force the axe into the main hand** before breaking; the configurable placement/interaction delays (`placeDelay` / `interactDelay`) **only apply while `slowMode` is on** (otherwise a fixed cadence is used).
+Both mechanisms **force the axe into the main hand** before breaking; the `placeDelay` / `interactDelay` delays **only apply while `slowMode` is on** (otherwise a fixed cadence is used). With `slowMode` on, the outward contacts — **breaking the lectern, opening the anvil, applying the name tag** — are paced by `interactDelay` too, not just placement.
 
 ## Trade detection
 
@@ -120,6 +120,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
   - nothing at all is affordable → stop with an out-of-materials message; if a combo book caused it, an extra hint suggests enabling the 64 floor.
+- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list.
 - **After a successful lock**: **all** matched targets of that villager count as obtained → (optional) auto-disable them in the config, (optional) record each price into its price slot, (optional) naming.
 
 ## Naming
@@ -171,7 +172,9 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 - **Material precheck timing**: at start, on every `PRECHECK`, before dispatching a villager, **before every reroll**, and after lock retries are exhausted.
 - **Full inventory**: storage is attempted first; with no chest (or all full) the run stops — books are never dropped on the ground.
 - **Idle wait**: with no villager in the staging area the run simply waits; that is **not** a stop, and it resumes as soon as someone shows up.
-- **Timeouts**: `timeoutEnabled` (default **off**) is the global watchdog; `phaseTimeoutsEnabled` (default **on**) bounds a single phase; the wait-for-villager phase is exempt.
+- **Timeouts**: `timeoutEnabled` (default **off**) is the global watchdog; `phaseTimeoutsEnabled` (default **on**) bounds a single phase; the wait-for-villager phase is exempt. Turning it OFF disables **every** phase limit (deliberately: off means off, even if something can then hang).
+- **Stops the run on its own**: player moved (`stopOnPlayerMove`, the mod's own teleports are exempt), player died, **dimension change** (portal / server teleport; compared by dimension, so a same-dimension reconnect is fine), out of materials (emeralds / books / lectern / name tags / axe), or an invalid mid-run config edit.
+- **Starting while a config screen is open is refused**: maLiLib's config screen only writes its edits back when it **closes**, so a start then is refused with a red message (our own screen is unaffected: it commits drafts immediately).
 
 ## Anti-cheat / legit mode
 

@@ -253,7 +253,15 @@ public class NamingExecutor {
 			next(Stage.INSERT_TAG);
 			return Result.RUNNING;
 		}
-		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
+		// slow-mode pacing ticks on EVERY tick, deliberately before the 5-tick retry
+		// gate below: inside that gate it only counted once per 5 ticks, so a large
+		// interactDelay starved the retries and the stage died at its 40-tick cap
+		if (config.slowMode && this.slowInteractDelay > 0) {
+			this.slowInteractDelay--;
+			return Result.RUNNING;
+		}
 		if (this.stageTicks % 5 != 1) return Result.RUNNING;
 
 		BlockPos anvil = this.anvilPos;
@@ -261,14 +269,7 @@ public class NamingExecutor {
 		// legit+slow: rotate smoothly and only interact once the turn has landed.
 		// In legit-only mode this snaps instantly; with legit off it does nothing
 		if (!this.look.tick(player, aim)) return Result.RUNNING;
-		// slow mode paces the world contact points too, like every other phase
-		if (TradeMasterConfig.INSTANCE.slowMode) {
-			if (this.slowInteractDelay > 0) {
-				this.slowInteractDelay--;
-				return Result.RUNNING;
-			}
-			this.slowInteractDelay = TradeMasterConfig.INSTANCE.interactDelay;
-		}
+		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
 		mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
 		return Result.RUNNING;

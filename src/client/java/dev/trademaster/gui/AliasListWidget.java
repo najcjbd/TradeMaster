@@ -3,6 +3,7 @@ package dev.trademaster.gui;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
+import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -254,6 +255,11 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			// that the index happily keeps distinct — a pure false rejection.
 			for (EnchantmentTarget other : config.enabledTargets()) {
 				if (other.id().equals(id)) continue;
+				// the index ALSO drops targets that are not tradeable or whose vanilla
+				// minimum price exceeds the configured max ("dead" targets): such a name
+				// cannot collide there, so refusing it here is a pure false rejection
+				if (!TradeMatcher.registryTradeable(other.id())) continue;
+				if (TradeMasterConfig.minPrice(other.level(), other.id()) > other.maxPrice()) continue;
 				String alias = config.customEnchantNames.get(other.id());
 				if (alias != null && EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(alias)).equals(probe)) {
 					return "trademaster.alias.duplicate_alias";
