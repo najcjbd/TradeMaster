@@ -114,9 +114,18 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	}
 
 	/** Commits every row's in-flight alias draft: the screen close and tab switch
-	 * discard the widgets without another focus-loss pass. */
+	 * discard the widgets without another focus-loss pass. Runs to a fixed point:
+	 * aliases are validated against each other, so one row's commit can resolve (or
+	 * create) another row's conflict, and a single pass in id order would silently
+	 * drop the earlier row's draft. */
 	public void flushEdits() {
-		for (AliasRow row : this.children()) row.applyDraft();
+		for (int pass = 0; pass < 8; pass++) {
+			boolean progress = false;
+			for (AliasRow row : this.children()) {
+				if (row.applyDraft()) progress = true;
+			}
+			if (!progress) break;
+		}
 	}
 
 	private boolean suppressFocusClear = false;
@@ -187,12 +196,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			});
 		}
 
-		/** Commits whichever draft is pending: empty removes the alias, otherwise the
-		 * trimmed text replaces it — unless it collides with another enchantment's
-		 * alias or display name, in which case the row shows the reason and nothing is
-		 * written (the named-villager deduction matches by name, so a duplicate would
-		 * make both sides unresolvable). A no-op when nothing changed. */
-		void applyDraft() {
+		/** Commits whichever draft is pending. @return whether the config changed. */
+		boolean applyDraft() {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			if (this.pendingClear) {
 				this.dirty = false;
@@ -200,27 +205,33 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				// clear the flag AFTER the text so the row does not stay "pending"
 				this.field.setValue("");
 				this.pendingClear = false;
-				if (config.customEnchantNames.remove(this.id) != null) config.save();
-				return;
+				boolean removed = config.customEnchantNames.remove(this.id) != null;
+				if (removed) config.save();
+				return removed;
 			}
-			if (!this.dirty) return;
+			if (!this.dirty) return false;
 			String value = this.field.getValue().trim();
-			if (value.isEmpty()) return;
+			if (value.isEmpty()) return false;
 			String conflict = conflictKey(this.id, value);
 			if (conflict != null) {
 				// keep dirty: the collision may be resolved by editing ANOTHER row, and
-				// this draft must then be re-validated and committed (clearing dirty
-				// here left the row showing a red reason forever, never saving)
+				// this draft must then be re-validated (flushEdits iterates until no row
+				// makes progress, so it gets another chance)
 				this.conflictKey = conflict;
-				return;
+				return false;
 			}
-			this.dirty = false;
+			boolean changed = false;
 			if (!value.equals(config.customEnchantNames.get(this.id))) {
 				config.customEnchantNames.put(this.id, value);
 				config.save();
+				changed = true;
 			}
-			// re-sync: show exactly what was stored (trimmed) instead of the raw draft
+			this.conflictKey = null;
+			// setValue always fires the responder (which would set dirty again): re-sync
+			// the text first and clear the flag last
 			if (!this.field.getValue().equals(value)) this.field.setValue(value);
+			this.dirty = false;
+			return changed;
 		}
 
 		/** @return a lang key explaining why {@code value} is refused, or null when it

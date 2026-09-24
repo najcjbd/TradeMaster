@@ -82,7 +82,18 @@ public class LecternGuardian {
 
 		// Terminal states for each mode.
 		if (present && this.mode == Mode.ENSURE) return StepResult.DONE;
-		if (present && this.mode == Mode.REFRESH && this.brokenOnce) return StepResult.DONE;
+		if (present && this.mode == Mode.REFRESH && this.brokenOnce) {
+			// the pickup trip may have displaced the player, and the arrival point is
+			// defined relative to the PLAYER: send the return teleport first, or
+			// CHECK_TRADE reads the villager as having walked off the point
+			if (this.tpReturnPos != null && mc.getConnection() != null) {
+				session.movementGuard.permitTp(this.tpReturnPos);
+				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
+						this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+				this.tpReturnPos = null;
+			}
+			return StepResult.DONE;
+		}
 		if (!present && this.mode == Mode.BREAK_ONLY) return StepResult.DONE;
 
 		this.ticks++;

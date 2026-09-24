@@ -85,6 +85,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	private int dropSlot = -1;
 	private boolean dropSent = false;
 	private boolean dropResent = false;
+	/** One staging-swap resend for the cursed-book drop (same idempotency rule as
+	 * OFFHAND_WAIT): reset when the offhand staging swap goes out. */
+	private boolean dropStageResent = false;
 	/** One safe resend spent on the offhand staging swap. */
 	private boolean offhandResent = false;
 	/** Hotbar slot selected before this recycler switched away; restored at the end. */
@@ -442,6 +445,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					// offhand: the raw swap packet has no client-side prediction, so
 					// the book only counts as staged once the server sync shows it
 					this.dropSlot = player.getInventory().getSelectedSlot();
+					this.dropStageResent = false;
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
@@ -477,6 +481,18 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.waitTicks = 0;
 					this.state = State.DROP_AIM;
 				} else if (++this.waitTicks > 60) {
+					if (!this.dropStageResent && this.dropSlot == player.getInventory().getSelectedSlot()
+							&& isCursed(player.getOffhandItem())) {
+						// the offhand swap packet was lost: one resend is idempotent — the
+						// book is still in the offhand server-side, so this cannot swap it
+						// back (same rule as OFFHAND_WAIT)
+						this.dropStageResent = true;
+						this.waitTicks = 0;
+						player.connection.send(new ServerboundPlayerActionPacket(
+								ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
+								BlockPos.ZERO, Direction.DOWN));
+						return StepResult.RUNNING;
+					}
 					return fail(player, "trademaster.message.curse_stage_failed");
 				}
 			}

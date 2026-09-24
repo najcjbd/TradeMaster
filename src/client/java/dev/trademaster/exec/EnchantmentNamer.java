@@ -29,8 +29,9 @@ public final class EnchantmentNamer {
 	/** Load attempts made so far: the table is retried on failure, but only a few
 	 * times (see loadFallback) so a missing resource cannot spam the log. */
 	private static int fallbackAttempts = 0;
-	/** Level the counters above belong to: a world change resets them. */
-	private static Object lastLevel = null;
+	/** Level the counters above belong to: a world change resets them. Held weakly so
+	 * leaving the world does not keep the whole ClientLevel (chunks, entities) alive. */
+	private static java.lang.ref.WeakReference<Object> lastLevel = new java.lang.ref.WeakReference<>(null);
 
 	private EnchantmentNamer() {}
 
@@ -123,8 +124,8 @@ public final class EnchantmentNamer {
 		// process-wide, so without this a few failures at startup disabled the Chinese
 		// fallback table for the rest of the session.
 		Object level = Minecraft.getInstance().level;
-		if (level != lastLevel) {
-			lastLevel = level;
+		if (level != lastLevel.get()) {
+			lastLevel = new java.lang.ref.WeakReference<>(level);
 			fallbackAttempts = 0;
 			fallbackLoaded = false;
 			FALLBACK_ZH.clear();

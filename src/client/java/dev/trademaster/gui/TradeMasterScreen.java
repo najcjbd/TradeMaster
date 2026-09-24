@@ -75,9 +75,11 @@ public class TradeMasterScreen extends Screen {
 		addTabButton(x + (tabWidth + 2) * 2, Tab.KEYBINDS, "trademaster.tab.keybinds", tabWidth);
 		addTabButton(x + (tabWidth + 2) * 3, Tab.ALIASES, "trademaster.tab.aliases", tabWidth);
 
-		// the row must fit too: shrink the (widest) save button on narrow screens
-		int saveWidth = Math.max(44, Math.min(140, this.width - 152));
-		int buttonsWidth = saveWidth + 148; // save + 6 + start(70) + 2 + stop(70)
+		// the row must fit too: scale ALL THREE buttons on narrow screens, not just the
+		// save button (a fixed 70px action button kept the row at >= 192px)
+		int saveWidth = Math.max(34, Math.min(140, this.width - 152));
+		int actionWidth = Math.max(34, Math.min(70, (this.width - saveWidth - 10) / 2));
+		int buttonsWidth = saveWidth + 6 + actionWidth + 2 + actionWidth;
 		int left = Math.max(2, Math.min(this.width / 2 - buttonsWidth / 2, this.width - buttonsWidth - 2));
 
 		this.startButton = this.addRenderableWidget(Button.builder(
@@ -98,7 +100,7 @@ public class TradeMasterScreen extends Screen {
 								this.minecraft.gui.setScreen(this.parent);
 							}
 						})
-				.bounds(left + saveWidth + 6, this.height - 26, 70, 20)
+				.bounds(left + saveWidth + 6, this.height - 26, actionWidth, 20)
 				.build());
 
 		this.stopButton = this.addRenderableWidget(Button.builder(
@@ -107,7 +109,7 @@ public class TradeMasterScreen extends Screen {
 							RerollController.stopManual();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
-				.bounds(left + saveWidth + 78, this.height - 26, 70, 20)
+				.bounds(left + saveWidth + 8 + actionWidth, this.height - 26, actionWidth, 20)
 				.build());
 
 		this.addRenderableWidget(Button.builder(

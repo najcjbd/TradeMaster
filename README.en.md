@@ -187,7 +187,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 
 ## Settings reference
 
-Grouped the way the in-game screen groups them (a few rows differ in order within their group):
+Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 
 | Group | Setting | Default | Notes |
 |---|---|---|---|
@@ -223,14 +223,14 @@ Grouped the way the in-game screen groups them (a few rows differ in order withi
 | `/trademaster` (alias `/tm`) | bare command = toggle start/stop |
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
-| Hotkey `V` | Opens the main menu (four tabs: enchanted books / settings / keybinds / **aliases**) |
+| Hotkey `V` | Opens the main menu (four tabs: enchantments / settings / keybinds / **aliases**) |
 | maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
 
 ## Config entry points
 
 All three share the **same** `config/trade-master.json`:
 
-1. the in-game main menu (hotkey `V`, touch-screen friendly) — four tabs: **enchanted books / settings / keybinds / aliases**;
+1. the in-game main menu (hotkey `V`, touch-screen friendly) — four tabs: **enchantments / settings / keybinds / aliases**;
 2. **Mod Menu** (provides the config-screen entry);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 

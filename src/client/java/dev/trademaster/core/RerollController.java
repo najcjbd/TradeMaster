@@ -1543,7 +1543,8 @@ public final class RerollController {
 					debug("naming: could not free a slot (chests bound="
 							+ config.chestPositions.size() + "), skipping naming");
 					closeMerchantMenuIfOpen(client);
-					chat(Component.translatable("trademaster.message.naming_skipped", "inventory-full")
+					chat(Component.translatable("trademaster.message.naming_skipped",
+									Component.translatable("trademaster.naming_skip.inventory_full"))
 							.withStyle(ChatFormatting.YELLOW));
 					sendAwayPresser = null;
 					enter(Phase.SEND_AWAY);
@@ -1593,7 +1594,8 @@ public final class RerollController {
 				namingExecutor = null;
 				SmoothRotation.reset();
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
-				chat(Component.translatable("trademaster.message.naming_skipped", "failed:" + reason)
+				chat(Component.translatable("trademaster.message.naming_skipped",
+								Component.translatable("trademaster.naming_skip.failed", reason))
 						.withStyle(ChatFormatting.YELLOW));
 				sendAwayPresser = null;
 				enter(Phase.SEND_AWAY);
@@ -1611,7 +1613,8 @@ public final class RerollController {
 			namingExecutor.abortCleanly();
 			namingExecutor = null;
 			closeMerchantMenuIfOpen(Minecraft.getInstance());
-			chat(Component.translatable("trademaster.message.naming_skipped", "timeout")
+			chat(Component.translatable("trademaster.message.naming_skipped",
+							Component.translatable("trademaster.naming_skip.timeout"))
 					.withStyle(ChatFormatting.YELLOW));
 			sendAwayPresser = null;
 			enter(Phase.SEND_AWAY);
