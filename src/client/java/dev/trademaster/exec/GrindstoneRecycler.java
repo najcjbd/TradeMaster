@@ -85,9 +85,16 @@ public class GrindstoneRecycler implements BookDisposal {
 	private int dropSlot = -1;
 	private boolean dropSent = false;
 	private boolean dropResent = false;
-	/** One staging-swap resend for the cursed-book drop (same idempotency rule as
-	 * OFFHAND_WAIT): reset when the offhand staging swap goes out. */
+	/** One staging resend for the cursed-book drop: reset at the start of every
+	 * staging attempt (both sources), spent once. */
 	private boolean dropStageResent = false;
+	/** Which staging action the current drop used — the resend must replay the
+	 * same one: the raw offhand swap, or the inventory SWAP click. */
+	private boolean dropStageOffhand = false;
+	/** Inventory slot (0-35) the SWAP-clicked curse book came from; the staging
+	 * resend re-clicks it only while this slot still holds the book, so an
+	 * already-landed click cannot be swapped back. */
+	private int dropStageSource = -1;
 	/** One safe resend spent on the offhand staging swap. */
 	private boolean offhandResent = false;
 	/** Hotbar slot selected before this recycler switched away; restored at the end. */
@@ -445,6 +452,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					// offhand: the raw swap packet has no client-side prediction, so
 					// the book only counts as staged once the server sync shows it
 					this.dropSlot = player.getInventory().getSelectedSlot();
+					this.dropStageOffhand = true;
+					this.dropStageSource = -1;
 					this.dropStageResent = false;
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
@@ -470,6 +479,9 @@ public class GrindstoneRecycler implements BookDisposal {
 						Interactions.selectHotbarSlot(player, target);
 					}
 					this.dropSlot = target;
+					this.dropStageOffhand = false;
+					this.dropStageSource = invSlot;
+					this.dropStageResent = false;
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							inventoryMenuSlot(invSlot), target, ContainerInput.SWAP, player);
 				}
@@ -481,17 +493,27 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.waitTicks = 0;
 					this.state = State.DROP_AIM;
 				} else if (++this.waitTicks > 60) {
-					if (!this.dropStageResent && this.dropSlot == player.getInventory().getSelectedSlot()
-							&& isCursed(player.getOffhandItem())) {
-						// the offhand swap packet was lost: one resend is idempotent — the
-						// book is still in the offhand server-side, so this cannot swap it
-						// back (same rule as OFFHAND_WAIT)
-						this.dropStageResent = true;
-						this.waitTicks = 0;
-						player.connection.send(new ServerboundPlayerActionPacket(
-								ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
-								BlockPos.ZERO, Direction.DOWN));
-						return StepResult.RUNNING;
+					// replay the SAME staging action, and only while it provably never
+					// landed: an offhand swap while the book is still in the offhand,
+					// an inventory SWAP click while the book is still in its source
+					// slot. Replaying one that did land would swap the book straight back
+					if (!this.dropStageResent) {
+						if (this.dropStageOffhand && isCursed(player.getOffhandItem())) {
+							this.dropStageResent = true;
+							this.waitTicks = 0;
+							player.connection.send(new ServerboundPlayerActionPacket(
+									ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
+									BlockPos.ZERO, Direction.DOWN));
+							return StepResult.RUNNING;
+						}
+						if (!this.dropStageOffhand && this.dropStageSource >= 0
+								&& isCursed(player.getInventory().getItem(this.dropStageSource))) {
+							this.dropStageResent = true;
+							this.waitTicks = 0;
+							mc.gameMode.handleContainerInput(player.containerMenu.containerId,
+									inventoryMenuSlot(this.dropStageSource), this.dropSlot, ContainerInput.SWAP, player);
+							return StepResult.RUNNING;
+						}
 					}
 					return fail(player, "trademaster.message.curse_stage_failed");
 				}
@@ -579,6 +601,9 @@ public class GrindstoneRecycler implements BookDisposal {
 		this.dropSlot = -1;
 		this.dropSent = false;
 		this.dropResent = false;
+		this.dropStageResent = false;
+		this.dropStageOffhand = false;
+		this.dropStageSource = -1;
 		this.state = State.DROP_STAGE;
 		this.look.reset();
 		return StepResult.RUNNING;

@@ -41,7 +41,7 @@
   "trademaster.settings.villagerRegionDelta": "Villager region extension (dx dy dz)",
   "trademaster.settings.autoDisableAfterLock": "Disable enchantment target after locking",
   "trademaster.settings.huntCheaper": "Keep hunting cheaper price after locking",
-  "trademaster.settings.huntCheaper.caption": "Note: while on, the named-villager deduction is cancelled automatically and restored when turned off; cannot be enabled while a run is active (turning off is allowed); mutually exclusive with auto-disable after lock — this is refused while that is on (turn it off first)",
+  "trademaster.settings.huntCheaper.caption": "While on: the named-villager deduction is off. Cannot be enabled while a run is active, nor while auto-disable after lock is on.",
   "trademaster.settings.lockMaxRetries": "Lock retry limit",
   "trademaster.settings.offhandSwapRetries": "Offhand swap retry limit",
   "trademaster.settings.grindstoneEnabled": "Grindstone mode",

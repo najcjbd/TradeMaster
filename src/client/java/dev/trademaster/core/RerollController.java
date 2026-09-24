@@ -100,8 +100,15 @@ public final class RerollController {
 	/** Whether the double-coordinate staging region was complete when the run
 	 * started: losing it mid-run stops the run (see the check in tick()). */
 	private static boolean snapRegionConfigured = false;
-	/** The lectern-sphere fallback was confirmed with /trademaster goon. */
+	/** The lectern-sphere fallback was confirmed with /trademaster goon. Persists
+	 * across runs, but only for the world it was granted in — RE-ENTERING a world
+	 * asks again (decided 2026-09-25): a confirmation from elsewhere must never
+	 * silently accept a sphere up to 64 blocks as the staging area, and re-prompting
+	 * is one command. Enforced by the level check in start(). */
 	private static boolean regionFallbackConfirmed = false;
+	/** The level regionFallbackConfirmed belongs to (weak: the level is dropped on
+	 * disconnect, and a stale confirmation must not survive into the next world). */
+	private static java.lang.ref.WeakReference<Object> regionFallbackLevel = null;
 	/** A start was refused because the region coords are incomplete and waits for the
 	 * goon command; the command is invalid while this is false. */
 	private static boolean regionFallbackPending = false;
@@ -224,6 +231,12 @@ public final class RerollController {
 			settingsScreen.flushSettingsDrafts();
 		}
 		if (regionConfigured()) regionFallbackConfirmed = false;
+		// the confirmation is only valid for the world it was granted in: entering
+		// another world must ask again instead of silently using that world's sphere
+		Object level = Minecraft.getInstance().level;
+		if (level != null && (regionFallbackLevel == null || regionFallbackLevel.get() != level)) {
+			regionFallbackConfirmed = false;
+		}
 		// the staging area always exists: the configured region, or the lectern
 		// sphere when its coords are not set. The fallback must be confirmed once
 		// with /trademaster goon
@@ -624,8 +637,13 @@ public final class RerollController {
 		if (awaitingRigClear) {
 			// the send-away button was pressed; wait until the ray detection point
 			// is empty again, otherwise the departing (falling) entity gets
-			// re-targeted and the whole run loops on it
-			if (!villagersAtArrivalPoint(client, s.lecternPos).isEmpty()) return;
+			// re-targeted and the whole run loops on it. Uses the LOOSE threshold:
+			// a villager still in the dead band has not left yet — reading it as
+			// gone lets the staging scan pick it straight back up
+			if (!villagersAtArrivalPoint(client, arrivalPoint(client, s.lecternPos), AWAY_DISTANCE_SQR)
+					.isEmpty()) {
+				return;
+			}
 			awaitingRigClear = false;
 			// keep resting here until a villager enters the staging area (the region
 			// box, or the lectern sphere when the region coords are not set)
@@ -1490,7 +1508,9 @@ public final class RerollController {
 			}
 			if (changed) lockConfig.save();
 		}
-		if (lockConfig.namingEnabled) {
+		// the tail obeys the same guard as the body: with no matched trade there is
+		// nothing to name, and NamingExecutor would NPE on trade.books()
+		if (s.matchedTrade != null && lockConfig.namingEnabled) {
 			namingExecutor = null;
 			enter(Phase.NAME);
 		} else {
@@ -1563,39 +1583,24 @@ public final class RerollController {
 		}
 		switch (namingExecutor.tick()) {
 			case DONE -> {
-				// remember the display names actually used at naming time: if the game
-				// language changes later, deductNamedVillagers can still resolve them.
-				// A multi-book name covers every matched enchantment, so record each one
-				List<NamingExecutor.NameRecord> records = namingExecutor.nameRecords();
+				recordNameHistory(namingExecutor.nameRecords());
 				namingExecutor = null;
 				SmoothRotation.reset();
-				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-				for (NamingExecutor.NameRecord record : records) {
-					String displayName = record.displayName();
-					Identifier id = record.id();
-					Identifier previous = config.nameHistory.get(displayName);
-					if (previous != null && !previous.equals(id)) {
-						// same display name, different enchantment (custom-name collision):
-						// the entry is ambiguous — drop it instead of silently overwriting
-						config.nameHistory.remove(displayName);
-					} else {
-						// remove+put moves the entry to the tail so recency survives:
-						// a plain put on an existing key keeps its old insertion order,
-						// and the cap trim would evict still-recent names first
-						config.nameHistory.remove(displayName);
-						config.nameHistory.put(displayName, id);
-					}
-				}
-				while (config.nameHistory.size() > 256) {
-					config.nameHistory.remove(config.nameHistory.keySet().iterator().next());
-				}
-				ConfigPersistence.save(config);
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
 				sendAwayPresser = null;
 				enter(Phase.SEND_AWAY);
 			}
 			case FAILED -> {
 				String reason = namingExecutor.failReason();
+				// the APPLY interact was already sent: the villager may carry the name
+				// despite the failure (verify-timeout and the like). Record it, or the
+				// next session finds no ledger entry and buys the same enchantment again
+				if (namingExecutor.hasSentTag()) recordNameHistory(namingExecutor.nameRecords());
+				// same cleanup as the timeout backstop: fire the pending EQUIP
+				// swap-back and close the anvil, or a failed rename strands the
+				// displaced hand item AND leaves the anvil open, wedging every
+				// later phase (bringAxeToHand never leaves WORKING)
+				namingExecutor.abortCleanly();
 				namingExecutor = null;
 				SmoothRotation.reset();
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
@@ -1613,6 +1618,9 @@ public final class RerollController {
 		// but if it ever wedges anyway this backstop must not depend on the
 		// phase-timeouts config flag
 		if (namingExecutor != null && phaseTicks > 20 * 30 && !namingExecutor.isRestoring()) {
+			// the interact may already have been sent (the executor wedged in APPLY or
+			// VERIFY): record the names before the discard, same reason as FAILED
+			if (namingExecutor.hasSentTag()) recordNameHistory(namingExecutor.nameRecords());
 			// abortCleanly fires the pending EQUIP swap-back if one is outstanding;
 			// a bare discard would strand the displaced hand item in the tag slot
 			namingExecutor.abortCleanly();
@@ -1864,6 +1872,35 @@ public final class RerollController {
 		}
 	}
 
+	/** Remembers the display names actually used at naming time: if the game language
+	 * changes later, deductNamedVillagers can still resolve the villagers. A multi-book
+	 * name covers every matched enchantment, so each one is recorded. Called on success
+	 * and on a failure that happened AFTER the tag interact was sent (the villager may
+	 * already carry the name). */
+	private static void recordNameHistory(List<NamingExecutor.NameRecord> records) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		for (NamingExecutor.NameRecord record : records) {
+			String displayName = record.displayName();
+			Identifier id = record.id();
+			Identifier previous = config.nameHistory.get(displayName);
+			if (previous != null && !previous.equals(id)) {
+				// same display name, different enchantment (custom-name collision):
+				// the entry is ambiguous — drop it instead of silently overwriting
+				config.nameHistory.remove(displayName);
+			} else {
+				// remove+put moves the entry to the tail so recency survives:
+				// a plain put on an existing key keeps its old insertion order,
+				// and the cap trim would evict still-recent names first
+				config.nameHistory.remove(displayName);
+				config.nameHistory.put(displayName, id);
+			}
+		}
+		while (config.nameHistory.size() > 256) {
+			config.nameHistory.remove(config.nameHistory.keySet().iterator().next());
+		}
+		ConfigPersistence.save(config);
+	}
+
 	/**
 	 * The villager to work with at the arrival point: a librarian if there is
 	 * one, otherwise the nearest unemployed villager (still usable — it can take
@@ -1912,9 +1949,16 @@ public final class RerollController {
 	}
 
 	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival) {
+		return villagersAtArrivalPoint(client, arrival, ARRIVE_DISTANCE_SQR);
+	}
+
+	/** Same scan with an explicit radius. The rig-clear wait passes the LOOSE
+	 * threshold: "has the dispatched villager left" must not read someone in the
+	 * dead band as gone, or the staging scan re-grabs them and the run re-summons. */
+	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival, double maxDistSqr) {
 		List<Villager> villagers = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
 				AABB.ofSize(arrival, 4, 4, 4)));
-		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > ARRIVE_DISTANCE_SQR);
+		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > maxDistSqr);
 		return villagers;
 	}
 
@@ -1939,6 +1983,7 @@ public final class RerollController {
 		}
 		regionFallbackPending = false;
 		regionFallbackConfirmed = true;
+		regionFallbackLevel = new java.lang.ref.WeakReference<>(Minecraft.getInstance().level);
 		chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
 				.withStyle(ChatFormatting.YELLOW));
 		start();

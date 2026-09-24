@@ -196,7 +196,11 @@ public class ChestDepositor implements BookDisposal {
 						return StepResult.RUNNING;
 					}
 				}
-				if (player.containerMenu == player.inventoryMenu) {
+				if (!(player.containerMenu instanceof ChestMenu)) {
+					// the menu opened in AWAIT_OPEN is gone or was replaced: a click
+					// now would feed the books to whatever container is open instead.
+					// Close it and let EVALUATE/advance re-decide
+					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 					this.state = State.EVALUATE;
 					return StepResult.RUNNING;
 				}

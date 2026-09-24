@@ -31,5 +31,12 @@
   "minecraft:multishot": "多重射击",
   "minecraft:quick_charge": "快速装填",
   "minecraft:soul_speed": "灵魂疾行",
-  "minecraft:wind_burst": "风爆"
+  "minecraft:wind_burst": "风爆",
+  "minecraft:frost_walker": "冰霜行者",
+  "minecraft:binding_curse": "绑定诅咒",
+  "minecraft:vanishing_curse": "消失诅咒",
+  "minecraft:channeling": "引雷",
+  "minecraft:loyalty": "忠诚",
+  "minecraft:riptide": "激流",
+  "minecraft:impaling": "穿刺"
 }

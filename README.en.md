@@ -63,7 +63,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Curse drop yaw/pitch | Direction used to drop cursed books that no chest would take | No | Clearing it disables the direction (the live value is used at drop time) |
 
 **Direction convention**: `yaw` −180 = north, −90 = east, 0 = south, 90 = west; `pitch` positive looks down (max ±90).
-**Input behaviour**: coordinates accept relative `~` syntax (same semantics as target selectors); **every** text field commits only on focus loss or when the screen closes, so half-typed values never reach the config.
+**Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits only on focus loss or when the screen closes, so half-typed values never reach the config.
 
 ## Pipeline (12 phases)
 
@@ -89,7 +89,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | **AXE** (default) | Repeatedly breaks the lectern with the main-hand axe and re-places it from the offhand; `preventAxeBreaking` refuses to keep breaking on low durability |
 | **TASK_CHAIN** | Break lectern → wait until the villager is unemployed → place lectern → wait for it to become a librarian (strictly waits for the profession state changes) |
 
-Both mechanisms **force the axe into the main hand** before breaking; placement and interaction are separated by configurable delays (`placeDelay` / `interactDelay`).
+Both mechanisms **force the axe into the main hand** before breaking; the configurable placement/interaction delays (`placeDelay` / `interactDelay`) **only apply while `slowMode` is on** (otherwise a fixed cadence is used).
 
 ## Trade detection
 
@@ -107,7 +107,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 - A single pass scans **every** offer — datapacks/mods can give one villager several enchanted-book trades, and one book can carry several enchantments.
 - **Single-enchantment book**: price ≤ that enchantment's price slot.
 - **One book with several enchantments, or several qualifying books on one villager**: the budget is the sum of the matched enchantments' price slots (capped at **64**), and only the **cheapest qualifying book** is bought — one purchase is enough to lock the villager, and the villager is what matters.
-- **Reserve cheaper** (`reserveCheaperTraders`): leaves a "cheaper only" reservation slot behind after a match.
+- **Keep looking for cheaper** (`reserveCheaperTraders`, same as the in-game label): leaves a "cheaper only" reservation slot behind after a match.
 - **Hunt cheaper** (`huntCheaper`): after a lock, that enchantment only accepts strictly cheaper copies; on a multi-book villager **each qualifying book records its own price**. The configured `maxPrice` **caps** the hunt (lowering it mid-run applies at once, raising it never loosens the hunt) and the mark only ever moves down.
 - **Mutual exclusion**: `huntCheaper` and `autoDisableAfterLock` are mutually exclusive — when both would be on, **auto-disable wins**; while running you may only **turn hunt off**, never on.
 - **Emerald floor**: `emeraldFloor` = the largest `maxPrice` among enabled targets (at least `minLockEmeralds`); raised to `maxHuntBudget` when hunt is on; forced to ≥ **64** when "Multi-enchantment book safeguard" is on.
@@ -181,7 +181,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 | `slowMode` | off | Slower pacing (turning it on enables `legitMode`) |
 | `preventAxeBreaking` | on | Refuses to keep breaking when the axe durability is too low |
 | `stopOnPlayerMove` | on | Stops when the player moves (the mod's own teleports are exempt for a short window) |
-| `placeDelay` / `interactDelay` | 3 / 2 | Delay between placement and interaction (ticks) |
+| `placeDelay` / `interactDelay` | 3 / 2 | Delay between placement and interaction (ticks) — **only while `slowMode` is on** |
 | `tpToVillager` | off | Teleports to the villager before interacting (**can be detected by anti-cheat**) |
 | `tpToItem` | off | Teleports to the lectern drops after breaking (**same risk**) |
 
@@ -192,7 +192,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Group | Setting | Default | Notes |
 |---|---|---|---|
 | Mechanism | Reroll mechanism / detection mode | AXE / PACKET | AXE, TASK_CHAIN / PACKET, EVENT, BOTH |
-| Mechanism | Reserve cheaper | off | Leaves a "cheaper only" reservation slot |
+| Mechanism | Keep looking for cheaper | off | Leaves a "cheaper only" reservation slot |
 | Mechanism | Min lock emeralds | 1 | 1–64 |
 | Mechanism | Multi-enchantment book safeguard | off | Forces the floor to ≥ 64 (for datapacks that change the librarian profession) |
 | Mechanism | Global timeout / duration | off / 1h | Accepts `1h`, `30min`, `1m`, `90s`; a bare number means ticks |

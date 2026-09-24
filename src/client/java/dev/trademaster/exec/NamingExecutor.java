@@ -66,6 +66,10 @@ public class NamingExecutor {
 	private boolean restoreSwapped = false;
 	/** Failure reason held while RESTORE runs before reporting FAILED. */
 	private @Nullable String pendingFail = null;
+	/** True once the APPLY interact has been SENT. The villager may carry the name
+	 * even when a later stage fails (e.g. verify-timeout), so the controller records
+	 * the nameHistory entry on failure only when this is set. */
+	private boolean tagSent = false;
 	private int insertAttempts = 0;
 	private String failReason = "unknown";
 
@@ -163,6 +167,12 @@ public class NamingExecutor {
 		return this.stage == Stage.RESTORE;
 	}
 
+	/** Whether the naming interact was already sent: a failure after this point may
+	 * still have named the villager, so the deduction ledger must record it. */
+	public boolean hasSentTag() {
+		return this.tagSent;
+	}
+
 	/**
 	 * Stop-time cleanup: the EQUIP swap already moved an item out of the selected
 	 * hotbar slot but RESTORE never got to send the swap-back — fire it now so
@@ -179,7 +189,13 @@ public class NamingExecutor {
 			Interactions.selectHotbarSlot(player, this.equipOriginalSlot);
 			this.equipOriginalSlot = -1;
 		}
-		if (mc.gameMode == null || this.equipSwapSlot < 0 || this.restoreSwapped) return;
+		if (mc.gameMode == null || this.equipSwapSlot < 0 || this.restoreSwapped) {
+			// nothing to swap back, but the anvil may still be open from a failed
+			// rename: leaving it open swallows input and wedges every later phase
+			// (bringAxeToHand sees containerMenu != inventoryMenu and never returns)
+			if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+			return;
+		}
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 		mc.gameMode.handleContainerInput(0, this.equipSwapSlot,
 				player.getInventory().getSelectedSlot(), ContainerInput.SWAP, player);
@@ -382,6 +398,9 @@ public class NamingExecutor {
 				if (TradeMasterConfig.INSTANCE.slowMode) SmoothRotation.snapLookAt(eyes);
 				else player.lookAt(EntityAnchorArgument.Anchor.EYES, eyes);
 			}
+			// mark BEFORE the send: from here on the server may have named the
+			// villager, and a later failure must still be recorded in nameHistory
+			this.tagSent = true;
 			Interactions.interactEntity(mc, player, this.session.villager);
 			return Result.RUNNING;
 		}

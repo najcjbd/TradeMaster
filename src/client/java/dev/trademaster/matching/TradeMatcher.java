@@ -106,15 +106,11 @@ public class TradeMatcher {
 	 * never keeps a hunt alive on its own — the run continues solely on live
 	 * primary needs, and stop() clears the records. */
 	private Map<Set<MatchPart>, Integer> comboHuntPrices = Map.of();
-	/** Targets deducted by named villagers in the last refresh: resyncTargets must
-	 * not resurrect them, or the deduction would last only one tick. */
-	private final Set<Identifier> deductedByName = new HashSet<>();
 
 	public void buildNeeds() {
 		this.needsVersion++;
 		this.needs.clear();
 		this.targets.clear();
-		this.deductedByName.clear();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			// a target whose vanilla minimum price exceeds the configured max can
 			// never match: keep it out of the needs (start() warns about it)
@@ -380,14 +376,13 @@ public class TradeMatcher {
 			// refresh the target reference: the user may have edited level/price
 			// mid-run and tryMatch's level check reads from this map
 			this.targets.put(target.id(), target);
-			// The named-deduction half of this guard can never fire, so it is
-			// commented out (NOT deleted, so the intent stays visible):
-			// buildNeeds() clears deductedByName at its start, deductNamedVillagers()
-			// only runs while hunt is OFF, and this method only runs while hunt is ON —
-			// the two states are mutually exclusive by design. Restore it if hunt is
-			// ever allowed to be enabled mid-run, otherwise a named-deduction would be
-			// silently resurrected and the enchantment farmed twice.
-			// if (this.needs.containsKey(target.id()) || this.deductedByName.contains(target.id())) continue;
+			// No named-deduction guard here, DELIBERATELY: hunt CANCELS the named
+			// deduction by design, so a target deducted before hunt turned on must be
+			// able to come back. The old deductedByName set could therefore never be
+			// read (it was cleared by buildNeeds at run start and only written while
+			// hunt was off, i.e. never in this hunt-only path) and was removed
+			// 2026-09-25. Restore a guard only if the deduction is ever meant to
+			// survive hunt.
 			if (this.needs.containsKey(target.id())) continue;
 			if (lockedIds.contains(target.id()) && !this.huntPrices.containsKey(target.id())) continue;
 			// same guard as buildNeeds: config-budgeted targets that can never match
@@ -421,7 +416,7 @@ public class TradeMatcher {
 			Set<Identifier> deductedHere = new HashSet<>();
 			for (NamedBook book : parseVillagerBooks(customName.getString())) {
 				for (NamedPart part : book.parts()) {
-					Identifier id = nameToId.get(part.name());
+					Identifier id = nameToId.get(canon(part.name()));
 					if (id == null || !deductedHere.add(id)) continue;
 					IntHeapPriorityQueue queue = this.needs.get(id);
 					if (queue == null) continue;
@@ -430,9 +425,11 @@ public class TradeMatcher {
 					// deduct it regardless of its live price (curing discounts can drift it),
 					// otherwise the need stays live and the run re-rolls a duplicate
 					if (target != null && part.level() >= target.level()) {
+						// the dequeue IS the deduction; it needs no cross-tick flag
+						// (see resyncTargets: hunt, the only resync trigger, re-adds
+						// by design)
 						queue.dequeueInt();
 						if (queue.isEmpty()) this.needs.remove(id);
-						this.deductedByName.add(id);
 					} else {
 						// level too low (or target gone): another book on this villager
 						// may still satisfy the need
@@ -539,20 +536,28 @@ public class TradeMatcher {
 		Set<String> ambiguous = new HashSet<>();
 		for (Identifier id : this.targets.keySet()) {
 			String translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
-			putIndex(index, ambiguous, EnchantmentNamer.displayName(id, translationKey), id);
-			putIndex(index, ambiguous, id.getPath(), id);
+			putIndex(index, ambiguous, canon(EnchantmentNamer.displayName(id, translationKey)), id);
+			putIndex(index, ambiguous, canon(id.getPath()), id);
 		}
 		// names recorded when villagers were actually named: keeps deduction working
 		// when the game language changed since naming
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
 			if (this.targets.containsKey(entry.getValue())) {
-				putIndex(index, ambiguous, entry.getKey(), entry.getValue());
+				putIndex(index, ambiguous, canon(entry.getKey()), entry.getValue());
 			}
 		}
 		// a name shared by two targets cannot be attributed: drop it rather than
 		// crediting the wrong enchantment (worst case the villager is not deducted)
 		ambiguous.forEach(index::remove);
 		return index;
+	}
+
+	/** Collapses runs of whitespace: the parser (parseVillagerBooks) rebuilds names
+	 * from tokens joined by single spaces, so a key that kept two consecutive spaces
+	 * (an alias the user typed that way) would never match and the deduction would
+	 * silently miss. Applied on BOTH sides so they stay same-source. */
+	private static String canon(String s) {
+		return s.trim().replaceAll("\\s+", " ");
 	}
 
 	private static void putIndex(Map<String, Identifier> index, Set<String> ambiguous, String name, Identifier id) {

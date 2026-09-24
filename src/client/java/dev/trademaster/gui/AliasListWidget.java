@@ -1,5 +1,6 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
 import net.minecraft.client.Minecraft;
@@ -243,24 +244,27 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		private static @Nullable String conflictKey(Identifier id, String value) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			String probe = EnchantmentNamer.sanitizeAlias(value);
-			for (Map.Entry<Identifier, String> entry : config.customEnchantNames.entrySet()) {
-				if (entry.getKey().equals(id)) continue;
-				if (EnchantmentNamer.sanitizeAlias(entry.getValue()).equalsIgnoreCase(probe)) {
+			// SAME SOURCE as buildDisplayNameIndex: it is built over the ENABLED
+			// targets only, and its keys are case-SENSITIVE (a HashMap). Checking a
+			// disabled target, or comparing case-insensitively, would refuse names
+			// that the index happily keeps distinct — a pure false rejection.
+			for (EnchantmentTarget other : config.enabledTargets()) {
+				if (other.id().equals(id)) continue;
+				String alias = config.customEnchantNames.get(other.id());
+				if (alias != null && EnchantmentNamer.sanitizeAlias(alias).equals(probe)) {
 					return "trademaster.alias.duplicate_alias";
 				}
-			}
-			for (Identifier other : config.enchantments.keySet()) {
-				if (other.equals(id)) continue;
-				String otherKey = "enchantment." + other.getNamespace() + "." + other.getPath();
-				if (other.getPath().equalsIgnoreCase(probe)
-						|| EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(other, otherKey))
-								.equalsIgnoreCase(probe)) {
+				Identifier otherId = other.id();
+				String otherKey = "enchantment." + otherId.getNamespace() + "." + otherId.getPath();
+				if (otherId.getPath().equals(probe)
+						|| EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(otherId, otherKey))
+								.equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}
 			for (Map.Entry<String, Identifier> entry : config.nameHistory.entrySet()) {
 				if (entry.getValue().equals(id)) continue;
-				if (EnchantmentNamer.sanitizeAlias(entry.getKey()).equalsIgnoreCase(probe)) {
+				if (EnchantmentNamer.sanitizeAlias(entry.getKey()).equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}
