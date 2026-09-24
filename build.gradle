@@ -30,6 +30,8 @@ loom {
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 
+	// implementation, not modImplementation: this build uses the Unimined plugin,
+	// not Fabric Loom's dependency DSL (Unimined does not provide modImplementation)
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	implementation "maven.modrinth:malilib:${project.malilib_version}"

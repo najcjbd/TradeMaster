@@ -35,8 +35,8 @@
 			"26.2"
 		],
 		"java": ">=25",
-		"malilib": "*",
-		"fabric-api": "*"
+		"malilib": ">=0.29.3",
+		"fabric-api": ">=0.154.2"
 	},
 	"suggests": {
 		"modmenu": "*",

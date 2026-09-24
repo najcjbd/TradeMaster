@@ -233,10 +233,19 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		String maxLevelText = "Max " + EnchantmentNamer.romanNumerals(maxLevel());
 		int minPrice = minPrice(target.level());
 		String minPriceText = "Min $" + minPrice;
-		context.text(font, Component.literal(maxLevelText), right - 200, this.y + 6, 0xFFC0C0C0);
-		// min price above the 64 emerald cap: the target can never match
-		context.text(font, Component.literal(minPriceText), right - 140, this.y + 6,
-				minPrice > 64 ? 0xFFFF5555 : 0xFFC0C0C0);
+		// Anchored to the field block instead of the old fixed right-200/-140: those
+		// spilled past the row's left edge on a narrow (Android/FCL) screen. Drawn
+		// only when they clear the name, so the two never overlap.
+		int fieldsLeft = right - 78;
+		int minPriceX = fieldsLeft - font.width(minPriceText);
+		int maxLevelX = minPriceX - 6 - font.width(maxLevelText);
+		int nameRight = this.x + 4 + font.width(Component.literal((enabled ? "[x] " : "[ ] ") + name));
+		if (maxLevelX >= nameRight + 4) {
+			context.text(font, Component.literal(maxLevelText), maxLevelX, this.y + 6, 0xFFC0C0C0);
+			// min price above the 64 emerald cap: the target can never match
+			context.text(font, Component.literal(minPriceText), minPriceX, this.y + 6,
+					minPrice > 64 ? 0xFFFF5555 : 0xFFC0C0C0);
+		}
 
 		this.maxPriceField.setVisible(enabled);
 		this.levelField.setVisible(enabled);

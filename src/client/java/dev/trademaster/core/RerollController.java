@@ -1612,12 +1612,12 @@ public final class RerollController {
 			}
 			case RUNNING -> {}
 		}
-		// checked AFTER the tick: a failure landing exactly on the timeout tick
-		// must get its chance to divert into RESTORE before being discarded.
-		// Deliberately not phaseTimedOut(): the executor has its own stage limits,
-		// but if it ever wedges anyway this backstop must not depend on the
-		// phase-timeouts config flag
-		if (namingExecutor != null && phaseTicks > 20 * 30 && !namingExecutor.isRestoring()) {
+		// Checked AFTER the tick: a failure landing exactly on the timeout tick must
+		// get its chance to divert into RESTORE before being discarded. This is a
+		// phase-timeout backstop, so it honours phaseTimeoutsEnabled — with the switch
+		// OFF the user wants no timeouts at all, wedging included
+		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled
+				&& namingExecutor != null && phaseTicks > 20 * 30 && !namingExecutor.isRestoring()) {
 			// the interact may already have been sent (the executor wedged in APPLY or
 			// VERIFY): record the names before the discard, same reason as FAILED
 			if (namingExecutor.hasSentTag()) recordNameHistory(namingExecutor.nameRecords());

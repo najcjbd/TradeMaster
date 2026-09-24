@@ -17,6 +17,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.phys.BlockHitResult;
@@ -49,6 +50,14 @@ public class ChestDepositor implements BookDisposal {
 	private int noProgressTicks = 0;
 	private boolean switchedSlot = false;
 	private boolean offhandSwapped = false;
+	/** Hotbar slot an offhand staging swap sent the book into, or -1. The swap also
+	 * displaces that slot's item into the offhand, so it is undone once the book is
+	 * gone — otherwise the item stays in the offhand after the deposit ends. Survives
+	 * advance() (the displacement outlives a single chest). */
+	private int stagedHotbarSlot = -1;
+	/** Item that staging swap pushed into the offhand (a copy), so the undo can prove
+	 * the offhand still holds exactly that and not something the player put there. */
+	private ItemStack stagedDisplaced = ItemStack.EMPTY;
 	/** Ticks spent waiting for the server's offhand-swap slot sync to arrive;
 	 * -1 while not waiting. */
 	private int swapWaitTicks = -1;
@@ -218,6 +227,8 @@ public class ChestDepositor implements BookDisposal {
 					// hotbar slots cannot all be books and the search always finds one.
 					if (swapSlot >= 0) {
 							this.offhandSwapped = true;
+							this.stagedHotbarSlot = swapSlot;
+							this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
 							if (player.getInventory().getSelectedSlot() != swapSlot) {
 								Interactions.selectHotbarSlot(player, swapSlot);
 							}
@@ -256,6 +267,7 @@ public class ChestDepositor implements BookDisposal {
 					return StepResult.RUNNING;
 				}
 				if (Preconditions.countItem(player, Items.ENCHANTED_BOOK) == 0) {
+					undoOffhandStage(player);
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
 				}
@@ -299,7 +311,30 @@ public class ChestDepositor implements BookDisposal {
 		LocalPlayer player = mc.player;
 		if (player == null) return;
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		undoOffhandStage(player);
 		restoreHotbarSelection(player);
+	}
+
+	/** Returns the item an offhand staging swap displaced into the offhand. Runs at
+	 * the END of a deposit (or on abort) only when the exact post-swap state is still
+	 * observed: the book is gone from the staged slot AND the offhand holds a
+	 * non-book. Any other state means the world moved on — leave it alone. */
+	private void undoOffhandStage(LocalPlayer player) {
+		int slot = this.stagedHotbarSlot;
+		ItemStack displaced = this.stagedDisplaced;
+		this.stagedHotbarSlot = -1;
+		this.stagedDisplaced = ItemStack.EMPTY;
+		if (!this.offhandSwapped || slot < 0) return;
+		if (!player.getInventory().getItem(slot).isEmpty()) return;
+		// the offhand must still carry exactly what the swap displaced: anything else
+		// means the player changed it, and moving it now would be theft
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		if (player.getInventory().getSelectedSlot() != slot) {
+			Interactions.selectHotbarSlot(player, slot);
+		}
+		player.connection.send(new ServerboundPlayerActionPacket(
+				ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
+				BlockPos.ZERO, Direction.DOWN));
 	}
 
 	/** Puts the player's hand back where it was before the deposit started

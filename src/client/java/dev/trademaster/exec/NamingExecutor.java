@@ -422,9 +422,12 @@ public class NamingExecutor {
 			next(Stage.RESTORE);
 			return Result.RUNNING;
 		}
-		// unconditional on purpose: with phaseTimeoutsEnabled off a rejected
-		// interact would otherwise loop here forever
-		if (this.stageTicks > 40) return failed("verify-timeout");
+		// honours the phase-timeout switch like every other stage limit: with the
+		// switch OFF the user asked for exactly this — a rejected interact waits here
+		// indefinitely instead of being cut short
+		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 40) {
+			return failed("verify-timeout");
+		}
 		return Result.RUNNING;
 	}
 

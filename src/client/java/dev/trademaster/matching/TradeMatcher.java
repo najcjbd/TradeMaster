@@ -416,7 +416,7 @@ public class TradeMatcher {
 			Set<Identifier> deductedHere = new HashSet<>();
 			for (NamedBook book : parseVillagerBooks(customName.getString())) {
 				for (NamedPart part : book.parts()) {
-					Identifier id = nameToId.get(canon(part.name()));
+					Identifier id = nameToId.get(EnchantmentNamer.canonical(part.name()));
 					if (id == null || !deductedHere.add(id)) continue;
 					IntHeapPriorityQueue queue = this.needs.get(id);
 					if (queue == null) continue;
@@ -536,28 +536,20 @@ public class TradeMatcher {
 		Set<String> ambiguous = new HashSet<>();
 		for (Identifier id : this.targets.keySet()) {
 			String translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
-			putIndex(index, ambiguous, canon(EnchantmentNamer.displayName(id, translationKey)), id);
-			putIndex(index, ambiguous, canon(id.getPath()), id);
+			putIndex(index, ambiguous, EnchantmentNamer.canonical(EnchantmentNamer.displayName(id, translationKey)), id);
+			putIndex(index, ambiguous, EnchantmentNamer.canonical(id.getPath()), id);
 		}
 		// names recorded when villagers were actually named: keeps deduction working
 		// when the game language changed since naming
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
 			if (this.targets.containsKey(entry.getValue())) {
-				putIndex(index, ambiguous, canon(entry.getKey()), entry.getValue());
+				putIndex(index, ambiguous, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
 			}
 		}
 		// a name shared by two targets cannot be attributed: drop it rather than
 		// crediting the wrong enchantment (worst case the villager is not deducted)
 		ambiguous.forEach(index::remove);
 		return index;
-	}
-
-	/** Collapses runs of whitespace: the parser (parseVillagerBooks) rebuilds names
-	 * from tokens joined by single spaces, so a key that kept two consecutive spaces
-	 * (an alias the user typed that way) would never match and the deduction would
-	 * silently miss. Applied on BOTH sides so they stay same-source. */
-	private static String canon(String s) {
-		return s.trim().replaceAll("\\s+", " ");
 	}
 
 	private static void putIndex(Map<String, Identifier> index, Set<String> ambiguous, String name, Identifier id) {

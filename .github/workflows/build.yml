@@ -43,5 +43,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: trade-master-jars
-          path: build/libs/*.jar
+          # the mod jar only: withSourcesJar() also emits -sources.jar, which is a
+          # dev aid and not what the README advertises as the download
+          path: |
+            build/libs/*.jar
+            !build/libs/*-sources.jar
           if-no-files-found: error

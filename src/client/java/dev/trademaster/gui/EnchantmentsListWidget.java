@@ -26,6 +26,14 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 			this.addEntry(new EnchantmentEntry(entry.getKey()));
 		}
 
+		// Both top-row buttons must stay on the list even on a narrow (Android/FCL)
+		// screen: the fixed pair at width-150 / width-78 pushed the reset button off
+		// the left edge once the list was narrower than ~150. Shrinking both keeps the
+		// wide-screen layout byte-identical (70px buttons at width-150 / width-78).
+		int buttonWidth = Math.max(20, Math.min(70, (this.width - 16) / 2));
+		int selectAllX = Math.max(2, this.width - 8 - buttonWidth);
+		int resetX = Math.max(2, selectAllX - buttonWidth - 2);
+
 		this.resetButton = Button.builder(Component.translatable("trademaster.button.reset"), button -> {
 					// one save for the whole batch instead of ~4 per entry
 					TradeMasterConfig.INSTANCE.beginBatch();
@@ -36,7 +44,7 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 				})
 				// second row: y5 is occupied by the centered tabs, which overlap
 				// these buttons on narrow (Android) screens and swallow the clicks
-				.bounds(this.width - 150, 27, 70, 16)
+				.bounds(resetX, 27, buttonWidth, 16)
 				.tooltip(Tooltip.create(Component.translatable("trademaster.button.reset")))
 				.build();
 
@@ -47,14 +55,16 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 					}
 					TradeMasterConfig.INSTANCE.endBatch();
 				})
-				.bounds(this.width - 78, 27, 70, 16)
+				.bounds(selectAllX, 27, buttonWidth, 16)
 				.build();
 	}
 
 	@Override
 	protected void extractListBackground(GuiGraphicsExtractor context) {
 		this.setSelected(null);
-		context.fill(5, 27, this.width - 155, 44, 0xAFC7C0C0);
+		// clamp: on a narrow list width-155 can fall left of the 5px margin and
+		// invert the fill
+		context.fill(5, 27, Math.max(8, this.width - 155), 44, 0xAFC7C0C0);
 		context.text(Minecraft.getInstance().font,
 				Component.translatable("trademaster.column.enchantment"), 9, 32, 0xFF202020);
 	}

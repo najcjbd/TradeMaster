@@ -243,7 +243,11 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		 * same sanitizer the naming path uses. */
 		private static @Nullable String conflictKey(Identifier id, String value) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-			String probe = EnchantmentNamer.sanitizeAlias(value);
+			// the SAME two transformations the index applies: sanitize ('+' -> '*',
+			// digits -> superscripts) AND canonical (collapse whitespace runs). Both
+			// sides must agree, or a collision differing only in whitespace passes
+			// here and then drops BOTH enchantments from the index.
+			String probe = EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(value));
 			// SAME SOURCE as buildDisplayNameIndex: it is built over the ENABLED
 			// targets only, and its keys are case-SENSITIVE (a HashMap). Checking a
 			// disabled target, or comparing case-insensitively, would refuse names
@@ -251,20 +255,20 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			for (EnchantmentTarget other : config.enabledTargets()) {
 				if (other.id().equals(id)) continue;
 				String alias = config.customEnchantNames.get(other.id());
-				if (alias != null && EnchantmentNamer.sanitizeAlias(alias).equals(probe)) {
+				if (alias != null && EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(alias)).equals(probe)) {
 					return "trademaster.alias.duplicate_alias";
 				}
 				Identifier otherId = other.id();
 				String otherKey = "enchantment." + otherId.getNamespace() + "." + otherId.getPath();
-				if (otherId.getPath().equals(probe)
-						|| EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(otherId, otherKey))
+				if (EnchantmentNamer.canonical(otherId.getPath()).equals(probe)
+						|| EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(otherId, otherKey)))
 								.equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}
 			for (Map.Entry<String, Identifier> entry : config.nameHistory.entrySet()) {
 				if (entry.getValue().equals(id)) continue;
-				if (EnchantmentNamer.sanitizeAlias(entry.getKey()).equals(probe)) {
+				if (EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(entry.getKey())).equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}

@@ -47,6 +47,16 @@ public final class EnchantmentNamer {
 		return sanitize(name);
 	}
 
+	/** Collapses runs of whitespace. The deduction parser (TradeMatcher) rebuilds
+	 * villager names from tokens joined by single spaces, so EVERY name compared
+	 * against it must be canonicalised the same way — the search index keys and the
+	 * alias-collision check alike. Without this, a name carrying two consecutive
+	 * spaces never matches, and a collision that differs only in whitespace is
+	 * silently missed at alias-entry time but then drops BOTH sides from the index. */
+	public static String canonical(String name) {
+		return name.trim().replaceAll("\\s+", " ");
+	}
+
 	private static String resolve(Identifier id, String translationKey) {
 		String custom = TradeMasterConfig.INSTANCE.customEnchantNames.get(id);
 		if (custom != null) {

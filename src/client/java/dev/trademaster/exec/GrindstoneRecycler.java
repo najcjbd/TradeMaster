@@ -99,6 +99,13 @@ public class GrindstoneRecycler implements BookDisposal {
 	private boolean offhandResent = false;
 	/** Hotbar slot selected before this recycler switched away; restored at the end. */
 	private int originalSlot = -1;
+	/** Hotbar slot the last offhand staging swap sent a book into, or -1. That swap
+	 * also displaced the slot's own item into the offhand; it is swapped back once the
+	 * book is gone, so the item does not stay in the offhand after the run. */
+	private int stagedHotbarSlot = -1;
+	/** Item that staging swap pushed into the offhand (a copy), so the undo can prove
+	 * the offhand still holds exactly that and not something the player put there. */
+	private ItemStack stagedDisplaced = ItemStack.EMPTY;
 
 	public GrindstoneRecycler() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
@@ -200,6 +207,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 				if (Preconditions.countItem(player, Items.ENCHANTED_BOOK) == 0) {
 					player.closeContainer();
+					undoOffhandStage(player);
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
 				}
@@ -241,6 +249,8 @@ public class GrindstoneRecycler implements BookDisposal {
 						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
 						Interactions.selectHotbarSlot(player, swapSlot);
 					}
+					this.stagedHotbarSlot = swapSlot;
+					this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
@@ -455,6 +465,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageOffhand = true;
 					this.dropStageSource = -1;
 					this.dropStageResent = false;
+					this.stagedHotbarSlot = this.dropSlot;
+					this.stagedDisplaced = player.getInventory().getItem(this.dropSlot).copy();
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
@@ -508,6 +520,14 @@ public class GrindstoneRecycler implements BookDisposal {
 						}
 						if (!this.dropStageOffhand && this.dropStageSource >= 0
 								&& isCursed(player.getInventory().getItem(this.dropStageSource))) {
+							if (player.containerMenu != player.inventoryMenu) {
+								// a container opened during the wait: the SWAP click would
+								// carry that menu's id and land in the wrong slots. Close
+								// it and resend on the next tick (the one-shot flag stays
+								// unspent, so the retry is not lost)
+								player.closeContainer();
+								return StepResult.RUNNING;
+							}
 							this.dropStageResent = true;
 							this.waitTicks = 0;
 							mc.gameMode.handleContainerInput(player.containerMenu.containerId,
@@ -583,7 +603,30 @@ public class GrindstoneRecycler implements BookDisposal {
 		var player = mc.player;
 		if (player == null) return;
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		undoOffhandStage(player);
 		restoreHotbarSelection(player);
+	}
+
+	/** Returns the item an offhand staging swap displaced into the offhand. Runs only
+	 * when the exact post-swap state is still observed: no book in the offhand AND the
+	 * staged slot empty (the book was ground or dropped). Any other state means the
+	 * world moved on — leave it alone. */
+	private void undoOffhandStage(net.minecraft.client.player.LocalPlayer player) {
+		int slot = this.stagedHotbarSlot;
+		ItemStack displaced = this.stagedDisplaced;
+		this.stagedHotbarSlot = -1;
+		this.stagedDisplaced = ItemStack.EMPTY;
+		if (slot < 0) return;
+		if (!player.getInventory().getItem(slot).isEmpty()) return;
+		// the offhand must still carry exactly what the swap displaced: anything else
+		// means the player changed it, and moving it now would be theft
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		if (player.getInventory().getSelectedSlot() != slot) {
+			Interactions.selectHotbarSlot(player, slot);
+		}
+		player.connection.send(new ServerboundPlayerActionPacket(
+				ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
+				BlockPos.ZERO, Direction.DOWN));
 	}
 
 	private StepResult beginChestStash(net.minecraft.client.player.LocalPlayer player) {
