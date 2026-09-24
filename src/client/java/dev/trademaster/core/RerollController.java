@@ -142,11 +142,16 @@ public final class RerollController {
 	private static boolean lockExhaustionDepositPending = false;
 	/** Ticks to wait before the next post-dispatch break attempt (spaces out retries). */
 	private static int breakRetryTicks = 0;
-	/** A villager further than this from the arrival point counts as gone. Kept equal
-	 * to the arrival scan's radius (villagersAtArrivalPoint) so "is it on the point"
-	 * and "has it left the point" agree: the rig delivers the villager onto the ray
-	 * point, and a wider arrival scan would let an unrelated bystander be picked. */
-	private static final double AWAY_DISTANCE_SQR = 2.25;
+	/** A NEWLY scanned villager must be this close to the arrival point to count as
+	 * arrived. Kept tight (1.5 blocks): the rig parks the villager on the ray point,
+	 * and a looser scan would let an unrelated bystander beside the lectern be picked. */
+	private static final double ARRIVE_DISTANCE_SQR = 2.25;
+	/** An ALREADY chosen villager is only treated as gone beyond this (2 blocks). The
+	 * dead band between the two thresholds is deliberate: without it a villager that
+	 * merely shuffled out of the tight arrival radius would be dispatched and a fresh
+	 * one summoned, over and over, while a genuinely departing villager is still
+	 * caught (just a little later; the check-trade recovery path has its own exit). */
+	private static final double AWAY_DISTANCE_SQR = 4.0;
 	private static int phaseTicks = 0;
 	private static int runTicks = 0;
 	private static int slowInteractDelay = 0;
@@ -1909,7 +1914,7 @@ public final class RerollController {
 	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival) {
 		List<Villager> villagers = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
 				AABB.ofSize(arrival, 4, 4, 4)));
-		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > AWAY_DISTANCE_SQR);
+		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > ARRIVE_DISTANCE_SQR);
 		return villagers;
 	}
 
