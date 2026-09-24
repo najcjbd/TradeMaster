@@ -25,6 +25,8 @@
   "trademaster.settings.multiEnchantProtection": "Multi-enchantment book safeguard",
   "trademaster.settings.villagerSphereRadius": "Staging sphere radius",
   "trademaster.settings.postDispatchBreakRetries": "Post-dispatch break retry limit",
+  "trademaster.tab.aliases": "Aliases",
+  "trademaster.column.alias": "Alias (blank = default name)",
   "trademaster.settings.timeoutEnabled": "Run timeout (global watchdog)",
   "trademaster.settings.timeoutTicks": "Timeout duration",
   "trademaster.settings.phaseTimeoutsEnabled": "Phase safety timeouts (profession/detection/execution)",

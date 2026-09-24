@@ -17,7 +17,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class TradeMasterScreen extends Screen {
 
-	public enum Tab { ENCHANTMENTS, SETTINGS, KEYBINDS }
+	public enum Tab { ENCHANTMENTS, SETTINGS, KEYBINDS, ALIASES }
 
 	private final @Nullable Screen parent;
 	private Tab tab = Tab.ENCHANTMENTS;
@@ -31,6 +31,7 @@ public class TradeMasterScreen extends Screen {
 	private EnchantmentsListWidget enchantmentsList;
 	private SettingsListWidget settingsList;
 	private KeybindsListWidget keybindsList;
+	private AliasListWidget aliasesList;
 	private Button startButton;
 	private Button stopButton;
 
@@ -48,6 +49,7 @@ public class TradeMasterScreen extends Screen {
 		// same for the settings tab: its rows only commit their draft on blur, and
 		// the rebuild never blurs them
 		if (this.settingsList != null) this.settingsList.flushEdits();
+		if (this.aliasesList != null) this.aliasesList.flushEdits();
 		// same rebuild resets scroll to the top: remember where the user was.
 		// Tab switches never capture here — the tab is already flipped by then
 		if (this.tab == Tab.SETTINGS && this.settingsList != null) {
@@ -56,14 +58,17 @@ public class TradeMasterScreen extends Screen {
 		if (this.tab == Tab.ENCHANTMENTS && this.enchantmentsList != null) {
 			this.pendingEnchantScroll = this.enchantmentsList.scrollAmount();
 		}
-		int tabWidth = 80;
-		int tabsWidth = tabWidth * 3 + 4;
+		// four tabs must still fit a narrow (Android/FCL) screen: shrink them rather
+		// than let the last one clip off the right edge
+		int tabWidth = Math.max(48, Math.min(80, (this.width - 10) / 4 - 2));
+		int tabsWidth = (tabWidth + 2) * 4 - 2;
 		// narrow (Android/FCL) screens: a centered row wider than the screen
 		// would clip at both edges — clamp it fully on-screen instead
 		int x = Math.max(2, Math.min(this.width / 2 - tabsWidth / 2, this.width - tabsWidth - 2));
 		addTabButton(x, Tab.ENCHANTMENTS, "trademaster.tab.enchantments", tabWidth);
 		addTabButton(x + tabWidth + 2, Tab.SETTINGS, "trademaster.tab.settings", tabWidth);
 		addTabButton(x + (tabWidth + 2) * 2, Tab.KEYBINDS, "trademaster.tab.keybinds", tabWidth);
+		addTabButton(x + (tabWidth + 2) * 3, Tab.ALIASES, "trademaster.tab.aliases", tabWidth);
 
 		int buttonsWidth = 288; // save(140) + gap + start(70) + gap + stop(70)
 		int left = Math.max(2, Math.min(this.width / 2 - buttonsWidth / 2, this.width - buttonsWidth - 2));
@@ -78,6 +83,7 @@ public class TradeMasterScreen extends Screen {
 							// coordinate) would otherwise land AFTER start() snapshotted
 							// the config and stop the run on the very next tick
 							if (this.settingsList != null) this.settingsList.flushEdits();
+							if (this.aliasesList != null) this.aliasesList.flushEdits();
 							// a refused start (missing coordinates, all targets done...)
 							// must keep this screen open: it is the only place the
 							// user can fix the reported problem
@@ -103,6 +109,7 @@ public class TradeMasterScreen extends Screen {
 							// commit in-flight settings drafts first: the rebuild discards
 							// the widgets, and saving without them wrote the OLD value
 							if (this.settingsList != null) this.settingsList.flushEdits();
+							if (this.aliasesList != null) this.aliasesList.flushEdits();
 							TradeMasterConfig.INSTANCE.save();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
@@ -119,6 +126,7 @@ public class TradeMasterScreen extends Screen {
 			// in-flight edits first or the keystrokes are lost (R20-2)
 			if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 			if (this.settingsList != null) this.settingsList.flushEdits();
+			if (this.aliasesList != null) this.aliasesList.flushEdits();
 			this.tab = tab;
 			// defer: rebuilding mid-dispatch would mutate Screen.children while iterating
 			this.pendingRebuild = true;
@@ -146,6 +154,7 @@ public class TradeMasterScreen extends Screen {
 		this.enchantmentsList = null;
 		this.settingsList = null;
 		this.keybindsList = null;
+		this.aliasesList = null;
 		if (this.tab != Tab.SETTINGS) this.pendingScroll = -1;
 		if (this.tab != Tab.ENCHANTMENTS) this.pendingEnchantScroll = -1;
 		switch (this.tab) {
@@ -173,6 +182,11 @@ public class TradeMasterScreen extends Screen {
 				this.keybindsList = new KeybindsListWidget(this.minecraft,
 						this.width - 20, this.height - 82, 46, 22);
 				this.addRenderableWidget(this.keybindsList);
+			}
+			case ALIASES -> {
+				this.aliasesList = new AliasListWidget(this.minecraft,
+						this.width - 20, this.height - 82, 46, 22);
+				this.addRenderableWidget(this.aliasesList);
 			}
 		}
 	}
@@ -207,6 +221,7 @@ public class TradeMasterScreen extends Screen {
 		if (super.keyPressed(input)) return true;
 		if (this.enchantmentsList != null && this.enchantmentsList.keyPressed(input)) return true;
 		if (this.settingsList != null && this.settingsList.keyPressed(input)) return true;
+		if (this.aliasesList != null && this.aliasesList.keyPressed(input)) return true;
 		return false;
 	}
 
@@ -214,6 +229,7 @@ public class TradeMasterScreen extends Screen {
 	public boolean charTyped(CharacterEvent input) {
 		if (this.enchantmentsList != null && this.enchantmentsList.charTyped(input)) return true;
 		if (this.settingsList != null && this.settingsList.charTyped(input)) return true;
+		if (this.aliasesList != null && this.aliasesList.charTyped(input)) return true;
 		return super.charTyped(input);
 	}
 
@@ -251,6 +267,7 @@ public class TradeMasterScreen extends Screen {
 	 * command and hotkey start paths read the same config as the Start button. */
 	public void flushSettingsDrafts() {
 		if (this.settingsList != null) this.settingsList.flushEdits();
+		if (this.aliasesList != null) this.aliasesList.flushEdits();
 	}
 
 	@Override
@@ -259,6 +276,7 @@ public class TradeMasterScreen extends Screen {
 		// onClose() alone would skip the button paths
 		if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 		if (this.settingsList != null) this.settingsList.flushEdits();
+		if (this.aliasesList != null) this.aliasesList.flushEdits();
 		TradeMasterConfig.INSTANCE.save();
 		super.removed();
 	}

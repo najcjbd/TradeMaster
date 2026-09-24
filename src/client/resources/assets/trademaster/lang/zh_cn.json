@@ -25,6 +25,8 @@
   "trademaster.settings.multiEnchantProtection": "单书多附魔保障",
   "trademaster.settings.villagerSphereRadius": "暂存区球形半径",
   "trademaster.settings.postDispatchBreakRetries": "送走后补破坏重试上限",
+  "trademaster.tab.aliases": "别名",
+  "trademaster.column.alias": "别名（留空则用默认名）",
   "trademaster.settings.timeoutEnabled": "启用运行超时（全局看门狗）",
   "trademaster.settings.timeoutTicks": "超时时长",
   "trademaster.settings.phaseTimeoutsEnabled": "阶段安全超时（转职/检测/执行）",
