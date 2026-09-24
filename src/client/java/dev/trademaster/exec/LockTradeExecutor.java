@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.core.Preconditions;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
@@ -29,14 +30,20 @@ public class LockTradeExecutor {
 	private final MerchantMenu menu;
 	private final int slot;
 	private final TradeMatcher.@Nullable MatchedTrade expected;
+	/** Enchanted books carried before the click, for the server-side confirmation. */
+	private final int preBookCount;
 	private int stage = 0;
 	private int pickupWaitTicks = 0;
+	private int confirmTicks = 0;
 	private boolean drifted = false;
+	private boolean verified = false;
 
-	public LockTradeExecutor(MerchantMenu menu, int slot, TradeMatcher.@Nullable MatchedTrade expected) {
+	public LockTradeExecutor(MerchantMenu menu, int slot, TradeMatcher.@Nullable MatchedTrade expected,
+			int preBookCount) {
 		this.menu = menu;
 		this.slot = slot;
 		this.expected = expected;
+		this.preBookCount = preBookCount;
 	}
 
 	public MerchantMenu menu() {
@@ -48,10 +55,19 @@ public class LockTradeExecutor {
 		return this.stage >= 2;
 	}
 
-	/** True once the purchased item was seen on the cursor and the menu closed —
-	 * the purchase is certain. purchaseSent() alone is not: a rejected trade also
-	 * reaches that stage, and the carried check is what separates the two. */
+	/** True once the purchase is PROVEN by the server, not by our own prediction:
+	 * {@code handleContainerInput} runs {@code AbstractContainerMenu.clicked} locally
+	 * before the packet, so "a book is on the cursor" is client state only. The proof
+	 * is the server moving the held book into the inventory when the container closes
+	 * ({@code AbstractContainerMenu.removed} -> {@code dropOrPlaceInInventory}, which
+	 * runs for ServerPlayer only) — see the stage-3 check. */
 	public boolean purchaseConfirmed() {
+		return this.verified;
+	}
+
+	/** True once we closed the container ourselves (stage 3 onwards). The controller
+	 * must not read the resulting menu mismatch as "the server closed it". */
+	public boolean closing() {
 		return this.stage >= 3;
 	}
 
@@ -105,10 +121,31 @@ public class LockTradeExecutor {
 					return Result.FAILED;
 				}
 				client.player.closeContainer();
+				this.confirmTicks = 0;
 				this.stage = 3;
 			}
 			case 3 -> {
-				return Result.DONE;
+				// Server-authoritative confirmation: closing the container makes the
+				// SERVER put the held book into the inventory (dropOrPlaceInInventory);
+				// the client's own prediction never does. The book count rising is
+				// therefore proof the trade really happened, and its absence means the
+				// server refused the click — a rejection the cursor check cannot see
+				if (client.player != null
+						&& Preconditions.countItem(client.player, Items.ENCHANTED_BOOK) > this.preBookCount) {
+					this.verified = true;
+					return Result.DONE;
+				}
+				// with no free slot the server DROPS the book instead, which is not
+				// observable here: trust the prediction rather than mis-report a
+				// purchase that did go through
+				if (client.player != null && !Preconditions.hasFreeSlot(client.player)) {
+					this.verified = true;
+					return Result.DONE;
+				}
+				// 2s, in line with the other slot-sync waits: a slow-but-successful
+				// server must not be mis-reported as a rejection
+				if (++this.confirmTicks > 40) return Result.FAILED;
+				return Result.RUNNING;
 			}
 		}
 		return Result.RUNNING;

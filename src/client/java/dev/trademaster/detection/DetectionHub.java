@@ -114,12 +114,22 @@ public final class DetectionHub {
 		Minecraft.getInstance().execute(() -> hub.feedPacket(offers, containerId));
 	}
 
+	/** The hub armed right now, for a caller that must bind to the hub of ITS packet
+	 * and not to whatever is armed later: the feed below is marshalled onto the main
+	 * thread, so an open packet delayed past a re-arm would otherwise bind its
+	 * containerId to the NEXT check's hub. */
+	public static @Nullable DetectionHub armedHub() {
+		return armed;
+	}
+
 	/** PACKET channel: a merchant screen open was suppressed; the latest one is the
 	 * answer to our own interact (a duplicate interact can open a second screen
-	 * whose offers are the ones still in flight) and fixes the expected container id. */
-	public static void onMerchantScreenSuppressed(int containerId) {
+	 * whose offers are the ones still in flight) and fixes the expected container id.
+	 *
+	 * @param hub the hub captured when the packet ARRIVED (see {@link #armedHub()});
+	 * null means nothing was armed then, so only the static leftover marker is set. */
+	public static void onMerchantScreenSuppressed(@Nullable DetectionHub hub, int containerId) {
 		lastSuppressedContainerId = containerId;
-		DetectionHub hub = armed;
 		if (hub == null) return;
 		hub.expectedContainerId = containerId;
 	}

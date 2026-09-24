@@ -467,6 +467,16 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		return this.genericOptions;
 	}
 
+	/** True while maLiLib's own config screen is open. maLiLib only pushes the
+	 * widgets' pending edits into the model when that screen CLOSES
+	 * (GuiConfigsBase.removed -> applyPendingModifications -> onSettingsChanged ->
+	 * onConfigsChanged -> our applyToModel), so a run started meanwhile would
+	 * snapshot the pre-edit values. Our own screen is not a GuiConfigsBase: it
+	 * flushes its drafts itself. */
+	public static boolean isConfigScreenOpen() {
+		return Minecraft.getInstance().gui.screen() instanceof GuiConfigsBase;
+	}
+
 	private static void chatRed(String key) {
 		Minecraft client = Minecraft.getInstance();
 		net.minecraft.network.chat.Component message = net.minecraft.network.chat.Component.literal("[Trade Master] ")

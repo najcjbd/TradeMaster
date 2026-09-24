@@ -233,6 +233,13 @@ public final class RerollController {
 				instanceof dev.trademaster.gui.TradeMasterScreen settingsScreen) {
 			settingsScreen.flushSettingsDrafts();
 		}
+		// maLiLib's own config screen only pushes its edits to the model on CLOSE:
+		// starting now would snapshot the pre-edit values, so refuse and say why
+		if (dev.trademaster.config.MaliLibAdapter.isConfigScreenOpen()) {
+			chat(Component.translatable("trademaster.message.config_screen_open")
+					.withStyle(ChatFormatting.RED));
+			return false;
+		}
 		if (regionConfigured()) regionFallbackConfirmed = false;
 		// the confirmation is only valid for the world it was granted in: entering
 		// another world must ask again instead of silently using that world's sphere
@@ -1287,11 +1294,14 @@ public final class RerollController {
 			TradeMatcher.MatchedTrade expectation = buysMatched ? s.matchedTrade
 					: new TradeMatcher.MatchedTrade(List.of(bookFingerprint(offer, slot)), List.of(),
 							s.matchedTrade == null ? 0 : s.matchedTrade.needsVersion());
-			lockExecutor = new LockTradeExecutor(menu, slot, expectation);
+			lockExecutor = new LockTradeExecutor(menu, slot, expectation,
+					Preconditions.countItem(player, Items.ENCHANTED_BOOK));
 			lockPurchaseInitiated = true;
 		}
 
-		if (lockExecutor.menu() != player.containerMenu) {
+		// closing() = WE closed it, and the stage-3 server confirmation is still
+		// running: only a menu that vanished before that is the server's doing
+		if (lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
 			// the server closed or replaced the menu mid-execution; only a fully
 			// confirmed purchase (item seen on the cursor, menu closed) counts —
 			// "click sent" is not enough, because a trade the server refuses also

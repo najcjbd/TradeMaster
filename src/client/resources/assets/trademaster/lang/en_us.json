@@ -1,6 +1,6 @@
 {
   "key.trade-master.open_menu": "Open Trade Master Menu",
-  "key.category.minecraft.trade-master": "Trade Master",
+  "key.category.trademaster.main": "Trade Master",
   "trademaster.tab.enchantments": "Enchantments",
   "trademaster.tab.settings": "Settings",
   "trademaster.tab.keybinds": "Keybinds",
@@ -128,6 +128,7 @@
   "trademaster.message.sneak_paused": "Sneaking detected, Trade Master paused (release sneak to resume)",
   "trademaster.message.xp_short": "Not enough experience levels, naming temporarily off (resumes at level 1+)",
   "trademaster.message.lock_retry_exhausted": "Lock purchase rejected %d times, restoring the matched enchantment and continuing to reroll this villager",
+  "trademaster.message.config_screen_open": "The maLiLib config screen is still open: it only writes its edits back when closed, so close it first and start again",
   "trademaster.message.dimension_changed": "Dimension changed mid-run (portal / server teleport), stopping; return to the original dimension and start again",
   "trademaster.message.lock_drift_purchased": "The offers regenerated after the purchase click: the server sold a book from the NEW offers and this villager is now locked for good (a traded profession never re-rolls). It has been sent away; the target was not obtained",
   "trademaster.message.hunt_enable_blocked": "Hunt-cheaper cannot be enabled while a run is active; enable it before starting (turning it off mid-run is allowed)",

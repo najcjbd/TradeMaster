@@ -27,7 +27,10 @@ import org.slf4j.LoggerFactory;
 public class TradeMaster implements ClientModInitializer {
 	public static final String MOD_ID = "trade-master";
 	public static final Logger LOGGER = LoggerFactory.getLogger("trade-master");
-	public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(Identifier.parse(MOD_ID));
+	// explicit non-vanilla namespace: Identifier.parse would default to "minecraft",
+	// making the category minecraft:trade-master and squatting the vanilla namespace
+	public static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(
+			Identifier.fromNamespaceAndPath("trademaster", "main"));
 
 	private static KeyMapping openMenuKey;
 
