@@ -247,6 +247,12 @@ public class TradeMasterScreen extends Screen {
 		return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
 	}
 
+	/** Commits in-flight settings drafts. RerollController.start() calls this so the
+	 * command and hotkey start paths read the same config as the Start button. */
+	public void flushSettingsDrafts() {
+		if (this.settingsList != null) this.settingsList.flushEdits();
+	}
+
 	@Override
 	public void removed() {
 		// removed() runs on every exit path (ESC, start/stop/save buttons);

@@ -55,6 +55,10 @@ public final class TradeMasterConfig {
 	public boolean huntCheaper = false;
 	/** Max lock purchase retries after a server rejection; -1 retries forever. */
 	public int lockMaxRetries = -1;
+	/** Max post-dispatch lectern-break retries before the run stops; -1 retries
+	 * forever. The break must eventually succeed, but a block that can never be
+	 * broken (swapped out, out of reach) must not hang the run silently. */
+	public int postDispatchBreakRetries = 2;
 	/** Max offhand-swap retries per chest when the server rejects the swap and
 	 * the chest still has space (deposit); -1 retries forever. */
 	public int offhandSwapRetries = 3;

@@ -113,6 +113,7 @@ public final class LecternRestock {
 		} else {
 			for (int i = 0; i < 9; i++) {
 				if (player.getInventory().getItem(i).getItem() != Items.LECTERN) continue;
+				rememberSelection(player);
 				if (i != player.getInventory().getSelectedSlot()) {
 					Interactions.selectHotbarSlot(player, i);
 				}
@@ -176,6 +177,7 @@ public final class LecternRestock {
 			// offhand axe is swapped in only as last resort, so the caller's
 			// durability guard reports axe_breaking rather than axe_required.
 			if (mc.gameMode == null || player.containerMenu != player.inventoryMenu) return AxeState.WORKING;
+			rememberSelection(player);
 			mc.gameMode.handleContainerInput(0, 45, inventory.getSelectedSlot(),
 					ContainerInput.SWAP, player);
 			return AxeState.WORKING;
@@ -183,7 +185,33 @@ public final class LecternRestock {
 		return brokenFallback >= 0 ? equipAxe(mc, player, brokenFallback) : AxeState.NONE;
 	}
 
+	/** The hotbar slot selected before this run started moving items around; -1 when
+	 * nothing was moved. Restored by stop() so an interrupted run does not leave the
+	 * player's hand on the axe / lectern slot. */
+	private static int originalSelected = -1;
+
+	private static void rememberSelection(LocalPlayer player) {
+		if (originalSelected < 0) originalSelected = player.getInventory().getSelectedSlot();
+	}
+
+	/** Puts the hand back on the slot it was on before the run started moving items.
+	 * Only the SELECTION is restored: an inventory/offhand SWAP that already went
+	 * out is not undone (swapping back needs the original pair and races the
+	 * server's own slot sync; the moved item simply ends up in a hotbar slot, which
+	 * is visible and harmless). */
+	public static void restoreOriginalSelection() {
+		int slot = originalSelected;
+		originalSelected = -1;
+		if (slot < 0) return;
+		LocalPlayer player = Minecraft.getInstance().player;
+		if (player == null) return;
+		if (player.getInventory().getSelectedSlot() != slot) {
+			Interactions.selectHotbarSlot(player, slot);
+		}
+	}
+
 	private static AxeState equipAxe(Minecraft mc, LocalPlayer player, int slot) {
+		rememberSelection(player);
 		if (slot < 9) {
 			Interactions.selectHotbarSlot(player, slot);
 			return AxeState.READY;

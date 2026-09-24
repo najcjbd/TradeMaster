@@ -87,6 +87,9 @@ public final class RerollController {
 	private static boolean awaitingRigClear = false;
 	/** ENSURE_LECTERN is running its post-dispatch refresh: continue into AWAIT_VILLAGER when done. */
 	private static boolean postDispatchRefresh = false;
+	/** Break retries spent in the current post-dispatch refresh (capped by
+	 * config.postDispatchBreakRetries, reset when the refresh starts). */
+	private static int postDispatchBreakRetriesSpent = 0;
 	/** This LOCK attempt already ran its pre-lock inventory/deposit check. */
 	private static boolean lockSlotPrepared = false;
 	/** Running sand-wheel mode definition captured at start() (see
@@ -200,6 +203,13 @@ public final class RerollController {
 		// a proper region supersedes an earlier acknowledgement of the sphere
 		// fallback: once real coordinates are configured, a later loss of them must
 		// ask for confirmation again
+		// (the start can also come from the command / a hotkey while the settings
+		// screen is open with an unfocused draft: commit it first, or the snapshots
+		// below are taken from a config the player is still editing)
+		if (Minecraft.getInstance().gui.screen()
+				instanceof dev.trademaster.gui.TradeMasterScreen settingsScreen) {
+			settingsScreen.flushSettingsDrafts();
+		}
 		if (regionConfigured()) regionFallbackConfirmed = false;
 		// the staging area always exists: the configured region, or the lectern
 		// sphere when its coords are not set. The fallback must be confirmed once
@@ -393,8 +403,11 @@ public final class RerollController {
 		}
 		if (!snapRegionConfigured && regionConfigured()) {
 			// region coords were completed mid-run: the staging search already uses
-			// them again, so a later loss must ask for confirmation afresh
-			regionFallbackConfirmed = false;
+			// them again. Treat this run as region-based from here on, so losing them
+			// again stops the run (as documented) instead of silently reverting to
+			// the sphere
+			snapRegionConfigured = true;
+			regionFallbackConfirmed = true;
 		}
 		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
 		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
@@ -517,7 +530,12 @@ public final class RerollController {
 			debug("precheck: baby at detection point, waiting until no babies remain");
 			guardian = null;
 			summonPresser = null;
-			restSummonPending = false;
+			// keep the staging wait armed: with the arrival point merged into the
+			// staging scan a baby there still freezes the wait, and the moment no
+			// baby is left the summon can be pressed again. (false would strand this
+			// phase: it only scans the arrival point, so a baby that wanders away
+			// left nothing that could ever press summon.)
+			restSummonPending = true;
 			enter(Phase.AWAIT_VILLAGER);
 			return;
 		}
@@ -777,10 +795,21 @@ public final class RerollController {
 					return;
 				}
 				// the post-dispatch break releases the old profession claim and must
-				// eventually succeed: restart the guardian and keep breaking until the
-				// lectern is actually gone, however long that takes (2s between
-				// attempts so instant failures like "no axe" do not busy-loop)
-				debug("ensure-lectern: post-dispatch break failed, retrying");
+				// eventually succeed, but a lectern that can never be broken (swapped
+				// out, out of reach, gamemode stuck) must not hang the run silently:
+				// the retries are capped by config.postDispatchBreakRetries
+				// (-1 = forever; 2s between attempts so instant failures do not busy-loop)
+				int maxBreakRetries = TradeMasterConfig.INSTANCE.postDispatchBreakRetries;
+				if (maxBreakRetries >= 0 && postDispatchBreakRetriesSpent >= maxBreakRetries) {
+					debug("ensure-lectern: post-dispatch break retries exhausted ("
+							+ postDispatchBreakRetriesSpent + "), stopping");
+					stop(result.reason(), ChatFormatting.RED);
+					return;
+				}
+				postDispatchBreakRetriesSpent++;
+				debug("ensure-lectern: post-dispatch break failed, retrying ("
+						+ postDispatchBreakRetriesSpent + "/"
+						+ (maxBreakRetries < 0 ? "inf" : maxBreakRetries) + ")");
 				guardian.abort();
 				guardian = LecternGuardian.breakOnly();
 				breakRetryTicks = 40;
@@ -1384,20 +1413,17 @@ public final class RerollController {
 			// with exactly one matched part has a price attributable to one target —
 			// a combo's price cannot seed a per-target ratchet
 			if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() == 1) {
-				int price = s.matchedTrade.price();
-				Integer marked = huntMarkedPrices.get(s.matchedTrade.id());
-				if (marked != null) {
-					EnchantmentTarget huntTarget = TradeMasterConfig.INSTANCE.enchantments.get(s.matchedTrade.id());
-					int maxPrice = huntTarget == null ? price : huntTarget.maxPrice();
-					// "marked above config" branch: the config price was lowered
-					// below the mark and this lock came in at/below the config
-					// price — the mark falls back to the config price, NOT the
-					// locked price (first lock keeps marking the locked price)
-					if (marked > maxPrice && price <= maxPrice) {
-						price = maxPrice;
-					}
+				// The hunt mark only ever moves DOWN: it records the price actually
+				// paid, and only when that is strictly cheaper than the current mark.
+				// (The old rule fell back to the CONFIG price when that had been
+				// lowered below the mark, leaving the "cheaper only" slot one above
+				// the price just paid — so after a mid-run maxPrice drop the very same
+				// price could match again and be bought twice.)
+				int paid = s.matchedTrade.price();
+				Integer prevMark = huntMarkedPrices.get(s.matchedTrade.id());
+				if (prevMark == null || paid < prevMark) {
+					huntMarkedPrices.put(s.matchedTrade.id(), paid);
 				}
-				huntMarkedPrices.put(s.matchedTrade.id(), price);
 			} else if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() >= 2) {
 				// the purchased book carries several matched enchantments: its price
 				// cannot be attributed, so record the combo itself as a temporary
@@ -1617,6 +1643,7 @@ public final class RerollController {
 			debug("send-away: locked villager dispatched, breaking lectern (no re-place yet)");
 			guardian = LecternGuardian.breakOnly();
 			postDispatchRefresh = true;
+			postDispatchBreakRetriesSpent = 0;
 			enter(Phase.ENSURE_LECTERN);
 		} else if (result.step() == RerollStrategy.Step.FAILED) {
 			stop(result.reason(), ChatFormatting.RED);
@@ -2151,6 +2178,10 @@ public final class RerollController {
 			guardian = null;
 		}
 		SmoothRotation.reset();
+		strayChestTicks = 0;
+		// an interrupted run may have left the hand on the axe / lectern slot: hand
+		// it back the same way the presser does (H2 / N3)
+		LecternRestock.restoreOriginalSelection();
 		// a press can be interrupted mid-way with the hotbar selection parked on its
 		// temporary empty slot: hand it back instead of just dropping the reference
 		if (summonPresser != null) {
@@ -2186,6 +2217,7 @@ public final class RerollController {
 		restSummonPending = false;
 		awaitingRigClear = false;
 		postDispatchRefresh = false;
+		postDispatchBreakRetriesSpent = 0;
 		lockSlotPrepared = false;
 		lockExhaustionDepositPending = false;
 		professionHealCycles = 0;

@@ -16,7 +16,7 @@ An automated **librarian enchanted-book trade rerolling pipeline** for Minecraft
 
 ## Overview
 
-Set up a lectern and three buttons (summon / send-away) and the mod will:
+Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 1. detect the enchanted-book trades a villager offers, using the **detection mode** you pick;
 2. **lock** the trade when it matches your targets, optionally **name** the villager with an anvil to record the price, then send the villager away;
@@ -44,7 +44,7 @@ Set up a lectern and three buttons (summon / send-away) and the mod will:
 ## Quick start
 
 1. **Build the rig**: lectern + summon button + send-away button (optional: chests / grindstone + anvil + name tags);
-2. **Fill in the coordinates**: press `V` to open the main menu → "Settings" tab, right-click the target block or use maLiLib's `P` key to pick it;
+2. **Fill in the coordinates**: press `V` to open the main menu → "Settings" tab → click the row's `[pick in game]` suffix to arm the picker, then right-click the target block (or use maLiLib's `P` key);
 3. **Pick targets**: on the "Enchanted books" tab, tick the enchantments you want and set **level** and **max price**;
 4. **Start**: hotkey `R`, or `/trademaster start`.
 
@@ -203,8 +203,14 @@ In the order of the in-game screen (all three entry points share one config):
 | Mechanism | Hunt cheaper | off | Can only be turned off while running |
 | Mechanism | Lock retry cap | −1 | −1 = forever, ≤ 999 |
 | Mechanism | Offhand swap retries | 3 | −1 = forever, ≤ 999 |
+| Mechanism | Post-dispatch break retry limit | 2 | How often the lectern break is retried after a villager was dispatched before the run stops with an error; −1 = forever, ≤ 999 |
+| Mechanism | Sand-wheel (grindstone) mode | on | Only used when all four elements are set (see "Storage") |
 | Mechanism | Grindstone open retries | 1 | −1 = forever, ≤ 999 |
-| Display | Show roll count / debug log | on / off | The debug log goes to the log file |
+| Naming | Custom curse enchantment ids | empty | Comma-separated; vanilla `minecraft:` ids are rejected (vanilla curses are tag-detected) |
+| Display | Show roll count | on | HUD shows the current phase and the roll count |
+| Display | Enable naming | off | Requires an anvil + name tag |
+| Display | Force naming price to 1 | off | — |
+| Display | Debug log | off | Written to the log file |
 | Naming | Enable naming / force price 1 | off / off | — |
 | Anti-cheat | see the table above | — | — |
 | Positions | see "The rig and coordinates" | — | — |
@@ -229,7 +235,7 @@ All three share the **same** `config/trade-master.json`:
 2. **Mod Menu** (provides the config-screen entry);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 
-On first launch, when this mod's config does not exist yet, the anti-cheat flags and the enchantment table are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`.
+On first launch, when this mod's config does not exist yet, the **enchantment table** and **four of the anti-cheat flags** (`preventAxeBreaking`, `tpToVillager`, `legitMode`, `slowMode`) are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`; the remaining flags (`tpToItem`, `stopOnPlayerMove`, `placeDelay`, `interactDelay`) are not migrated and keep this mod's defaults.
 
 ## Compatibility and risks
 
@@ -251,6 +257,12 @@ On first launch, when this mod's config does not exist yet, the anti-cheat flags
 ### This project
 
 **GNU General Public License v3.0** (full text in [`LICENSE`](LICENSE)). You may use, modify and redistribute it freely, but **redistribution must keep the attribution and the license, and must provide the corresponding source**.
+
+### Author's statement (not a license term)
+
+This project is **intended solely for the author's personal use and open-source sharing**; the author does not and will not engage in any commercial activity with it.
+
+> ⚠️ Note: this is a statement of the author's **intent**, **not an additional license restriction**. The project is released under GPL-3.0 and derives from projects licensed GPL-3.0 / LGPL-3.0; GPL-3.0 forbids adding further restrictions — so **anyone may still use, modify and redistribute it (including commercially) under GPL-3.0**, provided the attribution and license are kept, modifications are marked, and the corresponding source is provided.
 
 ### Ported from (license-compatible, and modified)
 

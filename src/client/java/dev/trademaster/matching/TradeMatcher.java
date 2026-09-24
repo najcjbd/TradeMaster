@@ -338,11 +338,13 @@ public class TradeMatcher {
 		return Set.copyOf(parts);
 	}
 
-	/** Budget slot for a target: marked-1 once hunt-locked (only strictly cheaper
-	 * copies may match), otherwise the configured max price. */
+	/** Budget slot for a target: the hunt LOWERS it (marked-1 — only a strictly
+	 * cheaper copy is accepted) and the CONFIG CAPS it — so lowering maxPrice
+	 * mid-run takes effect at once, while raising it never loosens the hunt. */
 	private int budgetFor(Identifier id, EnchantmentTarget target) {
 		Integer marked = this.huntPrices.get(id);
-		return marked == null ? target.maxPrice() : marked - 1;
+		if (marked == null) return target.maxPrice();
+		return Math.min(marked - 1, target.maxPrice());
 	}
 
 	/** Re-queues every still-enabled hunt-marked target at marked-1. Runs after
@@ -352,10 +354,12 @@ public class TradeMatcher {
 		for (Map.Entry<Identifier, Integer> entry : this.huntPrices.entrySet()) {
 			EnchantmentTarget target = this.targets.get(entry.getKey());
 			if (target == null) continue; // disabled mid-run: the hunt pauses
+			int budget = budgetFor(entry.getKey(), target);
 			// villager trades have a price floor of 1 emerald + 1 book: once the
-			// mark reaches 1 the budget is 0 and no cheaper copy can ever exist —
-			// the hunt for this book simply stops (the 1→0 ratchet is deliberate)
-			int budget = entry.getValue() - 1;
+			// budget reaches 0 no cheaper copy can ever exist — the hunt for this book
+			// simply stops (the 1→0 ratchet is deliberate). A config price below the
+			// vanilla minimum never reaches here: buildNeeds drops such a target, so
+			// target is null above and the hunt pauses instead of spinning.
 			if (budget < 1) continue;
 			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 			queue.enqueue(budget);
@@ -376,7 +380,15 @@ public class TradeMatcher {
 			// refresh the target reference: the user may have edited level/price
 			// mid-run and tryMatch's level check reads from this map
 			this.targets.put(target.id(), target);
-			if (this.needs.containsKey(target.id()) || this.deductedByName.contains(target.id())) continue;
+			// The named-deduction half of this guard can never fire, so it is
+			// commented out (NOT deleted, so the intent stays visible):
+			// buildNeeds() clears deductedByName at its start, deductNamedVillagers()
+			// only runs while hunt is OFF, and this method only runs while hunt is ON —
+			// the two states are mutually exclusive by design. Restore it if hunt is
+			// ever allowed to be enabled mid-run, otherwise a named-deduction would be
+			// silently resurrected and the enchantment farmed twice.
+			// if (this.needs.containsKey(target.id()) || this.deductedByName.contains(target.id())) continue;
+			if (this.needs.containsKey(target.id())) continue;
 			if (lockedIds.contains(target.id()) && !this.huntPrices.containsKey(target.id())) continue;
 			// same guard as buildNeeds: config-budgeted targets that can never match
 			// stay out (hunt-marked targets keep their cheaper-than-mark budget)

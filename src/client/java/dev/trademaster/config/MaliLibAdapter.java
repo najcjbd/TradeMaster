@@ -61,6 +61,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 	private ConfigInteger optProfessionHealCap;
 	private ConfigInteger optLockMaxRetries;
 	private ConfigInteger optOffhandSwapRetries;
+	private ConfigInteger optPostDispatchBreakRetries;
 	private ConfigBoolean optMultiEnchantProtection;
 	private ConfigInteger optPlaceDelay, optInteractDelay;
 	private ConfigBoolean optLegit, optSlow, optTp, optTpItem, optProtectAxe, optStopOnMove;
@@ -173,6 +174,8 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 				"trademaster.settings.lockMaxRetries");
 		this.optOffhandSwapRetries = labeled(new ConfigInteger("offhandSwapRetries", c.offhandSwapRetries, -1, 999, "", ""),
 				"trademaster.settings.offhandSwapRetries");
+		this.optPostDispatchBreakRetries = labeled(new ConfigInteger("postDispatchBreakRetries", c.postDispatchBreakRetries, -1, 999, "", ""),
+				"trademaster.settings.postDispatchBreakRetries");
 		this.optMultiEnchantProtection = labeled(new ConfigBoolean("multiEnchantProtection", c.multiEnchantProtection, "", ""),
 				"trademaster.settings.multiEnchantProtection");
 		this.optDisplayRolls = labeled(new ConfigBoolean("displayRolls", c.displayRolls, "", ""),
@@ -230,7 +233,8 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 				this.optReserveCheaper, this.optMinLockEmeralds,
 				this.optTimeoutEnabled, this.optTimeout, this.optPhaseTimeouts,
 				this.optVillagerCheckInterval, this.optLecternHealGrace, this.optProfessionHealCapEnabled, this.optProfessionHealCap,
-				this.optAutoDisable, this.optHuntCheaper, this.optLockMaxRetries, this.optOffhandSwapRetries, this.optMultiEnchantProtection,
+				this.optAutoDisable, this.optHuntCheaper, this.optLockMaxRetries, this.optOffhandSwapRetries,
+				this.optPostDispatchBreakRetries, this.optMultiEnchantProtection,
 				this.optDisplayRolls, this.optDebugLog,
 				this.optNaming, this.optForceNamePriceOne,
 				this.optLegit, this.optSlow, this.optTp, this.optTpItem, this.optProtectAxe, this.optStopOnMove,
@@ -257,6 +261,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		this.optHuntCheaper.setBooleanValue(c.huntCheaper);
 		this.optLockMaxRetries.setIntegerValue(c.lockMaxRetries);
 		this.optOffhandSwapRetries.setIntegerValue(c.offhandSwapRetries);
+		this.optPostDispatchBreakRetries.setIntegerValue(c.postDispatchBreakRetries);
 		this.optMultiEnchantProtection.setBooleanValue(c.multiEnchantProtection);
 		this.optDisplayRolls.setBooleanValue(c.displayRolls);
 		this.optDebugLog.setBooleanValue(c.debugLog);
@@ -324,6 +329,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		}
 		c.lockMaxRetries = this.optLockMaxRetries.getIntegerValue();
 		c.offhandSwapRetries = this.optOffhandSwapRetries.getIntegerValue();
+		c.postDispatchBreakRetries = this.optPostDispatchBreakRetries.getIntegerValue();
 		c.multiEnchantProtection = this.optMultiEnchantProtection.getBooleanValue();
 		c.displayRolls = this.optDisplayRolls.getBooleanValue();
 		c.debugLog = this.optDebugLog.getBooleanValue();

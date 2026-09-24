@@ -165,6 +165,7 @@ public final class ConfigPersistence {
 		mechanism.addProperty("autoDisableAfterLock", c.autoDisableAfterLock);
 		mechanism.addProperty("huntCheaper", c.huntCheaper);
 		mechanism.addProperty("lockMaxRetries", c.lockMaxRetries);
+		mechanism.addProperty("postDispatchBreakRetries", c.postDispatchBreakRetries);
 		mechanism.addProperty("offhandSwapRetries", c.offhandSwapRetries);
 		mechanism.addProperty("multiEnchantProtection", c.multiEnchantProtection);
 		mechanism.addProperty("displayRolls", c.displayRolls);
@@ -257,6 +258,8 @@ public final class ConfigPersistence {
 			// hand-edited file may carry both: autoDisableAfterLock wins, same as maLiLib
 			if (c.autoDisableAfterLock) c.huntCheaper = false;
 			c.lockMaxRetries = readInt(mechanism, "lockMaxRetries", c.lockMaxRetries);
+			c.postDispatchBreakRetries = Math.min(Math.max(-1,
+					readInt(mechanism, "postDispatchBreakRetries", c.postDispatchBreakRetries)), 999);
 			c.offhandSwapRetries = readInt(mechanism, "offhandSwapRetries", c.offhandSwapRetries);
 			c.multiEnchantProtection = readBool(mechanism, "multiEnchantProtection", c.multiEnchantProtection);
 			c.displayRolls = readBool(mechanism, "displayRolls", c.displayRolls);
@@ -379,6 +382,7 @@ public final class ConfigPersistence {
 		c.professionHealCap = Math.min(Math.max(c.professionHealCap, 1), 20);
 		c.lockMaxRetries = Math.min(Math.max(c.lockMaxRetries, -1), 999);
 		c.offhandSwapRetries = Math.min(Math.max(c.offhandSwapRetries, -1), 999);
+		c.postDispatchBreakRetries = Math.min(Math.max(c.postDispatchBreakRetries, -1), 999);
 		c.placeDelay = Math.min(Math.max(c.placeDelay, 0), 20);
 		c.interactDelay = Math.min(Math.max(c.interactDelay, 0), 20);
 		// an out-of-range drop direction is a typo: drop it (unset) instead of

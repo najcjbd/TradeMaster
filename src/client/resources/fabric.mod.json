@@ -7,7 +7,10 @@
 	"authors": [
 		"mknbt"
 	],
-	"contact": {},
+	"contact": {
+		"homepage": "https://github.com/najcjbd/TradeMaster",
+		"sources": "https://github.com/najcjbd/TradeMaster"
+	},
 	"license": "GPL-3.0",
 	"icon": "assets/trade-master/icon.png",
 	"environment": "client",

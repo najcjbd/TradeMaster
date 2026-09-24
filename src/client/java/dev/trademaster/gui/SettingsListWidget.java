@@ -51,6 +51,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		addEntry(new HuntRow(), 44);
 		addEntry(new IntRow("trademaster.settings.lockMaxRetries", () -> c.lockMaxRetries, v -> c.lockMaxRetries = v, -1, 999));
 		addEntry(new IntRow("trademaster.settings.offhandSwapRetries", () -> c.offhandSwapRetries, v -> c.offhandSwapRetries = v, -1, 999));
+		addEntry(new IntRow("trademaster.settings.postDispatchBreakRetries", () -> c.postDispatchBreakRetries, v -> c.postDispatchBreakRetries = v, -1, 999));
 		addEntry(new BoolRow("trademaster.settings.grindstoneEnabled", () -> c.grindstoneEnabled, v -> c.grindstoneEnabled = v));
 		addEntry(new IntRow("trademaster.settings.grindstoneOpenRetries", () -> c.grindstoneOpenRetries, v -> c.grindstoneOpenRetries = v, -1, 999));
 		addEntry(new BoolRow("trademaster.settings.displayRolls", () -> c.displayRolls, v -> c.displayRolls = v));
@@ -1162,6 +1163,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		 * ("1, -60, 11" on the way to "15, -60, 11") was written straight into the
 		 * chest list, sending the depositor to a block that is not the chest. */
 		private boolean pendingApply = false;
+		/** The binding this row was built for: a draft must never be written into
+		 * whatever chest slid into this index after a removal. */
+		private final BlockPos originalPos;
 
 		ChestRow(int index, Runnable rebuild) {
 			this.index = index;
@@ -1169,6 +1173,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("chest"));
 			this.field.setMaxLength(40);
 			BlockPos initialChest = TradeMasterConfig.INSTANCE.chestPositions.get(index);
+			this.originalPos = initialChest;
 			this.field.setValue(initialChest == null ? "" : initialChest.getX() + ", " + initialChest.getY() + ", " + initialChest.getZ());
 			this.field.setResponder(text -> {
 				if (this.removed || text.trim().isEmpty()) return;
@@ -1180,6 +1185,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (!this.pendingApply) return;
 			this.pendingApply = false;
 			if (this.removed || this.field.getValue().trim().isEmpty()) return;
+			// a removal elsewhere in the list shifts every later index: never write
+			// this draft into whichever chest slid into this row's index
+			if (!this.originalPos.equals(this.currentPos())) return;
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			BlockPos parsed = parsePos(this.field.getValue(), Minecraft.getInstance().player);
 			if (parsed != null && this.index < c.chestPositions.size()) {
