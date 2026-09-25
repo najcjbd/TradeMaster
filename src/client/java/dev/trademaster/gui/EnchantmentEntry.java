@@ -13,6 +13,7 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import org.jetbrains.annotations.Nullable;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -29,9 +30,24 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	private boolean priceDirty = false;
 	private boolean levelDirty = false;
 	private int x, y, entryWidth, entryHeight;
+	/** Redraw cache: extractContent runs for every visible row on every frame, so the
+	 * marked-name literal and its width are rebuilt only when the enable flag flips. */
+	private @Nullable Boolean cachedMarked = null;
+	private Component markedName = Component.empty();
+	private int markedWidth = 0;
+	/** Constant for the row's whole life: its id string, never changes. */
+	private final Component idText;
+	/** "Max <roman>" is constant for the row's life, but it is resolved lazily on the
+	 * first frame: building it in the constructor could read a not-yet-loaded registry. */
+	private @Nullable Component maxLevelText;
+	private String maxLevelRaw = "";
+	private @Nullable Integer cachedMinLevel = null;
+	private Component minPriceText = Component.empty();
+	private String minPriceRaw = "";
 
 	public EnchantmentEntry(Identifier id) {
 		this.id = id;
+		this.idText = Component.literal(id.toString());
 		Registry<Enchantment> registry = enchantmentRegistry();
 		this.enchantment = registry == null ? null : registry.getValue(id);
 		this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
@@ -225,25 +241,41 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		int color = enabled ? 0x3F00FF00 : 0x1AC7C0C0;
 		context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, color);
 
-		String name = EnchantmentNamer.displayName(this.id, this.translationKey);
-		context.text(font, Component.literal((enabled ? "[x] " : "[ ] ") + name), this.x + 4, this.y + 4, 0xFFFFFFFF);
-		context.text(font, Component.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
+		// cached: this runs for every visible row on every frame
+		if (this.cachedMarked == null || this.cachedMarked != enabled) {
+			this.cachedMarked = enabled;
+			String name = EnchantmentNamer.displayName(this.id, this.translationKey);
+			this.markedName = Component.literal((enabled ? "[x] " : "[ ] ") + name);
+			this.markedWidth = font.width(this.markedName);
+		}
+		context.text(font, this.markedName, this.x + 4, this.y + 4, 0xFFFFFFFF);
+		context.text(font, this.idText, this.x + 4, this.y + 12, 0xFF808080);
 
 		int right = this.x + this.entryWidth;
-		String maxLevelText = "Max " + EnchantmentNamer.romanNumerals(maxLevel());
 		int minPrice = minPrice(target.level());
-		String minPriceText = "Min $" + minPrice;
+		// level-dependent, so cached against the level the row last drew with
+		if (this.cachedMinLevel == null || this.cachedMinLevel != minPrice) {
+			this.cachedMinLevel = minPrice;
+			this.minPriceRaw = "Min $" + minPrice;
+			this.minPriceText = Component.literal(this.minPriceRaw);
+		}
+		if (this.maxLevelText == null) {
+			this.maxLevelRaw = "Max " + EnchantmentNamer.romanNumerals(maxLevel());
+			this.maxLevelText = Component.literal(this.maxLevelRaw);
+		}
+		String minPriceText = this.minPriceRaw;
+		String maxLevelText = this.maxLevelRaw;
 		// Anchored to the field block instead of the old fixed right-200/-140: those
 		// spilled past the row's left edge on a narrow (Android/FCL) screen. Drawn
 		// only when they clear the name, so the two never overlap.
 		int fieldsLeft = right - 78;
 		int minPriceX = fieldsLeft - font.width(minPriceText);
 		int maxLevelX = minPriceX - 6 - font.width(maxLevelText);
-		int nameRight = this.x + 4 + font.width(Component.literal((enabled ? "[x] " : "[ ] ") + name));
+		int nameRight = this.x + 4 + this.markedWidth;
 		if (maxLevelX >= nameRight + 4) {
-			context.text(font, Component.literal(maxLevelText), maxLevelX, this.y + 6, 0xFFC0C0C0);
+			context.text(font, this.maxLevelText, maxLevelX, this.y + 6, 0xFFC0C0C0);
 			// min price above the 64 emerald cap: the target can never match
-			context.text(font, Component.literal(minPriceText), minPriceX, this.y + 6,
+			context.text(font, this.minPriceText, minPriceX, this.y + 6,
 					minPrice > 64 ? 0xFFFF5555 : 0xFFC0C0C0);
 		}
 

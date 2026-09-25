@@ -147,7 +147,11 @@ public final class RerollController {
 	/** Fingerprint (id/level/maxPrice of every enabled target) of the config the
 	 * current needs table was built from: any mid-run edit triggers a one-shot
 	 * rebuild, same pattern as the hunt flip above. */
-	private static @Nullable String needsFingerprint = null;
+	/** Hash of the live target config, or null before the first refresh. A long
+	 * instead of a string: this is compared on EVERY tick, and building the string
+	 * cost an ArrayList plus a StringBuilder plus one Identifier.toString() per
+	 * enabled target per tick (tens of objects, twice a second on 20 tps). */
+	private static @Nullable Long needsFingerprint = null;
 	/** Lock retries exhausted with a full inventory: draining chests before rerolling on. */
 	private static boolean lockExhaustionDepositPending = false;
 	/** Ticks to wait before the next post-dispatch break attempt (spaces out retries). */
@@ -304,6 +308,7 @@ public final class RerollController {
 		// cancel only now that the run actually proceeds, so a failed start
 		// keeps the user's in-progress pick alive
 		PositionPicker.cancel();
+		loggedOnce.clear();
 		session = s;
 		sessionDimension = mc.level == null ? null : mc.level.dimension().identifier();
 		runTicks = 0;
@@ -422,8 +427,8 @@ public final class RerollController {
 		// self-edit lands here too, so the finalizing guard below is what keeps a
 		// just-locked single target running through NAME/SEND_AWAY instead of
 		// stopping before the villager is named and sent away.
-		String targetsNow = targetsFingerprint();
-		if (needsFingerprint != null && !targetsNow.equals(needsFingerprint)) {
+		long targetsNow = targetsFingerprint();
+		if (needsFingerprint != null && targetsNow != needsFingerprint) {
 			debug("target config edited mid-run, rebuilding needs");
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty() && !finalizingRun()) {
@@ -570,8 +575,10 @@ public final class RerollController {
 		// happens — no picking (even of a usable adult), no dispatching, no
 		// summoning. A baby grows into a usable villager on its own; once no
 		// babies remain, the normal flow resumes exactly where it left off.
-		boolean babyAtArrival = villagersAtArrivalPoint(client, s.lecternPos).stream()
-				.anyMatch(Villager::isBaby);
+		// one scan for both the baby and the blocker question below: this runs every
+		// PRECHECK tick, and a second query would repeat the same entity lookup
+		List<Villager> atArrival = villagersAtArrivalPoint(client, s.lecternPos);
+		boolean babyAtArrival = atArrival.stream().anyMatch(Villager::isBaby);
 		if (babyAtArrival) {
 			debug("precheck: baby at detection point, waiting until no babies remain");
 			guardian = null;
@@ -593,7 +600,7 @@ public final class RerollController {
 			// a nitwit (or a villager employed in any non-librarian profession)
 			// already squatting at the detection point would block later arrivals
 			// and can never become a librarian: send it away first
-			boolean blockerAtArrival = villagersAtArrivalPoint(client, s.lecternPos).stream()
+			boolean blockerAtArrival = atArrival.stream()
 					.anyMatch(v -> !v.isBaby() && unusableProfession(v.getVillagerData().profession()));
 			if (blockerAtArrival) {
 				debug("precheck: unusable villager at detection point, sending away first");
@@ -694,14 +701,14 @@ public final class RerollController {
 			// trigger the endless profession-heal loop
 			for (Villager villager : villagers) {
 				if (villager.isBaby()) {
-					debug("await-villager: baby villager in the staging region, waiting");
+					debugOnce("await-baby-staging", "await-villager: baby villager in the staging region, waiting");
 					return;
 				}
 			}
 			// the region box need not contain the arrival point, so check it too: a
 			// baby standing there blocks the rig exactly like one in the staging area
 			if (villagersAtArrivalPoint(client, s.lecternPos).stream().anyMatch(Villager::isBaby)) {
-				debug("await-villager: baby at the arrival point, waiting");
+				debugOnce("await-baby-arrival", "await-villager: baby at the arrival point, waiting");
 				return;
 			}
 		}
@@ -1866,15 +1873,20 @@ public final class RerollController {
 		needsFingerprint = targetsFingerprint();
 	}
 
-	/** Stable description of the live target config: any enabled/disabled toggle
-	 * or level/maxPrice edit changes it, so the tick-top detector rebuilds once. */
-	private static String targetsFingerprint() {
-		StringBuilder sb = new StringBuilder();
-		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
-			sb.append(target.id()).append(':').append(target.level())
-					.append(':').append(target.maxPrice()).append(';');
+	/** Stable hash of the live target config: any enabled/disabled toggle or
+	 * level/maxPrice edit changes it, so the tick-top detector rebuilds once.
+	 * Allocation-free on purpose (iterates the map directly, no target list):
+	 * this runs every tick. */
+	private static long targetsFingerprint() {
+		long h = 1125899906842597L;
+		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enchantments.values()) {
+			h = h * 31 + (target.enabled() ? 1 : 0);
+			if (!target.enabled()) continue;
+			h = h * 31 + target.id().hashCode();
+			h = h * 31 + target.level();
+			h = h * 31 + target.maxPrice();
 		}
-		return sb.toString();
+		return h;
 	}
 
 	/** A rebuild drained the needs while the run is already committed: a LOCK
@@ -2009,8 +2021,10 @@ public final class RerollController {
 	 * threshold: "has the dispatched villager left" must not read someone in the
 	 * dead band as gone, or the staging scan re-grabs them and the run re-summons. */
 	private static List<Villager> villagersAtArrivalPoint(Minecraft client, Vec3 arrival, double maxDistSqr) {
-		List<Villager> villagers = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class,
-				AABB.ofSize(arrival, 4, 4, 4)));
+		// getEntitiesOfClass already returns a fresh mutable list: the extra copy
+		// this used to make was pure garbage on every scan
+		List<Villager> villagers = client.level.getEntitiesOfClass(Villager.class,
+				AABB.ofSize(arrival, 4, 4, 4));
 		villagers.removeIf(v -> v.position().distanceToSqr(arrival) > maxDistSqr);
 		return villagers;
 	}
@@ -2393,6 +2407,24 @@ public final class RerollController {
 	public static void debug(String message) {
 		if (!TradeMasterConfig.INSTANCE.debugLog) return;
 		LOGGER.info("[TradeMaster] {}", message);
+	}
+
+	/** Use this on any path that can repeat every tick (or every check interval):
+	 * with a plain String the argument is built even when logging is off. */
+	public static void debug(java.util.function.Supplier<String> message) {
+		if (!TradeMasterConfig.INSTANCE.debugLog) return;
+		LOGGER.info("[TradeMaster] {}", message.get());
+	}
+
+	/** True once per debug-logging session per key: keeps a repeating wait from
+	 * filling the log with the same line. */
+	private static final java.util.Set<String> loggedOnce = new java.util.HashSet<>();
+
+	public static boolean debugOnce(String key, String message) {
+		if (!TradeMasterConfig.INSTANCE.debugLog) return false;
+		if (!loggedOnce.add(key)) return false;
+		LOGGER.info("[TradeMaster] {}", message);
+		return true;
 	}
 
 	private static void chat(Component component) {

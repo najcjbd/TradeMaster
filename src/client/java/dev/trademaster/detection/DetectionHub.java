@@ -96,10 +96,6 @@ public final class DetectionHub {
 		suppressMerchantScreensUntilNanos = 0L;
 	}
 
-	public static boolean isArmed() {
-		return armed != null;
-	}
-
 	public static boolean shouldInterceptMerchantScreen() {
 		DetectionHub hub = armed;
 		if (hub != null && hub.interceptScreens) return true;

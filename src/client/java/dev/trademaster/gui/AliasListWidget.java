@@ -42,10 +42,13 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	@Override
 	protected void extractListBackground(GuiGraphicsExtractor context) {
 		this.setSelected(null);
-		context.fill(5, 27, this.width - 14, 44, 0xAFC7C0C0);
+		// clamp: on a narrow list these fixed offsets fall left of the 5px margin
+		// (the enchantments page already guards its own fill the same way)
+		context.fill(5, 27, Math.max(8, this.width - 14), 44, 0xAFC7C0C0);
 		Font font = Minecraft.getInstance().font;
 		context.text(font, Component.translatable("trademaster.column.enchantment"), 9, 32, 0xFF202020);
-		context.text(font, Component.translatable("trademaster.column.alias"), this.width - 122, 32, 0xFF202020);
+		context.text(font, Component.translatable("trademaster.column.alias"),
+				Math.max(8, this.width - 122), 32, 0xFF202020);
 	}
 
 	@Override
@@ -106,6 +109,13 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		if (editing == null) return super.charTyped(input);
 		if (!input.isAllowedChatCharacter()) return false;
 		return editing.field.charTyped(input) || super.charTyped(input);
+	}
+
+	/** IME preedit for the row being edited (see EnchantmentsListWidget). */
+	@Override
+	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
+		AliasRow editing = this.editing();
+		return editing != null && editing.field.preeditUpdated(input);
 	}
 
 	private @Nullable AliasRow editing() {
@@ -273,7 +283,15 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				}
 			}
 			for (Map.Entry<String, Identifier> entry : config.nameHistory.entrySet()) {
-				if (entry.getValue().equals(id)) continue;
+				Identifier otherId = entry.getValue();
+				if (otherId.equals(id)) continue;
+				// the index only records a history name when that target is in
+				// `targets`: the same two filters as above apply here, or an entry
+				// for a dead/untradeable target refuses a perfectly legal name
+				EnchantmentTarget otherTarget = config.enchantments.get(otherId);
+				if (otherTarget == null || !otherTarget.enabled()) continue;
+				if (!TradeMatcher.registryTradeable(otherId)) continue;
+				if (TradeMasterConfig.minPrice(otherTarget.level(), otherId) > otherTarget.maxPrice()) continue;
 				if (EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(entry.getKey())).equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}

@@ -25,6 +25,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	public SettingsListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
 		super(client, width, height, top, itemHeight);
+		// the label/value caches below hold TRANSLATED components: drop them whenever
+		// the screen is (re)built, or a client language change would keep serving the
+		// old strings (the list is recreated on every open, resize and tab switch)
+		Row.invalidateTextCaches();
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 
 		addEntry(new CycleRow("trademaster.settings.mechanism",
@@ -97,9 +101,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			addEntry(new ChestRow(i, rebuild));
 		}
 		addEntry(new ActionRow("trademaster.settings.addChest", () -> {
-			if (PositionPicker.begin(PositionPicker.Slot.CHEST, pos -> c.chestPositions.add(pos.immutable()))) {
-				Minecraft.getInstance().gui.setScreen(null);
-			}
+			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
+					pos -> c.chestPositions.add(pos.immutable()));
+			if (began) Minecraft.getInstance().gui.setScreen(null);
+			return began;
 		}));
 	}
 
@@ -234,8 +239,23 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 	 * Only user-initiated scrolling clears focus. */
 	private boolean suppressFocusClear = false;
 
+	/** IME preedit (Android/IM soft keyboards): the screen delivers it to the focused
+	 * widget, which is this list, so hand it to the row whose field is focused —
+	 * EditBox.preeditUpdated has no focus guard and must not run on other rows. */
+	@Override
+	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
+		for (Row row : this.children()) {
+			if (row.handlePreedit(input)) return true;
+		}
+		return false;
+	}
+
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// commit every pending draft FIRST: a click on [Remove] deletes a chest
+		// inside super.mouseClicked, which shifts the rows AFTER it — their
+		// originalPos guard would then silently discard a draft typed in them
+		flushEdits();
 		boolean handled;
 		this.suppressFocusClear = true;
 		try {
@@ -297,6 +317,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		public boolean handleKey(KeyEvent input) { return false; }
 		public void handleRelease(KeyEvent input) {}
 		public boolean handleChar(CharacterEvent input) { return false; }
+
+		/** IME preedit forward (Android/IM keyboards): see the list-level override. */
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) { return false; }
 		/** Drops the row's EditBox focus (viewport scrolled away); no-op for rows without a field. */
 		void clearFieldFocus() {}
 
@@ -344,12 +367,44 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			return clickX >= left - 4 && clickX <= right + 4;
 		}
 
+		/** Label components are per-frame constants: resolving the key on every frame
+		 * built a Component (and a language lookup) for every visible row every frame. */
+		private static final java.util.Map<String, Component> LABELS = new java.util.HashMap<>();
+
+		/** The two boolean state texts are constants once looked up. */
+		private static String enabledText = null;
+		private static String disabledText = null;
+
+		protected static String valueText(boolean value) {
+			if (value) {
+				if (enabledText == null) enabledText = Component.translatable("trademaster.button.enabled").getString();
+				return enabledText;
+			}
+			if (disabledText == null) disabledText = Component.translatable("trademaster.button.disabled").getString();
+			return disabledText;
+		}
+
+		/** Drops the translated-text caches (see the list constructor). */
+		static void invalidateTextCaches() {
+			LABELS.clear();
+			enabledText = null;
+			disabledText = null;
+		}
+
+		protected static Component label(String key) {
+			Component cached = LABELS.get(key);
+			if (cached != null) return cached;
+			Component made = Component.translatable(key);
+			LABELS.put(key, made);
+			return made;
+		}
+
 		protected void drawBase(GuiGraphicsExtractor context, String labelKey, String valueText, int valueColor) {
-			drawBase(context, Component.translatable(labelKey), valueText, valueColor, 10);
+			drawBase(context, label(labelKey), valueText, valueColor, 10);
 		}
 
 		protected void drawBase(GuiGraphicsExtractor context, String labelKey, String valueText, int valueColor, int rightInset) {
-			drawBase(context, Component.translatable(labelKey), valueText, valueColor, rightInset);
+			drawBase(context, label(labelKey), valueText, valueColor, rightInset);
 		}
 
 		protected void drawBase(GuiGraphicsExtractor context, Component label, String valueText, int valueColor) {
@@ -357,6 +412,18 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		/** rightInset reserves space on the right so the value does not sit under a hosted EditBox. */
+		/** Value-component cache: rebuilt only when the value behind it changes. */
+		private String cachedValueText = null;
+		private Component cachedValueComponent = null;
+
+		protected Component valueComponent(String valueText) {
+			if (!valueText.equals(this.cachedValueText)) {
+				this.cachedValueText = valueText;
+				this.cachedValueComponent = Component.literal(valueText);
+			}
+			return this.cachedValueComponent;
+		}
+
 		protected void drawBase(GuiGraphicsExtractor context, Component label, String valueText, int valueColor, int rightInset) {
 			this.x = this.getX();
 			this.y = this.getY();
@@ -366,7 +433,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
 			context.text(font, label, this.x + 6, this.y + 6, 0xFFFFFFFF);
 			int textWidth = font.width(valueText);
-			context.text(font, Component.literal(valueText), this.x + this.entryWidth - rightInset - textWidth, this.y + 6, valueColor);
+			context.text(font, valueComponent(valueText), this.x + this.entryWidth - rightInset - textWidth, this.y + 6, valueColor);
 		}
 	}
 
@@ -385,7 +452,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			boolean value = this.getter.get();
 			drawBase(context, this.labelKey,
-					Component.translatable(value ? "trademaster.button.enabled" : "trademaster.button.disabled").getString(),
+					valueText(value),
 					value ? 0xFF00C000 : 0xFFC00000);
 		}
 
@@ -437,13 +504,22 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			}
 		}
 
+		/** The wrapped caption is cached: font.split re-lays out the text, and this
+		 * row is redrawn on every frame while the settings tab is open. */
+		private int cachedCaptionWidth = -1;
+		private java.util.List<net.minecraft.util.FormattedCharSequence> cachedCaptionLines = java.util.List.of();
+
 		@Override
 		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			super.extractContent(context, mouseX, mouseY, hovered, deltaTicks);
 			Font font = Minecraft.getInstance().font;
-			java.util.List<net.minecraft.util.FormattedCharSequence> lines = font.split(
-					Component.translatable("trademaster.settings.huntCheaper.caption"),
-					Math.max(40, this.entryWidth - 12));
+			int wrap = Math.max(40, this.entryWidth - 12);
+			if (wrap != this.cachedCaptionWidth) {
+				this.cachedCaptionWidth = wrap;
+				this.cachedCaptionLines = font.split(
+						Component.translatable("trademaster.settings.huntCheaper.caption"), wrap);
+			}
+			java.util.List<net.minecraft.util.FormattedCharSequence> lines = this.cachedCaptionLines;
 			for (int i = 0; i < lines.size() && i < 3; i++) {
 				context.text(font, lines.get(i), this.x + 6, this.y + 14 + i * 9, 0xFF909090);
 			}
@@ -609,6 +685,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		@Override
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
+		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
 		}
 	}
 
@@ -782,6 +863,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
 		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
+		}
 	}
 
 	/** Region extension (dx dy dz); signed values define direction, no ~ relative support. */
@@ -907,6 +993,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		@Override
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
+		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
 		}
 	}
 
@@ -1047,6 +1138,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
 		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
+		}
 	}
 
 	/** Custom curse enchantment ids (mod curses outside the vanilla curse tag);
@@ -1147,6 +1243,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		@Override
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
+		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
 		}
 	}
 
@@ -1310,13 +1411,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		public boolean handleChar(CharacterEvent input) {
 			return this.field.isFocused() && this.field.charTyped(input);
 		}
+
+		@Override
+		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
+			return this.field.isFocused() && this.field.preeditUpdated(input);
+		}
 	}
 
 	private static class ActionRow extends Row {
 		private final String labelKey;
-		private final Runnable action;
+		/** Reports whether the action actually ran: the picker refuses while a run
+		 * is active, and a refusal must not click. */
+		private final java.util.function.BooleanSupplier action;
 
-		ActionRow(String labelKey, Runnable action) {
+		ActionRow(String labelKey, java.util.function.BooleanSupplier action) {
 			this.labelKey = labelKey;
 			this.action = action;
 		}
@@ -1329,8 +1437,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
-				playClick();
-				this.action.run();
+				// the action itself may refuse (the picker rejects while a run is
+				// active): only sound when it actually ran, like BoolRow does
+				boolean ran = this.action.getAsBoolean();
+				if (ran) playClick();
 				return true;
 			}
 			return false;

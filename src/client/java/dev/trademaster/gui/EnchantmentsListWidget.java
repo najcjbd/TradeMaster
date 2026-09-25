@@ -115,6 +115,19 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
+	/** IME preedit (Android/IM soft keyboards): the screen routes it to the focused
+	 * widget, which is this list, so it must be handed to the focused field — the
+	 * vanilla default would drop it. Only the focused box may receive it: EditBox
+	 * .preeditUpdated has no focus guard of its own. */
+	@Override
+	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
+		for (EnchantmentEntry e : this.children()) {
+			if (e.maxPriceField.isFocused()) return e.maxPriceField.preeditUpdated(input);
+			if (e.levelField.isFocused()) return e.levelField.preeditUpdated(input);
+		}
+		return false;
+	}
+
 	@Override
 	public boolean keyPressed(KeyEvent input) {
 		for (EnchantmentEntry e : this.children()) {

@@ -33,8 +33,6 @@ public class TradeMasterScreen extends Screen {
 	private SettingsListWidget settingsList;
 	private KeybindsListWidget keybindsList;
 	private AliasListWidget aliasesList;
-	private Button startButton;
-	private Button stopButton;
 
 	public TradeMasterScreen(@Nullable Screen parent) {
 		super(Component.literal("Trade Master"));
@@ -83,7 +81,7 @@ public class TradeMasterScreen extends Screen {
 		int buttonsWidth = saveWidth + 6 + actionWidth + 2 + actionWidth;
 		int left = Math.max(2, Math.min(this.width / 2 - buttonsWidth / 2, this.width - buttonsWidth - 2));
 
-		this.startButton = this.addRenderableWidget(Button.builder(
+		this.addRenderableWidget(Button.builder(
 						Component.translatable("trademaster.button.start").withStyle(ChatFormatting.GREEN),
 						button -> {
 							// the start reads the config immediately: commit in-flight
@@ -104,7 +102,7 @@ public class TradeMasterScreen extends Screen {
 				.bounds(left + saveWidth + 6, this.height - 26, actionWidth, 20)
 				.build());
 
-		this.stopButton = this.addRenderableWidget(Button.builder(
+		this.addRenderableWidget(Button.builder(
 						Component.translatable("trademaster.button.stop").withStyle(ChatFormatting.RED),
 						button -> {
 							RerollController.stopManual();

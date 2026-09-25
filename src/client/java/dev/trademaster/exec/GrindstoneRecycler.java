@@ -99,6 +99,10 @@ public class GrindstoneRecycler implements BookDisposal {
 	private boolean offhandResent = false;
 	/** Hotbar slot selected before this recycler switched away; restored at the end. */
 	private int originalSlot = -1;
+	/** Enchantment registry resolved ONCE per tick: the curse check used to look it
+	 * up again for every book, and SCAN used to walk every slot twice per cycle. */
+	private @Nullable Registry<Enchantment> curseRegistry = null;
+
 	/** Hotbar slot the last offhand staging swap sent a book into, or -1. That swap
 	 * also displaced the slot's own item into the offhand; it is swapped back once the
 	 * book is gone, so the item does not stay in the offhand after the run. */
@@ -127,6 +131,7 @@ public class GrindstoneRecycler implements BookDisposal {
 			restoreHotbarSelection(player);
 			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
 		}
+		this.curseRegistry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
 
 		switch (this.state) {
 			case SEEK -> {
@@ -205,7 +210,9 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
-				if (Preconditions.countItem(player, Items.ENCHANTED_BOOK) == 0) {
+				// counted once and reused: this branch runs every grind cycle tick
+				int enchantedBooks = Preconditions.countItem(player, Items.ENCHANTED_BOOK);
+				if (enchantedBooks == 0) {
 					player.closeContainer();
 					undoOffhandStage(player);
 					restoreHotbarSelection(player);
@@ -214,20 +221,21 @@ public class GrindstoneRecycler implements BookDisposal {
 				// cursed books first: they permanently leave the inventory (chest/drop),
 				// freeing slots for the grind loop, and their riskier path fails fast
 				// before a long grind cycle starts
-				if (findBookSlot(player, true) != null) {
+				BookSlots books = scanBookSlots(player);
+				if (books.cursed() != null) {
 					// cursed books cannot be ground: chest first, drop as the fallback
 					if (!this.chests.isEmpty()) {
 						return beginChestStash(player);
 					}
 					return beginDrop(player);
 				}
-				Slot grindable = findBookSlot(player, false);
+				Slot grindable = books.grindable();
 				if (grindable != null) {
 					// no free-slot bootstrap needed: moving the book into the
 					// grindstone input empties its inventory slot, which is where
 					// the ground result lands
 					this.placeSlot = grindable.index;
-					this.preEnchanted = Preconditions.countItem(player, Items.ENCHANTED_BOOK);
+					this.preEnchanted = enchantedBooks;
 					this.prePlain = Preconditions.countItem(player, Items.BOOK);
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							grindable.index, 0, ContainerInput.QUICK_MOVE, player);
@@ -688,7 +696,7 @@ public class GrindstoneRecycler implements BookDisposal {
 
 	/** First enchanted book in the open menu's player slots; cursed=true filters
 	 * for curse books, cursed=false for grindable ones. */
-	private static @Nullable Slot findBookSlot(net.minecraft.client.player.LocalPlayer player, boolean cursed) {
+	private @Nullable Slot findBookSlot(net.minecraft.client.player.LocalPlayer player, boolean cursed) {
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.container == player.getInventory()
 					&& slot.getItem().is(Items.ENCHANTED_BOOK)
@@ -699,15 +707,37 @@ public class GrindstoneRecycler implements BookDisposal {
 		return null;
 	}
 
+	/** First cursed and first grindable book in ONE pass over the open menu's player
+	 * slots. SCAN needs both answers and used to walk every slot (re-reading every
+	 * book's enchantments) twice per cycle. */
+	private record BookSlots(@Nullable Slot cursed, @Nullable Slot grindable) {}
+
+	private BookSlots scanBookSlots(net.minecraft.client.player.LocalPlayer player) {
+		Slot cursed = null;
+		Slot grindable = null;
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.container != player.getInventory()
+					|| !slot.getItem().is(Items.ENCHANTED_BOOK)) {
+				continue;
+			}
+			if (isCursed(slot.getItem())) {
+				if (cursed == null) cursed = slot;
+			} else if (grindable == null) {
+				grindable = slot;
+			}
+			if (cursed != null && grindable != null) break;
+		}
+		return new BookSlots(cursed, grindable);
+	}
+
 	/** Curse check: vanilla curse tag or a user-configured mod curse id. */
-	private static boolean isCursed(ItemStack stack) {
+	private boolean isCursed(ItemStack stack) {
 		if (!stack.is(Items.ENCHANTED_BOOK)) return false;
 		ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
 		if (enchantments.isEmpty()) return false;
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		Minecraft mc = Minecraft.getInstance();
-		Registry<Enchantment> registry = mc.level == null ? null
-				: mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+		// resolved once per tick (see tick()); null only before the first tick
+		Registry<Enchantment> registry = this.curseRegistry;
 		for (Holder<Enchantment> holder : enchantments.keySet()) {
 			if (holder.is(EnchantmentTags.CURSE)) return true;
 			if (registry != null && !config.customCurseEnchantments.isEmpty()) {

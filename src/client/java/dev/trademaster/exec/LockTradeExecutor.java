@@ -136,6 +136,10 @@ public class LockTradeExecutor {
 				// cursor: verify the item actually landed before closing, otherwise
 				// the run would treat the villager as locked and dispatch it
 				if (this.menu.getCarried().isEmpty()) {
+					// deliberately NOT flagged like the stage-3 timeout: the client's
+					// own prediction puts the book on the cursor whenever the click was
+					// applied, so an empty cursor here means the click did not go
+					// through at all — retrying this one buys nothing twice
 					if (++this.pickupWaitTicks > 10) return Result.FAILED;
 					return Result.RUNNING;
 				}
