@@ -77,12 +77,51 @@ public final class TradeMasterConfig {
 	 * Keeps named-villager deduction working across game-language switches. */
 	public final LinkedHashMap<String, Identifier> nameHistory = new LinkedHashMap<>();
 
+	// ---- trade offers: unusual cost shapes ---------------------------------
+	/** Item ids that mean "this cost slot is not charged at all". Applied to BOTH
+	 * sides: a slot the OFFER fills with one of these counts as not charged, and the
+	 * same id (or an empty field) in a spec means "this slot is not required". */
+	public final List<String> airItems = new ArrayList<>(List.of("minecraft:air"));
+
+	/** Per-target trade shape. Absent = {@link TradeOfferSpec#defaults()}, i.e. exactly
+	 * the emerald + book trade the mod required before this feature existed. */
+	public final LinkedHashMap<Identifier, TradeOfferSpec> tradeSpecs = new LinkedHashMap<>();
+
+	/** Whether an item id counts as "air" (not charged). A null id (an item that could
+	 * not be parsed) also counts as air, so a spec field left empty means "not required". */
+	public boolean isAirItem(@Nullable Identifier id) {
+		if (id == null) return true;
+		String text = id.toString();
+		for (String air : this.airItems) {
+			if (air == null || air.isBlank()) continue;
+			if (air.trim().equalsIgnoreCase(text)) return true;
+		}
+		return false;
+	}
+
+	/** The spec for a target, or the default (emerald + book ×1) when none was set. */
+	public TradeOfferSpec specFor(Identifier id) {
+		TradeOfferSpec spec = this.tradeSpecs.get(id);
+		return spec == null ? TradeOfferSpec.defaults() : spec;
+	}
+
 	// positions (nullable until picked/configured)
 	public @Nullable BlockPos lecternPos = null;
 	public @Nullable BlockPos summonButtonPos = null;
 	public @Nullable BlockPos sendAwayButtonPos = null;
 	/** Overflow chests for enchanted books when the inventory is full; tried in order. */
 	public final List<BlockPos> chestPositions = new ArrayList<>();
+
+	/** Upper bound for bound chests: a hand-edited file with thousands of entries
+	 * would otherwise be read, kept and rewritten in full on every save. */
+	public static final int MAX_CHESTS = 64;
+
+	/** Adds a chest unless it is already bound or the list is full. */
+	public boolean addChest(BlockPos pos) {
+		if (pos == null || this.chestPositions.size() >= MAX_CHESTS) return false;
+		if (this.chestPositions.contains(pos)) return false;
+		return this.chestPositions.add(pos);
+	}
 
 	// grindstone recycling (replaces the chest deposit steps when fully configured)
 	public boolean grindstoneEnabled = true;

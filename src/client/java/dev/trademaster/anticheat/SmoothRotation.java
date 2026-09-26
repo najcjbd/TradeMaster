@@ -21,6 +21,9 @@ public final class SmoothRotation {
 	private static float elapsedTime = 0;
 	// monotonic clock: wall time can jump backwards on NTP sync and stall the rotation
 	private static long prevTimeNanos = 0;
+	/** Largest wall-clock step one update may consume (a hitch is spread over the
+	 * following updates instead of finishing the turn instantly). */
+	private static final float MAX_STEP_SECONDS = 0.05f;
 
 	private SmoothRotation() {}
 
@@ -81,6 +84,10 @@ public final class SmoothRotation {
 		// prevTimeNanos together with it.
 		float delta = (now - (prevTimeNanos == 0 ? now : prevTimeNanos)) / 1_000_000_000f;
 		prevTimeNanos = now;
+		// clamp: a main-thread hitch (GC, Android stall) must not consume the whole
+		// rotation in one step — that turned the "smooth" turn into an instant snap
+		// exactly when the client was visibly stuttering
+		delta = Math.min(delta, MAX_STEP_SECONDS);
 		elapsedTime += delta;
 		float progress = elapsedTime / duration;
 		if (progress >= 1) {

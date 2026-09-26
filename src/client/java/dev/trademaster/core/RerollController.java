@@ -342,7 +342,8 @@ public final class RerollController {
 		}
 		String base = switch (phase) {
 			case IDLE -> Component.translatable("trademaster.status.idle").getString();
-			case PRECHECK, CHECK_TRADE -> Component.translatable("trademaster.status.check").getString();
+			case PRECHECK -> Component.translatable("trademaster.status.precheck").getString();
+			case CHECK_TRADE -> Component.translatable("trademaster.status.check").getString();
 			case REROLL -> Component.translatable("trademaster.status.break").getString();
 			case SUMMON -> Component.translatable("trademaster.status.summon").getString();
 			case AWAIT_VILLAGER -> Component.translatable("trademaster.status.await_villager").getString();
@@ -353,7 +354,13 @@ public final class RerollController {
 			case SEND_AWAY -> Component.translatable("trademaster.status.send_away").getString();
 			case DEPOSIT -> Component.translatable("trademaster.status.deposit").getString();
 		};
-		cachedStatusText = phase == Phase.IDLE || tries <= 0
+		// the "attempt N" suffix is about REROLLS: in LOCK/NAME/SEND_AWAY/DEPOSIT it
+		// read as if those steps were being retried
+		boolean rerolling = switch (phase) {
+			case PRECHECK, CHECK_TRADE, REROLL, ENSURE_LECTERN, WAIT_PROFESSION -> true;
+			default -> false;
+		};
+		cachedStatusText = !rerolling || tries <= 0
 				? base
 				: base + Component.translatable("trademaster.status.tries", tries).getString();
 		cachedStatusPhase = phase;
@@ -470,13 +477,27 @@ public final class RerollController {
 			return;
 		}
 		phaseTicks++;
-		if (config.displayRolls) {
+		if (overlayNoticeTicks > 0) {
+			// a notice owns the action bar for a few seconds; the status line resumes
+			// afterwards (lastOverlayText is cleared so it is re-posted even if the
+			// text itself has not changed meanwhile)
+			if (--overlayNoticeTicks == 0) {
+				overlayNotice = null;
+				lastOverlayText = null;
+			}
+		} else if (config.displayRolls) {
 			String text = statusText();
 			if (!text.equals(lastOverlayText)) {
 				lastOverlayText = text;
 				lastOverlayComponent = Component.literal(text);
 			}
 			client.gui.hud.setOverlayMessage(lastOverlayComponent, false);
+		} else if (lastOverlayText != null) {
+			// turned off mid-run: drop the stale line instead of leaving it on screen
+			// until the next stop
+			lastOverlayText = null;
+			lastOverlayComponent = null;
+			client.gui.hud.setOverlayMessage(Component.empty(), false);
 		}
 
 		// a dropped depositor can have a chest-open click in flight: the menu
@@ -692,7 +713,7 @@ public final class RerollController {
 		// dispatching a nitwit. Babies grow up on their own; the normal flow
 		// resumes once none are left.
 		if (!restSummonPending && villagers.stream().anyMatch(Villager::isBaby)) {
-			debug("await-villager: baby at detection point, waiting until no babies remain");
+			debugOnce("await-baby-detection", "await-villager: baby at detection point, waiting until no babies remain");
 			return;
 		}
 		if (restSummonPending) {
@@ -951,6 +972,10 @@ public final class RerollController {
 	}
 
 	private static void tickCheckTrade(Minecraft client, LocalPlayer player, RunSession s) {
+		// NOTE: every budget in this pipeline counts CLIENT TICKS, on purpose: the run
+		// can only act on a tick, so a client-side stall freezes both. The one window
+		// that must be wall-clock is the detection hub's (a packet arriving 3s after
+		// the interact is not this check's answer) and it enforces that itself.
 		if (phaseTimedOut(20 * 60)) {
 			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
@@ -1282,7 +1307,9 @@ public final class RerollController {
 			}
 			int slot = resolveLockSlot(offers, s);
 			if (slot < 0) {
-				stop(Component.translatable("trademaster.message.material_short"), ChatFormatting.RED);
+				// nothing on the list can be paid for at all
+				stop(Component.translatable("trademaster.message.material_short_emeralds",
+						TradeMasterConfig.INSTANCE.minLockEmeralds), ChatFormatting.RED);
 				return;
 			}
 			MerchantOffer offer = offers.get(slot);
@@ -1346,10 +1373,9 @@ public final class RerollController {
 					boolean unconfirmed = lockExecutor.uncertain();
 					debug("lock: click sent, outcome " + (unconfirmed ? "unconfirmed" : "drifted")
 							+ " — dispatching the villager instead of re-buying");
-					chat(Component.translatable(unconfirmed
-									? "trademaster.message.lock_unconfirmed"
-									: "trademaster.message.lock_drift_purchased")
-							.withStyle(ChatFormatting.YELLOW));
+					notice(Component.translatable(unconfirmed
+							? "trademaster.message.lock_unconfirmed"
+							: "trademaster.message.lock_drift_purchased"));
 					awaitNextVillager(client, s);
 				} else {
 					// a drift detected BEFORE the click: nothing was bought, and the
@@ -1412,8 +1438,7 @@ public final class RerollController {
 		lockAttempts++;
 		int maxRetries = TradeMasterConfig.INSTANCE.lockMaxRetries;
 		if (maxRetries >= 0 && lockAttempts > maxRetries) {
-			chat(Component.translatable("trademaster.message.lock_retry_exhausted", lockAttempts)
-					.withStyle(ChatFormatting.YELLOW));
+			notice(Component.translatable("trademaster.message.lock_retry_exhausted", lockAttempts));
 			if (s.matchedTrade != null) {
 				// same guard as awaitNextVillager: undoMatch's computeIfAbsent would
 				// resurrect a locked target that dropLocked removed after hunt was
@@ -1625,9 +1650,8 @@ public final class RerollController {
 					debug("naming: could not free a slot (chests bound="
 							+ config.chestPositions.size() + "), skipping naming");
 					closeMerchantMenuIfOpen(client);
-					chat(Component.translatable("trademaster.message.naming_skipped",
-									Component.translatable("trademaster.naming_skip.inventory_full"))
-							.withStyle(ChatFormatting.YELLOW));
+					notice(Component.translatable("trademaster.message.naming_skipped",
+							Component.translatable("trademaster.naming_skip.inventory_full")));
 					sendAwayPresser = null;
 					enter(Phase.SEND_AWAY);
 					return;
@@ -1661,9 +1685,10 @@ public final class RerollController {
 				namingExecutor = null;
 				SmoothRotation.reset();
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
-				chat(Component.translatable("trademaster.message.naming_skipped",
-								Component.translatable("trademaster.naming_skip.failed", reason))
-						.withStyle(ChatFormatting.YELLOW));
+				debug("naming failed: " + reason);
+				notice(Component.translatable("trademaster.message.naming_skipped",
+						Component.translatable("trademaster.naming_skip.failed",
+								NamingExecutor.describeFailure(reason))));
 				sendAwayPresser = null;
 				enter(Phase.SEND_AWAY);
 			}
@@ -1683,9 +1708,8 @@ public final class RerollController {
 			namingExecutor.abortCleanly();
 			namingExecutor = null;
 			closeMerchantMenuIfOpen(Minecraft.getInstance());
-			chat(Component.translatable("trademaster.message.naming_skipped",
-							Component.translatable("trademaster.naming_skip.timeout"))
-					.withStyle(ChatFormatting.YELLOW));
+			notice(Component.translatable("trademaster.message.naming_skipped",
+					Component.translatable("trademaster.naming_skip.timeout")));
 			sendAwayPresser = null;
 			enter(Phase.SEND_AWAY);
 		}
@@ -1786,7 +1810,8 @@ public final class RerollController {
 					// priced above the emerald floor — so this must not fall through.
 					s.matcher.undoMatch(hit);
 					closeMerchantMenuIfOpen(Minecraft.getInstance());
-					stop(Component.translatable("trademaster.message.material_short"), ChatFormatting.RED);
+					stop(Component.translatable("trademaster.message.material_short_emeralds", hit.price()),
+							ChatFormatting.RED);
 					return;
 				}
 			}
@@ -2389,6 +2414,8 @@ public final class RerollController {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.isSameThread()) {
 			mc.gui.hud.setOverlayMessage(Component.literal(""), false);
+			overlayNotice = null;
+			overlayNoticeTicks = 0;
 		}
 		if (message != null) {
 			chat(color == null ? message : message.copy().withStyle(color));
@@ -2400,6 +2427,19 @@ public final class RerollController {
 		stop(null, null);
 	}
 
+	/** Repeating notices (per villager / per retry) go to the ACTION BAR instead of
+	 * the chat: they used to push everything else out of the small Android chat box.
+	 * While one is showing it takes precedence over the status line. */
+	private static int overlayNoticeTicks = 0;
+	private static @Nullable Component overlayNotice = null;
+
+	private static void notice(Component component) {
+		Minecraft mc = Minecraft.getInstance();
+		overlayNotice = component;
+		overlayNoticeTicks = 20 * 4;
+		if (mc.gui != null) mc.gui.hud.setOverlayMessage(component, false);
+	}
+
 	/** Diagnostics go to the game log file, never to the chat bar. */
 	private static final org.apache.logging.log4j.Logger LOGGER =
 			org.apache.logging.log4j.LogManager.getLogger("TradeMaster");
@@ -2407,13 +2447,6 @@ public final class RerollController {
 	public static void debug(String message) {
 		if (!TradeMasterConfig.INSTANCE.debugLog) return;
 		LOGGER.info("[TradeMaster] {}", message);
-	}
-
-	/** Use this on any path that can repeat every tick (or every check interval):
-	 * with a plain String the argument is built even when logging is off. */
-	public static void debug(java.util.function.Supplier<String> message) {
-		if (!TradeMasterConfig.INSTANCE.debugLog) return;
-		LOGGER.info("[TradeMaster] {}", message.get());
 	}
 
 	/** True once per debug-logging session per key: keeps a repeating wait from

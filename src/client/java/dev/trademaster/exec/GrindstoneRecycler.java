@@ -129,7 +129,7 @@ public class GrindstoneRecycler implements BookDisposal {
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 180) {
 			restoreHotbarSelection(player);
-			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			return StepResult.failed(Component.translatable("trademaster.error.grindstone-timeout"));
 		}
 		this.curseRegistry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
 

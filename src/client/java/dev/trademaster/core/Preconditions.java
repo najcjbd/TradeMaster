@@ -79,11 +79,13 @@ public final class Preconditions {
 			}
 		}
 
+		// name the missing material and the amount: "not enough materials" left the
+		// player guessing whether to restock emeralds, books, a lectern or a tag
 		if (emeralds < emeraldFloor(enabled)) {
-			return Component.translatable("trademaster.message.material_short");
+			return Component.translatable("trademaster.message.material_short_emeralds", emeraldFloor(enabled));
 		}
 		if (books < 1) {
-			return Component.translatable("trademaster.message.material_short");
+			return Component.translatable("trademaster.message.material_short_books");
 		}
 
 		if (lecterns < 1 && !LecternRestock.isLecternAt(client.level, lectern)) {

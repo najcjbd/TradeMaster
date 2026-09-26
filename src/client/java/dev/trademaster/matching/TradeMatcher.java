@@ -1,12 +1,14 @@
 package dev.trademaster.matching;
 
 import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
 import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.tags.EnchantmentTags;
@@ -160,16 +162,12 @@ public class TradeMatcher {
 			// a sold-out offer cannot be purchased: matching it would run into a
 			// guaranteed lock rejection (and re-match it forever after the retry cap)
 			if (offer.isOutOfStock()) continue;
-			ItemStack costA = offer.getBaseCostA();
-			ItemStack costB = offer.getCostB();
 			ItemStack result = offer.getResult();
-			if (costA.getItem() != Items.EMERALD || costB.getItem() != Items.BOOK
-					|| !result.is(Items.ENCHANTED_BOOK)) {
-				continue;
-			}
+			// phase 1 matches enchanted books only: a result that is some other item is
+			// a "good" and comes with the second phase
+			if (!result.is(Items.ENCHANTED_BOOK)) continue;
 			var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(result);
 			if (enchantments.isEmpty()) continue;
-			int price = costA.getCount();
 			List<MatchPart> bookEnchantments = new ArrayList<>();
 			List<MatchPart> parts = new ArrayList<>();
 			int budget = 0;
@@ -185,11 +183,21 @@ public class TradeMatcher {
 				// alive — live primary needs decide that)
 				EnchantmentTarget target = this.targets.get(id);
 				if (target == null || level < target.level()) continue;
+				// an AIR result in the spec switches that row off from the offers table
+				if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(id).result())) {
+					continue;
+				}
 				parts.add(new MatchPart(id, level));
 				IntHeapPriorityQueue queue = this.needs.get(id);
 				if (queue != null) budget += queue.firstInt();
 			}
 			if (parts.isEmpty()) continue;
+			// the cost slots must fit the specs' allowances (order-insensitive)
+			if (!costsAllowed(offer, parts)) continue;
+			// the price is slot 1's amount: for the default spec that is exactly the old
+			// emerald price, and the spec rules keep it in that same scale otherwise, so
+			// the budget / hunt / reserve machinery below is untouched
+			int price = offer.getBaseCostA().getCount();
 			// recorded combo need (hunt): the same qualifying set only matches
 			// strictly cheaper than last paid, ratcheting like a single book —
 			// regardless of whether its targets are still in the needs table
@@ -550,6 +558,47 @@ public class TradeMatcher {
 		// crediting the wrong enchantment (worst case the villager is not deducted)
 		ambiguous.forEach(index::remove);
 		return index;
+	}
+
+	/** Order-insensitive cost check (the agreed rule): every slot the offer charges must
+	 * be declared by one of the matched targets' specs (same item), and the total
+	 * charged per item may not exceed the total the specs allow. Slots declared but not
+	 * charged are fine — the player simply pays less. A slot whose item is an "air"
+	 * item is not a cost on either side, so a server that spells "free" as air works,
+	 * and a spec field left empty means "not required". */
+	private boolean costsAllowed(MerchantOffer offer, List<MatchPart> parts) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		Map<Identifier, Integer> allowed = new HashMap<>();
+		for (MatchPart part : parts) {
+			EnchantmentTarget target = this.targets.get(part.id());
+			int price = target == null ? 0 : target.maxPrice();
+			List<TradeOfferSpec.TradeCost> costs = config.specFor(part.id()).costs();
+			for (int slot = 0; slot < costs.size(); slot++) {
+				TradeOfferSpec.TradeCost cost = costs.get(slot);
+				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
+				// slot 1 is the price slot: its amount stays the target's own price, so
+				// the price / budget / hunt scale is unchanged. A slot count of 0 means
+				// "not required" (like an air item), a negative count means "no limit"
+				// (the default for the book slot kept the old uncapped behaviour)
+				int amount = TradeOfferSpec.capFor(slot, cost, price);
+				if (amount <= 0) continue;
+				allowed.merge(cost.item(), amount, Integer::sum);
+			}
+		}
+		Map<Identifier, Integer> charged = new HashMap<>();
+		for (ItemStack stack : OfferCosts.slots(offer)) {
+			if (stack == null || stack.isEmpty()) continue;
+			Identifier item = BuiltInRegistries.ITEM.getKey(stack.getItem());
+			if (item == null || config.isAirItem(item)) continue;
+			// something the specs never declared: buying it would cost an item the
+			// player did not agree to pay
+			if (!allowed.containsKey(item)) return false;
+			charged.merge(item, stack.getCount(), Integer::sum);
+		}
+		for (Map.Entry<Identifier, Integer> entry : charged.entrySet()) {
+			if (entry.getValue() > allowed.getOrDefault(entry.getKey(), 0)) return false;
+		}
+		return true;
 	}
 
 	private static void putIndex(Map<String, Identifier> index, Set<String> ambiguous, String name, Identifier id) {

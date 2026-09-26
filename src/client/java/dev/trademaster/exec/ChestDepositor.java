@@ -88,7 +88,7 @@ public class ChestDepositor implements BookDisposal {
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 120) {
 			restoreHotbarSelection(player);
-			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			return StepResult.failed(Component.translatable("trademaster.error.deposit-timeout"));
 		}
 
 		// Defensive, unreachable today (audited 2026-09-19): the constructor requires

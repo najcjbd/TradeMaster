@@ -102,7 +102,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 		addEntry(new ActionRow("trademaster.settings.addChest", () -> {
 			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
-					pos -> c.chestPositions.add(pos.immutable()));
+					pos -> c.addChest(pos.immutable()));
 			if (began) Minecraft.getInstance().gui.setScreen(null);
 			return began;
 		}));
@@ -252,10 +252,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-		// commit every pending draft FIRST: a click on [Remove] deletes a chest
-		// inside super.mouseClicked, which shifts the rows AFTER it — their
-		// originalPos guard would then silently discard a draft typed in them
-		flushEdits();
+		// Commit the rows the pointer is NOT on BEFORE super runs: a click on [Remove]
+		// deletes a chest inside super.mouseClicked, which shifts the rows after it —
+		// their originalPos guard would then silently discard an in-flight draft.
+		// A row whose own field IS under the pointer keeps editing: committing there
+		// would push a half-typed value ("2" on the way to "20") into the live config.
+		reconcileRowsNotUnderPointer(click);
 		boolean handled;
 		this.suppressFocusClear = true;
 		try {
@@ -263,6 +265,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		} finally {
 			this.suppressFocusClear = false;
 		}
+		return handled;
+	}
+
+	/** Blur semantics for a click: every field the pointer is not on commits its draft
+	 * and loses focus; the field under the pointer is left alone. */
+	private void reconcileRowsNotUnderPointer(MouseButtonEvent click) {
 		for (Row row : this.children()) {
 			if (row instanceof DurationRow duration && !duration.field.isMouseOver(click.x(), click.y())) {
 				duration.reconcileOnFocusLoss();
@@ -289,7 +297,6 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				chest.field.setFocused(false);
 			}
 		}
-		return handled;
 	}
 
 	@Override

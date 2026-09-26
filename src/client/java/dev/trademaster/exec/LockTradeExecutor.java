@@ -173,9 +173,11 @@ public class LockTradeExecutor {
 					this.verified = true;
 					return Result.DONE;
 				}
-				// 3s, in line with the other slot-sync waits. Timing out means the
-				// outcome is UNKNOWN, not that the trade failed: the caller must not
-				// re-click, or a slow-but-successful server gets a second purchase
+				// 60 ticks (about 3s at 20 tps; longer if the client itself stalls,
+				// since this counter rides the client tick), in line with the other
+				// slot-sync waits. Timing out means the outcome is UNKNOWN, not that
+				// the trade failed: the caller must not re-click, or a slow-but-
+				// successful server gets a second purchase
 				if (++this.confirmTicks > 60) {
 					this.uncertain = true;
 					return Result.FAILED;

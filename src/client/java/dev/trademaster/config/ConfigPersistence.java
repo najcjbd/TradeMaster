@@ -20,6 +20,8 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 public final class ConfigPersistence {
@@ -97,6 +99,9 @@ public final class ConfigPersistence {
 		if (!Files.isRegularFile(file)) return;
 		try {
 			JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+			boolean found = root.has("preventAxeBreaking") || root.has("tpToVillager")
+					|| root.has("legitMode") || root.has("slowMode")
+					|| root.has("enchantments");
 			c.preventAxeBreaking = readBool(root, "preventAxeBreaking", c.preventAxeBreaking);
 			c.tpToVillager = readBool(root, "tpToVillager", c.tpToVillager);
 			c.legitMode = readBool(root, "legitMode", c.legitMode);
@@ -118,6 +123,11 @@ public final class ConfigPersistence {
 					imported++;
 				}
 			}
+			if (!found) {
+				// nothing recognisable in it: do not write a config file on its behalf
+				TradeMaster.LOGGER.info("librarian-trade-finder.json holds nothing to import, keeping defaults");
+				return;
+			}
 			save(c);
 			TradeMaster.LOGGER.info("Imported settings from librarian-trade-finder.json ({} enchantment targets)", imported);
 		} catch (Exception e) {
@@ -126,7 +136,10 @@ public final class ConfigPersistence {
 	}
 
 	public static void save(TradeMasterConfig config) {
-		JsonObject root = new JsonObject();
+		// seed with the file as it is on disk: hand-written keys (and keys written by
+		// a NEWER version) must survive a save instead of being silently dropped
+		JsonObject root = existingRoot();
+		if (root == null) root = new JsonObject();
 		writeFrom(config, root);
 		Path file = configFile();
 		try {
@@ -144,6 +157,19 @@ public final class ConfigPersistence {
 			}
 		} catch (IOException e) {
 			TradeMaster.LOGGER.error("Failed to save trade-master.json", e);
+		}
+	}
+
+	/** The config as currently on disk, or null when there is none or it cannot be
+	 * parsed (the write must still succeed then). */
+	private static @Nullable JsonObject existingRoot() {
+		Path file = configFile();
+		if (!Files.isRegularFile(file)) return null;
+		try {
+			JsonElement parsed = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8));
+			return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+		} catch (Exception e) {
+			return null;
 		}
 	}
 
@@ -214,6 +240,8 @@ public final class ConfigPersistence {
 		grindstone.add("customCurses", customCurses);
 		root.add("grindstone", grindstone);
 
+		root.add("offers", writeOffers(c));
+
 		JsonObject antiCheat = new JsonObject();
 		antiCheat.addProperty("legitMode", c.legitMode);
 		antiCheat.addProperty("slowMode", c.slowMode);
@@ -240,7 +268,7 @@ public final class ConfigPersistence {
 	}
 
 	private static void readInto(TradeMasterConfig c, JsonObject root) {
-		JsonObject mechanism = getSection(root, "mechanism");
+		JsonObject mechanism = sectionOrRoot(root, "mechanism");
 		if (mechanism != null) {
 			c.rerollMechanism = readEnum(mechanism, "reroll", c.rerollMechanism);
 			c.detectionMode = readEnum(mechanism, "detection", c.detectionMode);
@@ -266,7 +294,7 @@ public final class ConfigPersistence {
 			c.debugLog = readBool(mechanism, "debugLog", c.debugLog);
 		}
 
-		JsonObject naming = getSection(root, "naming");
+		JsonObject naming = sectionOrRoot(root, "naming");
 		if (naming != null) {
 			c.namingEnabled = readBool(naming, "enabled", c.namingEnabled);
 			c.forceNamePriceOne = readBool(naming, "forceNamePriceOne", c.forceNamePriceOne);
@@ -301,7 +329,7 @@ public final class ConfigPersistence {
 			}
 		}
 
-		JsonObject positions = getSection(root, "positions");
+		JsonObject positions = sectionOrRoot(root, "positions");
 		if (positions != null) {
 			c.lecternPos = readPos(positions.get("lectern"));
 			c.summonButtonPos = readPos(positions.get("summonButton"));
@@ -316,13 +344,18 @@ public final class ConfigPersistence {
 				// without it must keep the bound chests
 				c.chestPositions.clear();
 				for (JsonElement e : chests.getAsJsonArray()) {
+					if (c.chestPositions.size() >= TradeMasterConfig.MAX_CHESTS) {
+						TradeMaster.LOGGER.warn("Ignoring chests beyond the first {} in trade-master.json",
+								TradeMasterConfig.MAX_CHESTS);
+						break;
+					}
 					BlockPos pos = readPos(e);
-					if (pos != null) c.chestPositions.add(pos);
+					if (pos != null) c.addChest(pos);
 				}
 			}
 		}
 
-		JsonObject grindstone = getSection(root, "grindstone");
+		JsonObject grindstone = sectionOrRoot(root, "grindstone");
 		if (grindstone != null) {
 			c.grindstoneEnabled = readBool(grindstone, "enabled", c.grindstoneEnabled);
 			c.grindstonePos = readPos(grindstone.get("pos"));
@@ -345,7 +378,27 @@ public final class ConfigPersistence {
 			}
 		}
 
-		JsonObject antiCheat = getSection(root, "antiCheat");
+		JsonObject offers = sectionOrRoot(root, "offers");
+		if (offers != null) {
+			JsonElement air = offers.get("airItems");
+			if (air != null && air.isJsonArray()) {
+				c.airItems.clear();
+				for (JsonElement e : air.getAsJsonArray()) {
+					if (e.isJsonPrimitive()) c.airItems.add(e.getAsString());
+				}
+			}
+			JsonObject specs = getSection(offers, "specs");
+			if (specs != null) {
+				c.tradeSpecs.clear();
+				for (Map.Entry<String, JsonElement> entry : specs.entrySet()) {
+					Identifier id = Identifier.tryParse(entry.getKey());
+					if (id == null || !entry.getValue().isJsonObject()) continue;
+					c.tradeSpecs.put(id, readOfferSpec(entry.getValue().getAsJsonObject()));
+				}
+			}
+		}
+
+		JsonObject antiCheat = sectionOrRoot(root, "antiCheat");
 		if (antiCheat != null) {
 			c.legitMode = readBool(antiCheat, "legitMode", c.legitMode);
 			c.slowMode = readBool(antiCheat, "slowMode", c.slowMode);
@@ -359,7 +412,7 @@ public final class ConfigPersistence {
 			c.interactDelay = readInt(antiCheat, "interactDelay", c.interactDelay);
 		}
 
-		JsonObject enchantments = getSection(root, "enchantments");
+		JsonObject enchantments = sectionOrRoot(root, "enchantments");
 		if (enchantments != null) {
 			c.enchantments.clear();
 			for (Map.Entry<String, JsonElement> entry : enchantments.entrySet()) {
@@ -398,12 +451,82 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
-		MaliLibAdapter.readHotkeys(getSection(root, "hotkeys"));
+		MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 
 	/** Tolerates hand-edited files where a section has the wrong JSON type
 	 * (e.g. "mechanism": []): skip the section instead of throwing and
 	 * aborting every later section. */
+	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
+	 * positions are preserved (slot 2 stays slot 2), so hand-added slots 3..N survive
+	 * a save and are matched positionally. */
+	private static JsonObject writeOffers(TradeMasterConfig c) {
+		JsonObject offers = new JsonObject();
+		JsonArray air = new JsonArray();
+		for (String item : c.airItems) {
+			if (item != null && !item.isBlank()) air.add(item.trim());
+		}
+		offers.add("airItems", air);
+		JsonObject specs = new JsonObject();
+		for (Map.Entry<Identifier, TradeOfferSpec> entry : c.tradeSpecs.entrySet()) {
+			TradeOfferSpec spec = entry.getValue().normalized();
+			JsonObject o = new JsonObject();
+			JsonArray costs = new JsonArray();
+			for (TradeOfferSpec.TradeCost cost : spec.costs()) {
+				JsonObject co = new JsonObject();
+				co.addProperty("item", cost.item().toString());
+				co.addProperty("count", cost.count());
+				costs.add(co);
+			}
+			o.add("costs", costs);
+			o.addProperty("result", spec.result().toString());
+			specs.add(entry.getKey().toString(), o);
+		}
+		offers.add("specs", specs);
+		return offers;
+	}
+
+	/** Reads one spec. A slot may be written as a plain item string ("minecraft:book",
+	 * meaning one) or as {item, count}; a slot whose item is missing or unparsable
+	 * becomes air, i.e. "not required". Positions are never dropped or reordered. */
+	private static TradeOfferSpec readOfferSpec(JsonObject o) {
+		List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
+		JsonElement costsElement = o.get("costs");
+		if (costsElement != null && costsElement.isJsonArray()) {
+			for (JsonElement e : costsElement.getAsJsonArray()) {
+				Identifier item = null;
+				int count = 0;
+				if (e.isJsonPrimitive()) {
+					item = Identifier.tryParse(e.getAsString());
+					count = 1;
+				} else if (e.isJsonObject()) {
+					JsonObject co = e.getAsJsonObject();
+					JsonElement itemElement = co.get("item");
+					if (itemElement != null && itemElement.isJsonPrimitive()) {
+						item = Identifier.tryParse(itemElement.getAsString());
+					}
+					count = readInt(co, "count", 0);
+				}
+				costs.add(new TradeOfferSpec.TradeCost(item, count));
+			}
+		}
+		Identifier result = TradeOfferSpec.ENCHANTED_BOOK;
+		JsonElement resultElement = o.get("result");
+		if (resultElement != null && resultElement.isJsonPrimitive()) {
+			Identifier parsed = Identifier.tryParse(resultElement.getAsString());
+			if (parsed != null) result = parsed;
+		}
+		return new TradeOfferSpec(List.copyOf(costs), result).normalized();
+	}
+
+	/** A named section, or the root itself for a file that predates sections (the
+	 * early flat layout wrote the same keys at the top level, and the reads fall back
+	 * to their defaults when a key is absent either way). */
+	private static JsonObject sectionOrRoot(JsonObject root, String name) {
+		JsonObject section = getSection(root, name);
+		return section != null ? section : root;
+	}
+
 	private static @Nullable JsonObject getSection(JsonObject root, String key) {
 		JsonElement e = root.get(key);
 		return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;

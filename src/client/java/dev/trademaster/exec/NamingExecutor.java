@@ -173,6 +173,24 @@ public class NamingExecutor {
 		return this.failReason;
 	}
 
+	/** Player-facing text for a {@link #failReason()} code: the raw codes are internal
+	 * and used to be shown verbatim in chat ("failed: tag-insert"). */
+	public static net.minecraft.network.chat.Component describeFailure(String reason) {
+		String key;
+		if (reason == null) key = "other";
+		else if (reason.startsWith("timeout:")) key = "timeout";
+		else key = switch (reason) {
+			case "anvil-missing", "anvil-open" -> "anvil";
+			case "tag-none", "tag-insert", "tag-menu" -> "tag";
+			case "rename-menu", "rename-cost", "invalid-name", "name-too-long" -> "rename";
+			case "take-menu", "take-tag", "close-tag" -> "take";
+			case "equip-menu", "equip-hand" -> "equip";
+			case "apply-hand", "apply-villager", "verify-timeout" -> "apply";
+			default -> "other";
+		};
+		return net.minecraft.network.chat.Component.translatable("trademaster.naming_fail." + key);
+	}
+
 	/** True while the swap-back runs; the phase timeout must not discard it mid-flight. */
 	public boolean isRestoring() {
 		return this.stage == Stage.RESTORE;

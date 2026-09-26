@@ -58,7 +58,7 @@ public class ButtonPresser {
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 100) {
 			restoreSlot(player);
-			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			return StepResult.failed(Component.translatable("trademaster.error.button-timeout"));
 		}
 
 		// The stored position must actually hold a button; clicking the UP face of
