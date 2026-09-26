@@ -105,6 +105,26 @@ public final class TradeMasterConfig {
 		return spec == null ? TradeOfferSpec.defaults() : spec;
 	}
 
+	/** Custom goods to reroll for: offers whose result is not an enchanted book.
+	 * Identified by their result item, so `goodFor` is a plain list scan. */
+	public final List<GoodSpec> goods = new ArrayList<>();
+
+	public List<GoodSpec> enabledGoods() {
+		List<GoodSpec> result = new ArrayList<>();
+		for (GoodSpec good : this.goods) {
+			if (good.enabled()) result.add(good);
+		}
+		return result;
+	}
+
+	/** The good whose result item is {@code id}, or null. */
+	public @Nullable GoodSpec goodFor(Identifier id) {
+		for (GoodSpec good : this.goods) {
+			if (good.id().equals(id)) return good;
+		}
+		return null;
+	}
+
 	// positions (nullable until picked/configured)
 	public @Nullable BlockPos lecternPos = null;
 	public @Nullable BlockPos summonButtonPos = null;

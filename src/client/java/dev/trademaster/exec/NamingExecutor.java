@@ -2,6 +2,7 @@ package dev.trademaster.exec;
 
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
 import dev.trademaster.core.RunSession;
@@ -9,6 +10,8 @@ import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.commands.arguments.EntityAnchorArgument;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.Holder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
@@ -18,6 +21,7 @@ import net.minecraft.util.StringUtil;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.AnvilMenu;
 import net.minecraft.world.inventory.ContainerInput;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
@@ -98,13 +102,20 @@ public class NamingExecutor {
 			if (!composed.isEmpty()) composed.append(' ');
 			boolean firstPart = true;
 			for (TradeMatcher.MatchPart part : book.parts()) {
-				String translationKey = "enchantment." + part.id().getNamespace() + "." + part.id().getPath();
-				String displayName = EnchantmentNamer.displayName(part.id(), translationKey);
+				// a custom good's part is an ITEM, not an enchantment: its name is the
+				// item's own (sanitized like every other name) and it has no level
+				String displayName = part.level() <= 0
+						? EnchantmentNamer.sanitizeAlias(itemDisplayName(part.id()))
+						: EnchantmentNamer.displayName(part.id(),
+								"enchantment." + part.id().getNamespace() + "." + part.id().getPath());
 				if (records.stream().noneMatch(r -> r.id().equals(part.id()))) {
 					records.add(new NameRecord(displayName, part.id()));
 				}
 				if (!firstPart) composed.append('+');
-				composed.append(displayName).append(' ').append(EnchantmentNamer.romanNumerals(part.level()));
+				composed.append(displayName);
+				if (part.level() > 0) {
+					composed.append(' ').append(EnchantmentNamer.romanNumerals(part.level()));
+				}
 				firstPart = false;
 			}
 			composed.append(' ').append(config.forceNamePriceOne ? 1 : book.price());
@@ -166,6 +177,14 @@ public class NamingExecutor {
 			return Result.RUNNING;
 		}
 		return Result.FAILED;
+	}
+
+	/** A custom good's display name: the item's own hover name. */
+	private static String itemDisplayName(Identifier id) {
+		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+		if (good != null) return good.displayName();
+		Item item = BuiltInRegistries.ITEM.get(id).map(Holder::value).orElse(Items.AIR);
+		return new ItemStack(item).getHoverName().getString();
 	}
 
 	/** Machine-readable reason for the last FAILED result (e.g. "tag-insert"). */

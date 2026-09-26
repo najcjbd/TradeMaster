@@ -64,7 +64,7 @@ public class LockTradeExecutor {
 
 	private int matchingCount(ItemStack stack) {
 		if (this.expected == null) return stack.is(Items.ENCHANTED_BOOK) ? stack.getCount() : 0;
-		return bookHas(this.expected, stack) ? stack.getCount() : 0;
+		return resultMatches(this.expected, stack) ? stack.getCount() : 0;
 	}
 
 	public MerchantMenu menu() {
@@ -205,20 +205,26 @@ public class LockTradeExecutor {
 		// the whole cost shape, not just the price: a custom spec may pay in another
 		// item, and a regenerated offer must not be applied to this click
 		if (!this.expected.purchase().costsMatch(OfferCosts.slots(offer))) return false;
-		return bookHas(this.expected, offer.getResult());
+		return resultMatches(this.expected, offer.getResult());
 	}
 
 	private boolean carriedMatches() {
 		// Defensive, unreachable today (audited 2026-09-19): see slotStillMatches.
 		if (this.expected == null) return true;
-		return bookHas(this.expected, this.menu.getCarried());
+		return resultMatches(this.expected, this.menu.getCarried());
 	}
 
 	/** Verify the book IS the matched book: its full enchantment set must equal the
 	 * set recorded at match time (purchase().bookEnchantments()), ids and levels alike.
 	 * Datapack/mod offers can put several enchantments on one book, so the whole set
 	 * is the fingerprint — a regenerated offer would differ in at least one entry. */
-	private static boolean bookHas(TradeMatcher.MatchedTrade expected, ItemStack book) {
+	private static boolean resultMatches(TradeMatcher.MatchedTrade expected, ItemStack stack) {
+		ItemStack expectedResult = expected.purchase().result();
+		if (!expectedResult.is(Items.ENCHANTED_BOOK)) {
+			// a custom good: the result item (and at least the matched amount) must match
+			return stack.is(expectedResult.getItem()) && stack.getCount() >= expectedResult.getCount();
+		}
+		ItemStack book = stack;
 		if (!book.is(Items.ENCHANTED_BOOK)) return false;
 		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(book);
 		var expectedParts = expected.purchase().bookEnchantments();

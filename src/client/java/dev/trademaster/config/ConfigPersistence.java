@@ -396,6 +396,24 @@ public final class ConfigPersistence {
 					c.tradeSpecs.put(id, readOfferSpec(entry.getValue().getAsJsonObject()));
 				}
 			}
+			JsonElement goods = offers.get("goods");
+			if (goods != null && goods.isJsonArray()) {
+				c.goods.clear();
+				for (JsonElement e : goods.getAsJsonArray()) {
+					if (!e.isJsonObject()) continue;
+					JsonObject o = e.getAsJsonObject();
+					JsonElement resultElement = o.get("result");
+					Identifier result = resultElement != null && resultElement.isJsonPrimitive()
+							? Identifier.tryParse(resultElement.getAsString())
+							: null;
+					if (result == null) continue;
+					c.goods.add(new GoodSpec(result,
+							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
+							readBool(o, "enabled", true),
+							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
+							readCosts(o.get("costs"))));
+				}
+			}
 		}
 
 		JsonObject antiCheat = sectionOrRoot(root, "antiCheat");
@@ -471,45 +489,68 @@ public final class ConfigPersistence {
 		for (Map.Entry<Identifier, TradeOfferSpec> entry : c.tradeSpecs.entrySet()) {
 			TradeOfferSpec spec = entry.getValue().normalized();
 			JsonObject o = new JsonObject();
-			JsonArray costs = new JsonArray();
-			for (TradeOfferSpec.TradeCost cost : spec.costs()) {
-				JsonObject co = new JsonObject();
-				co.addProperty("item", cost.item().toString());
-				co.addProperty("count", cost.count());
-				costs.add(co);
-			}
-			o.add("costs", costs);
+			o.add("costs", writeCosts(spec.costs()));
 			o.addProperty("result", spec.result().toString());
 			specs.add(entry.getKey().toString(), o);
 		}
 		offers.add("specs", specs);
+
+		JsonArray goods = new JsonArray();
+		for (GoodSpec good : c.goods) {
+			GoodSpec g = good.normalized();
+			JsonObject o = new JsonObject();
+			o.addProperty("result", g.result().toString());
+			o.addProperty("resultCount", g.resultCount());
+			o.addProperty("enabled", g.enabled());
+			o.addProperty("maxPrice", g.maxPrice());
+			o.add("costs", writeCosts(g.costs()));
+			goods.add(o);
+		}
+		offers.add("goods", goods);
 		return offers;
+	}
+
+	private static JsonArray writeCosts(List<TradeOfferSpec.TradeCost> costs) {
+		JsonArray array = new JsonArray();
+		for (TradeOfferSpec.TradeCost cost : costs) {
+			JsonObject o = new JsonObject();
+			o.addProperty("item", cost.item().toString());
+			o.addProperty("count", cost.count());
+			array.add(o);
+		}
+		return array;
+	}
+
+	/** Reads a cost slot list. A slot may be a plain item string ("minecraft:book",
+	 * meaning one) or {item, count}; a slot whose item is missing or unparsable becomes
+	 * air, i.e. "not required". Positions are never dropped or reordered. */
+	private static List<TradeOfferSpec.TradeCost> readCosts(@Nullable JsonElement element) {
+		List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
+		if (element == null || !element.isJsonArray()) return costs;
+		for (JsonElement e : element.getAsJsonArray()) {
+			Identifier item = null;
+			int count = 0;
+			if (e.isJsonPrimitive()) {
+				item = Identifier.tryParse(e.getAsString());
+				count = 1;
+			} else if (e.isJsonObject()) {
+				JsonObject co = e.getAsJsonObject();
+				JsonElement itemElement = co.get("item");
+				if (itemElement != null && itemElement.isJsonPrimitive()) {
+					item = Identifier.tryParse(itemElement.getAsString());
+				}
+				count = readInt(co, "count", 0);
+			}
+			costs.add(new TradeOfferSpec.TradeCost(item, count));
+		}
+		return costs;
 	}
 
 	/** Reads one spec. A slot may be written as a plain item string ("minecraft:book",
 	 * meaning one) or as {item, count}; a slot whose item is missing or unparsable
 	 * becomes air, i.e. "not required". Positions are never dropped or reordered. */
 	private static TradeOfferSpec readOfferSpec(JsonObject o) {
-		List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
-		JsonElement costsElement = o.get("costs");
-		if (costsElement != null && costsElement.isJsonArray()) {
-			for (JsonElement e : costsElement.getAsJsonArray()) {
-				Identifier item = null;
-				int count = 0;
-				if (e.isJsonPrimitive()) {
-					item = Identifier.tryParse(e.getAsString());
-					count = 1;
-				} else if (e.isJsonObject()) {
-					JsonObject co = e.getAsJsonObject();
-					JsonElement itemElement = co.get("item");
-					if (itemElement != null && itemElement.isJsonPrimitive()) {
-						item = Identifier.tryParse(itemElement.getAsString());
-					}
-					count = readInt(co, "count", 0);
-				}
-				costs.add(new TradeOfferSpec.TradeCost(item, count));
-			}
-		}
+		List<TradeOfferSpec.TradeCost> costs = readCosts(o.get("costs"));
 		Identifier result = TradeOfferSpec.ENCHANTED_BOOK;
 		JsonElement resultElement = o.get("result");
 		if (resultElement != null && resultElement.isJsonPrimitive()) {

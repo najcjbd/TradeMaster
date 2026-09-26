@@ -1,6 +1,7 @@
 package dev.trademaster.matching;
 
 import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
@@ -44,7 +45,8 @@ public class TradeMatcher {
 	 * matched an enabled target at sufficient level; {@code bookEnchantments} is the
 	 * book's FULL set (lock fingerprints must reject any change to it, matched or not). */
 	public record MatchedBook(List<MatchPart> parts, List<MatchPart> bookEnchantments, int price,
-			int offerIndex, List<ItemStack> costs) {
+			int offerIndex, List<ItemStack> costs, ItemStack result) {
+		/** This book's parts as an item's display name would be, for a custom good. */
 		/** Canonical copy of a book's charged cost slots, for the drift fingerprint: the
 		 * live offer must charge the same items in the same amounts right before the
 		 * purchase, or the click would apply to a regenerated trade. */
@@ -109,6 +111,14 @@ public class TradeMatcher {
 		 * the match (a mid-run edit that invalidates the combo). */
 		public boolean anyTargetGone() {
 			for (Identifier id : matchedIds()) {
+				// a good is switched off in its own list, and is absent from the
+				// enchantment map: without this branch every good match would look
+				// "gone" and be reverted right after it was found
+				GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+				if (good != null) {
+					if (!good.enabled()) return true;
+					continue;
+				}
 				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
 				if (target == null || !target.enabled()) return true;
 			}
@@ -152,6 +162,34 @@ public class TradeMatcher {
 							k -> new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a)))
 					.enqueue(target.maxPrice());
 		}
+		// custom goods ride the same table: their id is their result item, so the
+		// budget / hunt / locked machinery needs no second code path
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			this.needs.computeIfAbsent(good.id(),
+							k -> new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a)))
+					.enqueue(good.maxPrice());
+		}
+	}
+
+	/** Whether the id belongs to a configured good rather than an enchantment target:
+	 * goods are keyed by their result item, so the enchantment-only gates below must
+	 * not be applied to them. */
+	public static boolean isGood(Identifier id) {
+		return TradeMasterConfig.INSTANCE.goodFor(id) != null;
+	}
+
+	/** The price slot's amount for a demand: the good's max price, or the target's. */
+	private int priceOf(Identifier id) {
+		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+		if (good != null) return good.maxPrice();
+		EnchantmentTarget target = this.targets.get(id);
+		return target == null ? 0 : target.maxPrice();
+	}
+
+	/** The cost spec for a demand: the good's, or the enchantment's. */
+	private TradeOfferSpec specOf(Identifier id) {
+		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+		return good != null ? good.spec() : TradeMasterConfig.INSTANCE.specFor(id);
 	}
 
 	/** Whether the enchantment currently exists in the live registry and carries
@@ -188,8 +226,25 @@ public class TradeMatcher {
 			// guaranteed lock rejection (and re-match it forever after the retry cap)
 			if (offer.isOutOfStock()) continue;
 			ItemStack result = offer.getResult();
-			// phase 1 matches enchanted books only: a result that is some other item is
-			// a "good" and comes with the second phase
+			Identifier resultItem = BuiltInRegistries.ITEM.getKey(result.getItem());
+			// a configured good: any non-book result the player asked to reroll for.
+			// (An enchanted book result is always the enchantment path, even if some
+			// good names enchanted_book as its result.)
+			GoodSpec good = resultItem == null || result.is(Items.ENCHANTED_BOOK)
+					? null
+					: TradeMasterConfig.INSTANCE.goodFor(resultItem);
+			if (good != null) {
+				if (result.getCount() < good.resultCount()) continue;
+				IntHeapPriorityQueue goodQueue = this.needs.get(good.id());
+				if (goodQueue == null) continue;
+				int goodPrice = offer.getBaseCostA().getCount();
+				if (goodPrice > Math.min(goodQueue.firstInt(), 64)) continue;
+				List<MatchPart> itemParts = List.of(new MatchPart(good.id(), 0));
+				if (!costsAllowed(offer, itemParts)) continue;
+				qualifying.add(new MatchedBook(itemParts, List.of(), goodPrice, i,
+						MatchedBook.fingerprintCosts(OfferCosts.slots(offer)), result.copy()));
+				continue;
+			}
 			if (!result.is(Items.ENCHANTED_BOOK)) continue;
 			var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(result);
 			if (enchantments.isEmpty()) continue;
@@ -237,7 +292,7 @@ public class TradeMatcher {
 				if (price > Math.min(budget, 64)) continue;
 			}
 			qualifying.add(new MatchedBook(parts, bookEnchantments, price, i,
-					MatchedBook.fingerprintCosts(OfferCosts.slots(offer))));
+					MatchedBook.fingerprintCosts(OfferCosts.slots(offer)), result.copy()));
 		}
 		if (qualifying.isEmpty()) return null;
 		// one purchase locks the villager: buy the cheapest qualifying book
@@ -431,8 +486,22 @@ public class TradeMatcher {
 			queue.enqueue(budget);
 			this.needs.put(target.id(), queue);
 		}
-		this.needs.keySet().removeIf(id -> !enabledIds.contains(id) || !registryTradeable(id));
-		this.targets.keySet().removeIf(id -> !enabledIds.contains(id) || !registryTradeable(id));
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			enabledIds.add(good.id());
+			if (this.needs.containsKey(good.id())) continue;
+			if (lockedIds.contains(good.id()) && !this.huntPrices.containsKey(good.id())) continue;
+			int budget = this.huntPrices.containsKey(good.id())
+					? Math.min(this.huntPrices.get(good.id()) - 1, good.maxPrice())
+					: good.maxPrice();
+			if (budget < 1) continue;
+			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
+			queue.enqueue(budget);
+			this.needs.put(good.id(), queue);
+		}
+		this.needs.keySet().removeIf(id -> !enabledIds.contains(id)
+				|| (!isGood(id) && !registryTradeable(id)));
+		this.targets.keySet().removeIf(id -> !enabledIds.contains(id)
+				|| (!isGood(id) && !registryTradeable(id)));
 	}
 
 	/**
@@ -573,6 +642,12 @@ public class TradeMatcher {
 			putIndex(index, ambiguous, EnchantmentNamer.canonical(EnchantmentNamer.displayName(id, translationKey)), id);
 			putIndex(index, ambiguous, EnchantmentNamer.canonical(id.getPath()), id);
 		}
+		// custom goods are identified by their result item, and a named villager
+		// carries that item's display name
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			putIndex(index, ambiguous,
+					EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(good.displayName())), good.id());
+		}
 		// names recorded when villagers were actually named: keeps deduction working
 		// when the game language changed since naming
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
@@ -596,9 +671,8 @@ public class TradeMatcher {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		Map<Identifier, Integer> allowed = new HashMap<>();
 		for (MatchPart part : parts) {
-			EnchantmentTarget target = this.targets.get(part.id());
-			int price = target == null ? 0 : target.maxPrice();
-			List<TradeOfferSpec.TradeCost> costs = config.specFor(part.id()).costs();
+			int price = priceOf(part.id());
+			List<TradeOfferSpec.TradeCost> costs = specOf(part.id()).costs();
 			for (int slot = 0; slot < costs.size(); slot++) {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;

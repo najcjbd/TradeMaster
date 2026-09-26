@@ -5,6 +5,7 @@ import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.ConfigPersistence;
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.RerollMechanism;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.detection.DetectionHub;
@@ -1592,6 +1593,13 @@ public final class RerollController {
 				if (target != null && target.enabled()) {
 					lockConfig.enchantments.put(id, target.withEnabled(false));
 					changed = true;
+					continue;
+				}
+				// a custom good is switched off in its own list
+				GoodSpec good = lockConfig.goodFor(id);
+				if (good != null && good.enabled()) {
+					lockConfig.goods.set(lockConfig.goods.indexOf(good), good.withEnabled(false));
+					changed = true;
 				}
 			}
 			if (changed) lockConfig.save();
@@ -2177,9 +2185,19 @@ public final class RerollController {
 				// the configured max price caps it, so a mid-run maxPrice drop also
 				// invalidates an already-pending match. An unknown target is left
 				// uncapped (it was disabled/removed mid-run).
+				GoodSpec markedGood = TradeMasterConfig.INSTANCE.goodFor(part.id());
+				if (markedGood != null) {
+					budget += Math.min(marked - 1, markedGood.maxPrice());
+					continue;
+				}
 				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
 				budget += markedTarget == null ? marked - 1
 						: Math.min(marked - 1, markedTarget.maxPrice());
+				continue;
+			}
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(part.id());
+			if (good != null) {
+				budget += good.maxPrice();
 				continue;
 			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
@@ -2278,7 +2296,8 @@ public final class RerollController {
 		}
 		return new TradeMatcher.MatchedBook(List.copyOf(parts), List.copyOf(parts),
 				offer.getBaseCostA().getCount(), slot,
-				TradeMatcher.MatchedBook.fingerprintCosts(OfferCosts.slots(offer)));
+				TradeMatcher.MatchedBook.fingerprintCosts(OfferCosts.slots(offer)),
+				offer.getResult().copy());
 	}
 
 	/** One book's matched parts joined with "+" (vanilla fullname per part). */
