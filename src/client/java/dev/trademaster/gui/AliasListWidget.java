@@ -1,6 +1,7 @@
 package dev.trademaster.gui;
 
 import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
 import dev.trademaster.matching.TradeMatcher;
@@ -35,6 +36,12 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	public AliasListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
 		super(client, width, height, top, itemHeight);
 		TradeMasterConfig.INSTANCE.enchantments.keySet().stream()
+				.sorted(Comparator.comparing(Identifier::toString))
+				.forEach(id -> this.addEntry(new AliasRow(id)));
+		// custom goods are named too, so their names must be aliasable (and must take
+		// part in the collision check below) exactly like enchantments
+		TradeMasterConfig.INSTANCE.goods.stream()
+				.map(GoodSpec::id)
 				.sorted(Comparator.comparing(Identifier::toString))
 				.forEach(id -> this.addEntry(new AliasRow(id)));
 	}
@@ -270,31 +277,50 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				// cannot collide there, so refusing it here is a pure false rejection
 				if (!TradeMatcher.registryTradeable(other.id())) continue;
 				if (TradeMasterConfig.minPrice(other.level(), other.id()) > other.maxPrice()) continue;
-				String alias = config.customEnchantNames.get(other.id());
-				if (alias != null && EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(alias)).equals(probe)) {
-					return "trademaster.alias.duplicate_alias";
-				}
-				Identifier otherId = other.id();
-				String otherKey = "enchantment." + otherId.getNamespace() + "." + otherId.getPath();
-				if (EnchantmentNamer.canonical(otherId.getPath()).equals(probe)
-						|| EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(EnchantmentNamer.displayName(otherId, otherKey)))
-								.equals(probe)) {
-					return "trademaster.alias.duplicate_name";
-				}
+				String refusal = collision(probe, other.id(),
+						EnchantmentNamer.demandDisplayName(other.id()), other.id().getPath());
+				if (refusal != null) return refusal;
+			}
+			// custom goods are named from the same alias map: their names (and their
+			// registry paths) are collision sources for enchantment aliases and vice
+			// versa, or the index would drop BOTH sides on a collision
+			for (GoodSpec good : config.enabledGoods()) {
+				if (good.id().equals(id)) continue;
+				String refusal = collision(probe, good.id(), good.displayName(), good.path());
+				if (refusal != null) return refusal;
 			}
 			for (Map.Entry<String, Identifier> entry : config.nameHistory.entrySet()) {
 				Identifier otherId = entry.getValue();
 				if (otherId.equals(id)) continue;
-				// the index only records a history name when that target is in
-				// `targets`: the same two filters as above apply here, or an entry
-				// for a dead/untradeable target refuses a perfectly legal name
-				EnchantmentTarget otherTarget = config.enchantments.get(otherId);
-				if (otherTarget == null || !otherTarget.enabled()) continue;
-				if (!TradeMatcher.registryTradeable(otherId)) continue;
-				if (TradeMasterConfig.minPrice(otherTarget.level(), otherId) > otherTarget.maxPrice()) continue;
+				// the index only records a history name when that demand is still live:
+				// an entry for a dead/untradeable target (or a removed good) must not
+				// refuse a perfectly legal name
+				boolean live = config.goodFor(otherId) != null;
+				if (!live) {
+					EnchantmentTarget otherTarget = config.enchantments.get(otherId);
+					live = otherTarget != null && otherTarget.enabled()
+							&& TradeMatcher.registryTradeable(otherId)
+							&& TradeMasterConfig.minPrice(otherTarget.level(), otherId) <= otherTarget.maxPrice();
+				}
+				if (!live) continue;
 				if (EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(entry.getKey())).equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
+			}
+			return null;
+		}
+
+		/** The refusal for ONE other demand, or null: the alias-vs-alias wording when
+		 * the other side is the aliased one, the plain name collision otherwise. */
+		private static @Nullable String collision(String probe, Identifier otherId,
+				String displayName, String path) {
+			String alias = TradeMasterConfig.INSTANCE.customEnchantNames.get(otherId);
+			if (alias != null && EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(alias)).equals(probe)) {
+				return "trademaster.alias.duplicate_alias";
+			}
+			if (EnchantmentNamer.canonical(path).equals(probe)
+					|| EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(displayName)).equals(probe)) {
+				return "trademaster.alias.duplicate_name";
 			}
 			return null;
 		}
@@ -310,7 +336,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			boolean aliased = TradeMasterConfig.INSTANCE.customEnchantNames.containsKey(this.id);
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4,
 					aliased ? 0x3F00FF00 : 0x1AC7C0C0);
-			String name = EnchantmentNamer.displayName(this.id, this.translationKey);
+			String name = EnchantmentNamer.demandDisplayName(this.id);
 			context.text(font, Component.literal(name), this.x + 4, this.y + 4, 0xFFFFFFFF);
 			if (this.conflictKey != null) {
 				// refuse reason instead of the id: the row is red, nothing was stored

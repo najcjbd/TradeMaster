@@ -645,13 +645,19 @@ public class TradeMatcher {
 		// custom goods are identified by their result item, and a named villager
 		// carries that item's display name
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			// the same triple an enchantment gets: the (alias aware) display name and
+			// the registry path, so a villager named either way resolves back
 			putIndex(index, ambiguous,
 					EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(good.displayName())), good.id());
+			putIndex(index, ambiguous, EnchantmentNamer.canonical(good.path()), good.id());
 		}
 		// names recorded when villagers were actually named: keeps deduction working
 		// when the game language changed since naming
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
-			if (this.targets.containsKey(entry.getValue())) {
+			// enchantment targets AND custom goods: an item's name is localized too, so
+			// a good named before a language switch needs its history entry as well
+			if (this.targets.containsKey(entry.getValue())
+					|| TradeMasterConfig.INSTANCE.goodFor(entry.getValue()) != null) {
 				putIndex(index, ambiguous, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
 			}
 		}

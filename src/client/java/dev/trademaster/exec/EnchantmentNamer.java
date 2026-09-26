@@ -4,6 +4,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.trademaster.TradeMaster;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import net.minecraft.client.Minecraft;
 import net.minecraft.locale.Language;
@@ -34,6 +35,14 @@ public final class EnchantmentNamer {
 	private static java.lang.ref.WeakReference<Object> lastLevel = new java.lang.ref.WeakReference<>(null);
 
 	private EnchantmentNamer() {}
+
+	/** The effective display name of any demand id: a custom good's item name (which
+	 * honours the alias map) or an enchantment's name. */
+	public static String demandDisplayName(Identifier id) {
+		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+		if (good != null) return good.displayName();
+		return displayName(id, "enchantment." + id.getNamespace() + "." + id.getPath());
+	}
 
 	public static String displayName(Identifier id, String translationKey) {
 		return sanitize(resolve(id, translationKey));

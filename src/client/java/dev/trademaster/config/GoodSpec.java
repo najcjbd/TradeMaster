@@ -44,11 +44,21 @@ public record GoodSpec(Identifier result, int resultCount, boolean enabled, int 
 		return BuiltInRegistries.ITEM.get(this.result).map(holder -> holder.value()).orElse(null);
 	}
 
-	/** The result item's display name, used for the villager's name and the deduction
-	 * index; falls back to the registry path when the item is unknown. */
+	/** The name used for the villager and the deduction index: the custom alias when
+	 * one is set for this good (the alias tab edits the same map enchantments use),
+	 * otherwise the result item's own name, falling back to the registry path when the
+	 * item is unknown. Callers apply the shared sanitizer/canonicalizer. */
 	public String displayName() {
+		String custom = TradeMasterConfig.INSTANCE.customEnchantNames.get(this.result);
+		if (custom != null && !custom.isBlank()) return custom.trim();
 		Item item = this.resultItem();
 		return item == null ? this.result.getPath() : new ItemStack(item).getHoverName().getString();
+	}
+
+	/** The registry path of the result item: a villager named with the raw item id
+	 * (the naming fallback) must still resolve back to this good. */
+	public String path() {
+		return this.result.getPath();
 	}
 
 	public GoodSpec withEnabled(boolean value) {
