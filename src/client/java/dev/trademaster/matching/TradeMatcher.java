@@ -527,7 +527,13 @@ public class TradeMatcher {
 					// no price check: a named villager is already captured for this need —
 					// deduct it regardless of its live price (curing discounts can drift it),
 					// otherwise the need stays live and the run re-rolls a duplicate
-					if (target != null && part.level() >= target.level()) {
+					// a custom good has no level to satisfy: its part is the item itself
+					// (level 0), and without this branch the deduction would skip it and
+					// the good would be farmed again in the next session
+					boolean counts = target != null
+							? part.level() >= target.level()
+							: TradeMasterConfig.INSTANCE.goodFor(id) != null;
+					if (counts) {
 						// the dequeue IS the deduction; it needs no cross-tick flag
 						// (see resyncTargets: hunt, the only resync trigger, re-adds
 						// by design)
