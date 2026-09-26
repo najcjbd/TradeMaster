@@ -87,9 +87,4 @@ public record TradeOfferSpec(List<TradeCost> costs, Identifier result) {
 		return index >= 0 && index < this.costs.size() ? this.costs.get(index) : null;
 	}
 
-	/** Whether a slot is not used at all (no item declared, or an air item). */
-	public boolean unused(int index) {
-		TradeCost cost = costAt(index);
-		return cost == null || cost.item() == null;
-	}
 }

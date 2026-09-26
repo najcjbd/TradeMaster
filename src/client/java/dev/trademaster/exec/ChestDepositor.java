@@ -4,13 +4,10 @@ import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
-import dev.trademaster.core.Preconditions;
 import dev.trademaster.strategy.RerollStrategy.StepResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
-import net.minecraft.resources.Identifier;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
@@ -365,6 +362,10 @@ public class ChestDepositor implements BookDisposal {
 					this.state = State.DROP_WAIT;
 				}
 			}
+			default -> {
+					// a state that is wired up but has no case would otherwise spin here
+					return StepResult.failed(Component.translatable("trademaster.message.grind_state_invalid"));
+				}
 			case DROP_WAIT -> {
 				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
 					// the drop landed: back to the next item
@@ -492,9 +493,6 @@ public class ChestDepositor implements BookDisposal {
 		return new BookScan(first, count);
 	}
 
-	/** What this depositor takes out of the inventory: an enchanted book, or the result
-	 * item of a configured good (the grindstone cannot disenchant a good, so storing or
-	 * dropping it is the only way it leaves the inventory). */
 	/** What this pass may take out of the inventory: enchanted books (unless this pass
 	 * is goods-only) and the produced goods it still has an allowance for. */
 	private boolean disposable(ItemStack stack) {
@@ -526,7 +524,7 @@ public class ChestDepositor implements BookDisposal {
 	private StepResult startDropOrFail(LocalPlayer player) {
 		if (TradeMasterConfig.INSTANCE.nonBookDisposal
 						== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
-				&& (countDroppables(player) > 0 || droppable(player.getOffhandItem()))) {
+				&& countDroppables(player) > 0) {
 			this.state = State.DROP_STAGE;
 			this.look.reset();
 			this.dropSlot = -1;
@@ -543,7 +541,11 @@ public class ChestDepositor implements BookDisposal {
 	private boolean droppable(ItemStack stack) {
 		if (stack.isEmpty()) return false;
 		if (!stack.is(Items.ENCHANTED_BOOK)) {
-			return this.goodsAllowance.getOrDefault(stack.getItem(), 0) > 0;
+			// only a stack that is ENTIRELY produced may be taken: QUICK_MOVE and
+			// DROP_ALL_ITEMS move the whole stack, so a stack merged with the player's
+			// own items would take theirs too. A mixed stack is left alone — nothing of
+			// the player's is ever stored or dropped.
+			return this.goodsAllowance.getOrDefault(stack.getItem(), 0) >= stack.getCount();
 		}
 		return !this.goodsOnly && GrindstoneRecycler.isCurseBook(stack);
 	}
@@ -551,14 +553,18 @@ public class ChestDepositor implements BookDisposal {
 	private int countDroppables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
+			if (slot.index >= 45) continue;
 			if (slot.container == player.getInventory() && droppable(slot.getItem())) count++;
 		}
 		return count;
 	}
 
-	/** First inventory slot holding something this pass may drop (see droppable). */
+	/** First inventory (not offhand) slot holding something this pass may drop. The
+	 * offhand has no selected slot to drop from, and the inventory menu's offhand slot
+	 * is the one past the hotbar, so it is skipped here and simply left alone. */
 	private @Nullable Slot findDroppableSlot(LocalPlayer player) {
 		for (Slot slot : player.containerMenu.slots) {
+			if (slot.index >= 45) continue;
 			if (slot.container == player.getInventory() && droppable(slot.getItem())) return slot;
 		}
 		return null;

@@ -211,7 +211,7 @@
   "trademaster.tab.offers": "Offers",
   "trademaster.column.air_items": "Air items",
   "trademaster.air.hint": "Comma separated; an item listed here (or an empty field) counts as a free slot",
-  "trademaster.column.cost_a": "Cost A item (amount = the enchantments-tab price)",
+  "trademaster.column.cost_a": "Cost A item (its amount is that row’s price; an enchantment’s price lives on the enchantments tab)",
   "trademaster.column.cost_b": "Cost B item",
   "trademaster.column.cost_count": "Amount",
   "trademaster.offer.invalid_item": "Not a valid item id (leave empty = this slot is not required)",
@@ -220,7 +220,7 @@
   "trademaster.settings.nonBookDisposal.stop": "Chest → stop when no chest takes it",
   "trademaster.settings.nonBookDisposal.drop": "Chest → drop when no chest takes it",
   "trademaster.settings.nonBookDisposal.comment": "Cannot be ground means: cursed books (the grindstone keeps curses) and your custom goods. When every bound chest refuses them: stop and let you handle it, or drop them facing the configured drop direction. An ordinary enchanted book is only ever stored, never dropped; in grindstone mode the cursed books are handled by that path (chest, then drop), so this option only covers goods.",
-  "trademaster.offers.goods_header": "Goods (the result item is the identity; remove and re-add to change it) · left to right: cost A · cost B · B amount · amount · price · enable ▣ · remove ✕",
+  "trademaster.offers.goods_header": "Goods (the result item is the identity; remove and re-add to change it) · left to right: cost A · cost B · amount · price · B amount · enable ▣ · remove ✕",
   "trademaster.offers.add_good": "Add a good (enter the result item id)",
   "trademaster.offer.good_exists": "That result item is already a good (one good per result item)",
   "trademaster.offer.unknown_item": "No such item id"

@@ -73,12 +73,17 @@ public final class Preconditions {
 			for (int slot = 0; slot < costs.size(); slot++) {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
-				int cap = TradeOfferSpec.capFor(slot, cost, target.maxPrice());
-				if (cap <= 0) continue;
+				// the amount the player must CARRY, not the comparison cap: an
+				// "unlimited" slot needs one item, while the cap is the comparison
+				// sentinel used by the matcher
+				int needed = slot == 0
+						? target.maxPrice()
+						: (cost.count() < 0 ? 1 : Math.max(1, cost.count()));
+				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
 				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
-				required.merge(item, cap, Math::max);
+				required.merge(item, needed, Math::max);
 			}
 		}
 		// custom goods declare the same kind of cost slots, with the good's price cap
@@ -87,12 +92,14 @@ public final class Preconditions {
 			for (int slot = 0; slot < costs.size(); slot++) {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
-				int cap = TradeOfferSpec.capFor(slot, cost, good.maxPrice());
-				if (cap <= 0) continue;
+				int needed = slot == 0
+						? good.maxPrice()
+						: (cost.count() < 0 ? 1 : Math.max(1, cost.count()));
+				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
 				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
-				required.merge(item, cap, Math::max);
+				required.merge(item, needed, Math::max);
 			}
 		}
 		if (emeraldPrice) {

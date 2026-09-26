@@ -62,12 +62,27 @@ public final class OfferCosts {
 		for (int i = chain.size() - 1; i >= 0; i--) {
 			for (Field field : chain.get(i).getDeclaredFields()) {
 				Class<?> raw = field.getType();
-				if (raw == ItemCost.class || raw == Optional.class) {
+				if (raw == ItemCost.class) {
+					found.add(field);
+					continue;
+				}
+				// an unrelated Optional field must not count as a cost slot, or the
+				// slots after it would be read one position off
+				if (raw == Optional.class && optionalHoldsItemCost(field)) {
 					found.add(field);
 				}
 			}
 		}
 		return found;
+	}
+
+	/** Whether an {@code Optional} field's element type is an ItemCost. */
+	private static boolean optionalHoldsItemCost(Field field) {
+		if (!(field.getGenericType() instanceof java.lang.reflect.ParameterizedType parameterized)) {
+			return false;
+		}
+		java.lang.reflect.Type[] arguments = parameterized.getActualTypeArguments();
+		return arguments.length == 1 && arguments[0] == ItemCost.class;
 	}
 
 	/** The field as an ItemStack, or null when it cannot be read: a field that throws,

@@ -588,11 +588,15 @@ public final class RerollController {
 			if (!config.chestPositions.isEmpty()
 					|| config.nonBookDisposal == dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP) {
 				// in grindstone mode the books are still the recycler's business, so this
-				// pass takes the produced goods only
-				boolean goodsOnly = config.grindstoneEnabled && config.grindstonePos != null;
+				// pass takes the produced goods only — but only when the grindstone path
+				// will really be available for them (it needs its drop direction)
+				boolean goodsOnly = config.grindstoneEnabled && config.grindstonePos != null
+						&& config.curseDropYaw != null && config.curseDropPitch != null;
 				return new ChestDepositor(config.chestPositions, produced, goodsOnly);
 			}
-			return null;
+			// no chest and no drop option: the produced goods cannot leave the inventory
+			// here, but the ordinary path may still free space (grinding books), so fall
+			// through instead of refusing to dispose anything at all
 		}
 		if (config.grindstoneEnabled && config.grindstonePos != null
 				&& config.curseDropYaw != null && config.curseDropPitch != null) {

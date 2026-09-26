@@ -208,7 +208,7 @@ something else into a librarian's trade).
 - **Lectern self-heal**: after the lectern is lost/broken it is re-placed from the offhand within a grace period (`lecternHealGrace`, default 6 s).
 - **Ghost blocks**: when the client thinks the placement succeeded but the server never got it, the lectern is verified every tick and re-placed when missing.
 - **Material precheck timing**: at start, on every `PRECHECK`, before dispatching a villager, **before every reroll**, and after lock retries are exhausted.
-- **Full inventory**: storage is attempted first; with no chest (or all full) the run stops — books are never dropped on the ground.
+- **Full inventory**: storage is attempted first; an ORDINARY enchanted book is never dropped, so with no chest (or all full) the run stops. Exception: **cursed books** (which cannot be ground) and the **goods this run produced** follow the "disposal of what cannot be ground" setting — with it set to *stop* the behaviour is as above, with it set to *drop* they are dropped facing the configured drop direction once every chest refuses them.
 - **Idle wait**: with no villager in the staging area the run simply waits; that is **not** a stop, and it resumes as soon as someone shows up.
 - **Timeouts**: `timeoutEnabled` (default **off**) is the global watchdog; `phaseTimeoutsEnabled` (default **on**) bounds a single phase; the wait-for-villager phase is exempt. Turning it OFF disables **every** phase limit (deliberately: off means off, even if something can then hang).
 - **Stops the run on its own**: player moved (`stopOnPlayerMove`, the mod's own teleports are exempt), player died, **dimension change** (portal / server teleport; compared by dimension, so a same-dimension reconnect is fine), out of materials (emeralds / books / lectern / name tags / axe), or an invalid mid-run config edit.
@@ -245,6 +245,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Mechanism | Hunt cheaper | off | Can only be turned off while running |
 | Mechanism | Lock retry cap | −1 | −1 = forever, ≤ 999 |
 | Mechanism | Offhand swap retries | 3 | −1 = forever, ≤ 999 |
+| Mechanism | Disposal of what cannot be ground | stop | Cursed books and custom goods when every chest refuses them: stop / drop (see Storage) |
 | Mechanism | Post-dispatch break retry limit | 2 | How often the lectern break is retried after a villager was dispatched before the run stops with an error; −1 = forever, ≤ 999 |
 | Mechanism | Sand-wheel (grindstone) mode | on | Only used when all four elements are set (see "Storage") |
 | Mechanism | Grindstone open retries | 1 | −1 = forever, ≤ 999 |
@@ -271,7 +272,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 
 All three share the **same** `config/trade-master.json`:
 
-1. the in-game main menu (hotkey `V`, touch-screen friendly) — four tabs: **enchantments / settings / keybinds / aliases**;
+1. the in-game main menu (hotkey `V`, touch-screen friendly) — five tabs: **enchantments / settings / keybinds / aliases / offers**;
 2. **Mod Menu** (provides the config-screen entry);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 

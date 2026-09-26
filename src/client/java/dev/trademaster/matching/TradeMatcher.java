@@ -424,6 +424,19 @@ public class TradeMatcher {
 		// slots would shrink the freshly applied budget until the next rebuild
 		if (trade.needsVersion() != this.needsVersion) return;
 		for (ConsumedNeed need : trade.consumed()) {
+			// a custom good is absent from `targets`, and without this branch its budget
+			// would never be given back: the good would drop out of the needs until the
+			// next full rebuild
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(need.id());
+			if (good != null) {
+				int markedGood = this.huntPrices.getOrDefault(need.id(), good.maxPrice());
+				int goodBudget = Math.min(markedGood - 1, good.maxPrice());
+				if (goodBudget < 1) continue;
+				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
+				goodQueue.enqueue(need.reserveAdded() ? Math.min(need.seenPrice() - 1, good.maxPrice()) : goodBudget);
+				this.needs.put(need.id(), goodQueue);
+				continue;
+			}
 			EnchantmentTarget target = this.targets.get(need.id());
 			if (target == null) continue;
 			// replace the whole queue: needs holds exactly one slot per enchantment

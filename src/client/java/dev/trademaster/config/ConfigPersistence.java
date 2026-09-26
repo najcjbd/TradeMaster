@@ -8,7 +8,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import dev.trademaster.TradeMaster;
-import dev.trademaster.config.MaliLibAdapter;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
@@ -384,7 +383,15 @@ public final class ConfigPersistence {
 			if (air != null && air.isJsonArray()) {
 				c.airItems.clear();
 				for (JsonElement e : air.getAsJsonArray()) {
-					if (e.isJsonPrimitive()) c.airItems.add(e.getAsString());
+					if (!e.isJsonPrimitive()) continue;
+					String raw = e.getAsString().trim();
+					if (raw.isEmpty()) continue;
+					// the same normalisation the offers tab uses: a namespaceless entry
+					// means minecraft:, or a hand-written "AIR" would never match
+					Identifier id = raw.indexOf(':') >= 0
+							? Identifier.tryParse(raw)
+							: Identifier.tryParse("minecraft:" + raw);
+					if (id != null && !c.airItems.contains(id.toString())) c.airItems.add(id.toString());
 				}
 			}
 			JsonObject specs = getSection(offers, "specs");
@@ -412,11 +419,13 @@ public final class ConfigPersistence {
 							: null;
 					if (result == null || result.equals(TradeOfferSpec.ENCHANTED_BOOK)) continue;
 					if (c.goodFor(result) != null) continue;   // one good per result item
+					// normalised HERE, not only on write: a hand-written slot without an
+					// item must become air immediately, or the GUI would NPE on it
 					c.goods.add(new GoodSpec(result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
-							readCosts(o.get("costs"))));
+							readCosts(o.get("costs"))).normalized());
 				}
 			}
 		}
