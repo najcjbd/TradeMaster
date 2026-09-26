@@ -108,6 +108,7 @@
   "trademaster.message.curse_stage_failed": "诅咒书未能转入待处理槽位，回收中止",
   "trademaster.message.curse_drop_failed": "诅咒书丢弃始终未获服务器确认，回收中止",
   "trademaster.message.grind_state_invalid": "内部错误：砂轮回收器进入了未处理的状态，回收中止",
+  "trademaster.message.deposit_state_invalid": "内部错误：箱子存放流程进入了未处理的状态，存放中止",
   "trademaster.message.grindstone_config_changed": "砂轮模式的启用状态或砂轮坐标在运行中被修改，已按正常流程停止",
   "trademaster.message.emergency_purchase": "目标书买不起，已应急买下 %s @%s 绿宝石以锁定村民（这本不是你的目标书）",
   "trademaster.message.combo_shortage_hint": "材料不足：组合书的总价可能高于资金底线。可开启「单书多附魔保障」把底线提高到 64，避免此类停线",

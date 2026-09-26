@@ -345,7 +345,7 @@ public class TradeMatcher {
 				// so combo books never leave a "cheaper only" reservation behind
 				boolean huntMarked = this.huntPrices.containsKey(part.id());
 				boolean reserveAdded = book.parts().size() == 1 && config.reserveCheaperTraders
-						&& !huntMarked && book.price() > TradeMasterConfig.minPrice(part.level(), part.id());
+						&& !huntMarked && book.price() > floorPrice(part);
 				if (reserveAdded) {
 					queue.enqueue(book.price() - 1);
 				} else if (queue.isEmpty()) {
@@ -470,6 +470,16 @@ public class TradeMatcher {
 	 * alike — a level difference makes a different combo. */
 	public static Set<MatchPart> comboKey(List<MatchPart> parts) {
 		return Set.copyOf(parts);
+	}
+
+	/** The cheapest a trade for {@code part} can be. An enchantment follows the
+	 * vanilla price formula (doubled for double_trade_price entries); an item part
+	 * (a custom good, level 0) has no formula and can cost as little as one emerald.
+	 * Feeding it the enchantment formula's floor of 2 would treat a price-2 good as
+	 * already-bottom and drop the need, silently skipping the cheaper price-1 copy
+	 * the reserve option exists to keep hunting. */
+	private static int floorPrice(MatchPart part) {
+		return part.level() <= 0 ? 1 : TradeMasterConfig.minPrice(part.level(), part.id());
 	}
 
 	/** Budget slot for a target: the hunt LOWERS it (marked-1 — only a strictly

@@ -108,6 +108,7 @@
   "trademaster.message.curse_stage_failed": "The cursed book could not be staged for chest/drop handling, recycling aborted",
   "trademaster.message.curse_drop_failed": "Cursed book drop was never confirmed by the server, recycling aborted",
   "trademaster.message.grind_state_invalid": "Internal error: the grindstone recycler reached an unhandled state, recycling aborted",
+  "trademaster.message.deposit_state_invalid": "Internal error: the chest depositor reached an unhandled state, depositing aborted",
   "trademaster.message.grindstone_config_changed": "The grindstone mode definition was changed while running (enable flag or grindstone position); stopped the normal way",
   "trademaster.message.emergency_purchase": "The target book is unaffordable; bought %s for %s emeralds instead just to lock the villager (this is not one of your targets)",
   "trademaster.message.combo_shortage_hint": "Out of materials: a combo book's total price can exceed the emerald floor. Enabling \"Multi-enchantment book safeguard\" raises the floor to 64 and avoids this stop",

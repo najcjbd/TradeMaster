@@ -360,10 +360,6 @@ public class ChestDepositor implements BookDisposal {
 					this.state = State.DROP_WAIT;
 				}
 			}
-			default -> {
-					// a state that is wired up but has no case would otherwise spin here
-					return StepResult.failed(Component.translatable("trademaster.message.grind_state_invalid"));
-				}
 			case DROP_WAIT -> {
 				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
 					// the drop landed: back to the next item
@@ -388,6 +384,10 @@ public class ChestDepositor implements BookDisposal {
 						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
 					}
 				}
+			}
+			default -> {
+				// a state that is wired up but has no case would otherwise spin here
+				return StepResult.failed(Component.translatable("trademaster.message.deposit_state_invalid"));
 			}
 		}
 		return StepResult.RUNNING;

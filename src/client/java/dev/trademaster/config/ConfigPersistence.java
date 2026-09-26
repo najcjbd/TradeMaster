@@ -502,20 +502,26 @@ public final class ConfigPersistence {
 			if (item != null && !item.isBlank()) air.add(item.trim());
 		}
 		offers.add("airItems", air);
+		// seed each entry from the object already on disk so a hand-written key INSIDE
+		// an entry survives too: the section-level merge above only protects keys
+		// directly under "offers", and rebuilding these sub-objects from scratch used
+		// to drop a note/forward-compat key nested one level deeper
+		JsonObject oldSpecs = getSection(offers, "specs");
 		JsonObject specs = new JsonObject();
 		for (Map.Entry<Identifier, TradeOfferSpec> entry : c.tradeSpecs.entrySet()) {
 			TradeOfferSpec spec = entry.getValue().normalized();
-			JsonObject o = new JsonObject();
+			JsonObject o = entryObject(oldSpecs, entry.getKey().toString());
 			o.add("costs", writeCosts(spec.costs()));
 			o.addProperty("result", spec.result().toString());
 			specs.add(entry.getKey().toString(), o);
 		}
 		offers.add("specs", specs);
 
+		JsonArray oldGoods = getArray(offers, "goods");
 		JsonArray goods = new JsonArray();
 		for (GoodSpec good : c.goods) {
 			GoodSpec g = good.normalized();
-			JsonObject o = new JsonObject();
+			JsonObject o = goodEntryObject(oldGoods, g.result().toString());
 			o.addProperty("result", g.result().toString());
 			o.addProperty("resultCount", g.resultCount());
 			o.addProperty("enabled", g.enabled());
@@ -589,6 +595,32 @@ public final class ConfigPersistence {
 	private static @Nullable JsonObject getSection(JsonObject root, String key) {
 		JsonElement e = root.get(key);
 		return e != null && e.isJsonObject() ? e.getAsJsonObject() : null;
+	}
+
+	private static @Nullable JsonArray getArray(JsonObject root, String key) {
+		JsonElement e = root.get(key);
+		return e != null && e.isJsonArray() ? e.getAsJsonArray() : null;
+	}
+
+	/** The object already stored for {@code key} under {@code specs}, so a hand-written
+	 * key this version does not know about survives the save; a fresh object otherwise. */
+	private static JsonObject entryObject(@Nullable JsonObject specs, String key) {
+		JsonObject existing = specs == null ? null : getSection(specs, key);
+		return existing != null ? existing : new JsonObject();
+	}
+
+	/** The stored goods entry whose result is {@code result}: goods are identified by
+	 * their result item, so that is the key a hand-written extra key hangs off. */
+	private static JsonObject goodEntryObject(@Nullable JsonArray goods, String result) {
+		if (goods != null) {
+			for (JsonElement e : goods) {
+				if (!e.isJsonObject()) continue;
+				JsonObject o = e.getAsJsonObject();
+				JsonElement r = o.get("result");
+				if (r != null && r.isJsonPrimitive() && r.getAsString().equals(result)) return o;
+			}
+		}
+		return new JsonObject();
 	}
 
 	private static <E extends Enum<E>> E readEnum(JsonObject o, String key, E fallback) {
