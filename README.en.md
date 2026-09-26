@@ -114,6 +114,31 @@ Datapack/modded servers often sell in shapes other than "emeralds + book". The f
 - **Cost C and beyond**: the vanilla protocol carries only two cost slots, so slot 3+ is **config-file only** (`offers.specs.<enchantment>.costs`, append to the array; a save never drops or shifts a slot). If a mod or fork extends the trade object with more slots, they are read generically in declaration order and compared by the same subset rule.
 - **Stock checks**: the materials precheck (and the one before each lock) covers these items and names the missing item and amount; a mid-run shortage goes through the emergency purchase first and stops only if that fails too.
 
+### Goods (things you choose to reroll for)
+
+The lower half of the Offers tab lets you **add goods**: the result does not have to be
+an enchanted book — any item will do (useful when a datapack/modded server puts
+something else into a librarian's trade).
+
+- **One good = one result item** (the result item IS its identity, so two goods cannot
+  share one; to change the result, remove the row and add it again).
+- Each row edits: the **amount** (the trade must yield at least this many), the **price
+  cap** (slot 1's amount, the same notion as an enchantment's price: pay more and it is
+  not bought, and it is the scale hunt/reservation compare on), the three cost fields
+  (**cost A / cost B / B amount**; identical rules to the enchantment rows, including
+  `-1 no limit / 0 not required` and the air-item list), plus **enable ▣** and
+  **remove ✕** on the right.
+- Goods follow **exactly the same rules** as enchantments: hunt cheaper, disable after
+  lock, naming and named-villager deduction (the villager is named with the **item's
+  display name**, and the alias tab can alias it too).
+- **Disposal**: a good is not an enchanted book, so the **grindstone cannot disenchant
+  it**. A bought good is only ever stored in the bound chests; when every chest refuses
+  it, the "custom good disposal" setting decides — **stop** (the default) or **drop it
+  facing the configured drop direction**. While a good sits in the inventory the
+  chest/drop path takes priority, even in grindstone mode.
+- Cost slots 3 and beyond are still config-file only (`offers.goods[].costs`); a save
+  never shifts or drops them.
+
 ## Matching and budget
 
 - Every **enabled** enchantment keeps a max-heap of acceptable prices (its "price slot").

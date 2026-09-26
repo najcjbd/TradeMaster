@@ -1,5 +1,6 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.exec.EnchantmentNamer;
@@ -20,33 +21,32 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The offers tab: how each enchantment's trade is expected to look.
+ * The offers tab: how each target's trade is expected to look, plus the custom goods
+ * the player wants to reroll for.
  *
- * <p>One row per stored enchantment, with the two vanilla cost slots — the item of
- * slot 1 (the price slot: its amount is that enchantment's own price, set on the
- * enchantments tab) and the item + amount of slot 2. An empty item means "this slot
- * is not required"; the amount is {@code -1} for "no limit", {@code 0} for "not
- * required" and {@code n} for a cap. Extra slots a modded trade object may carry
- * (slot 3 and beyond) are config-file only, and are preserved verbatim when a row is
- * saved, so a hand-written slot is never lost or shifted.
+ * <p><b>Enchantment rows</b> carry the two vanilla cost slots — the item of slot 1
+ * (the price slot: its amount is that enchantment's own price, set on the enchantments
+ * tab) and the item + amount of slot 2. <b>Good rows</b> add the result amount, the
+ * good's price cap, an enable toggle and a remove button. A good is identified by its
+ * result item, so that cannot be edited in place: remove the row and add it again.
+ *
+ * <p>An empty item means "this slot is not required"; an amount is {@code -1} for "no
+ * limit", {@code 0} for "not required" and {@code n} for a cap. Extra cost slots a
+ * modded trade object may carry (slot 3 and beyond) are config-file only, and are
+ * preserved verbatim when a row is saved.
  *
  * <p>The fixed header holds the shared "air item" list: an item named there is not a
- * cost on either side, so a datapack that spells a free slot as e.g. minecraft:air
- * simply works.
- *
- * <p>Drafts commit on focus loss / screen close, like every other tab — typed text
- * never reaches the config while it is being typed.
+ * cost on either side. Drafts commit on focus loss / screen close, like every other
+ * tab; every field width shrinks with the row, so a narrow screen cannot overflow.
  */
 public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row> {
 
-	private static final int FIELD_GAP = 4;
-	private static final int COST_WIDTH = 92;
-	private static final int COUNT_WIDTH = 30;
+	static final int FIELD_GAP = 4;
+	static final int MIN_FIELD = 22;
+	static final int NUM_WIDTH = 26;
 	/** Header band: the air list lives here, above the column labels. */
 	private static final int AIR_Y = 28;
 
-	/** The air-item list, edited as one comma separated field. Rendered and handled by
-	 * this list itself (it sits in the fixed header, outside the rows). */
 	private final EditBox airField;
 
 	public OffersListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
@@ -59,6 +59,16 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		for (var entry : TradeMasterConfig.INSTANCE.enchantments.entrySet()) {
 			this.addEntry(new OfferRow(entry.getKey()));
 		}
+		this.addEntry(new SectionHeaderRow("trademaster.offers.goods_header"));
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
+			this.addEntry(new GoodRow(good));
+		}
+		this.addEntry(new AddGoodRow());
+	}
+
+	/** Item field width for the enchantment rows at this row width. */
+	static int costWidthFor(int entryWidth) {
+		return Math.max(MIN_FIELD, (entryWidth - NUM_WIDTH - FIELD_GAP * 3 - 70) / 2);
 	}
 
 	@Override
@@ -71,13 +81,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				this.airField.getX() + this.airField.getWidth() + 6, AIR_Y + 4, 0xFF606060);
 		this.airField.extractRenderState(context, 0, 0, 0.0f);
 
+		// the labels line up with the enchantment rows' three fields
 		int right = this.getRowLeft() + this.getRowWidth() - 2;
+		int costWidth = costWidthFor(this.getRowWidth());
 		context.text(font, Component.translatable("trademaster.column.cost_a"),
-				right - COUNT_WIDTH - FIELD_GAP - COST_WIDTH * 2 - FIELD_GAP + 2, 48, 0xFF202020);
+				right - NUM_WIDTH - FIELD_GAP - costWidth * 2 - FIELD_GAP * 2 + 2, 48, 0xFF202020);
 		context.text(font, Component.translatable("trademaster.column.cost_b"),
-				right - COUNT_WIDTH - FIELD_GAP - COST_WIDTH + 2, 48, 0xFF202020);
+				right - NUM_WIDTH - FIELD_GAP - costWidth + 2, 48, 0xFF202020);
 		context.text(font, Component.translatable("trademaster.column.cost_count"),
-				right - COUNT_WIDTH + 2, 48, 0xFF202020);
+				right - NUM_WIDTH + 2, 48, 0xFF202020);
 	}
 
 	@Override
@@ -115,7 +127,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
-	/** Commits the air list plus every row's in-flight offer draft. */
+	/** Commits the air list plus every row's in-flight draft. */
 	public void flushEdits() {
 		applyAirField();
 		for (Row row : this.children()) row.flushEdits();
@@ -138,12 +150,19 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		config.save();
 	}
 
+	private List<EditBox> allFields() {
+		List<EditBox> fields = new ArrayList<>();
+		for (Row row : this.children()) {
+			for (EditBox field : row.fields()) fields.add(field);
+		}
+		return fields;
+	}
+
 	@Override
 	public boolean keyPressed(KeyEvent input) {
 		if (this.airField.isFocused()) return this.airField.keyPressed(input) || super.keyPressed(input);
-		for (OfferRow row : rows()) {
-			EditBox focused = row.focusedField();
-			if (focused != null) return focused.keyPressed(input);
+		for (EditBox field : allFields()) {
+			if (field.isFocused()) return field.keyPressed(input);
 		}
 		return super.keyPressed(input);
 	}
@@ -151,10 +170,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	@Override
 	public boolean keyReleased(KeyEvent input) {
 		if (this.airField.isFocused()) this.airField.keyReleased(input);
-		for (OfferRow row : rows()) {
-			for (EditBox field : row.fields()) {
-				if (field.isFocused()) field.keyReleased(input);
-			}
+		for (EditBox field : allFields()) {
+			if (field.isFocused()) field.keyReleased(input);
 		}
 		return super.keyReleased(input);
 	}
@@ -164,10 +181,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		if (this.airField.isFocused()) return this.airField.charTyped(input) || super.charTyped(input);
 		if (!input.isAllowedChatCharacter()) return false;
 		boolean consumed = false;
-		for (OfferRow row : rows()) {
-			for (EditBox field : row.fields()) {
-				consumed |= field.charTyped(input);
-			}
+		for (EditBox field : allFields()) {
+			consumed |= field.charTyped(input);
 		}
 		// consuming matters: the screen falls back to the list and would deliver the
 		// same character a second time
@@ -178,9 +193,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	@Override
 	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
 		if (this.airField.isFocused()) return this.airField.preeditUpdated(input);
-		for (OfferRow row : rows()) {
-			EditBox focused = row.focusedField();
-			if (focused != null) return focused.preeditUpdated(input);
+		for (EditBox field : allFields()) {
+			if (field.isFocused()) return field.preeditUpdated(input);
 		}
 		return false;
 	}
@@ -196,13 +210,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		this.airField.setFocused(false);
 		// commit + unfocus every field the click did NOT land in, or two fields could
 		// hold focus at once and the keystrokes would reach the wrong row
-		for (OfferRow row : rows()) {
+		for (Row row : this.children()) {
 			for (EditBox field : row.fields()) {
-				if (!field.isMouseOver(click.x(), click.y())) {
-					field.setFocused(false);
-				}
+				if (!field.isMouseOver(click.x(), click.y())) field.setFocused(false);
 			}
-			row.commit();
+			if (!row.clickedIn(click)) row.commit();
 		}
 		return super.mouseClicked(click, doubled);
 	}
@@ -213,7 +225,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		super.setScrollAmount(amount);
 		if (this.scrollAmount() == before) return;
 		// a focused field scrolled off-screen keeps swallowing keystrokes
-		for (OfferRow row : rows()) {
+		for (Row row : this.children()) {
 			EditBox focused = row.focusedField();
 			if (focused != null) {
 				row.commit();
@@ -222,62 +234,150 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 	}
 
-	private List<OfferRow> rows() {
-		List<OfferRow> result = new ArrayList<>();
-		for (Row row : this.children()) {
-			if (row instanceof OfferRow offer) result.add(offer);
-		}
-		return result;
-	}
-
-	/** Base type so the list can hold the offer rows. */
+	/** Base type so the list can hold rows of several kinds. */
 	public abstract static class Row extends AbstractSelectionList.Entry<Row> {
 		protected int x, y, entryWidth, entryHeight;
 
-		void flushEdits() {}
-	}
-
-	public static class OfferRow extends Row {
-
-		private final Identifier id;
-		private final String translationKey;
-		private final EditBox costAField;
-		private final EditBox costBField;
-		private final EditBox countField;
-		/** Unusable input, shown in red until the text changes again. */
-		private @Nullable String errorKey = null;
-
-		public OfferRow(Identifier id) {
-			this.id = id;
-			this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
-			TradeOfferSpec spec = TradeMasterConfig.INSTANCE.specFor(id);
-			TradeOfferSpec.TradeCost a = spec.costAt(0);
-			TradeOfferSpec.TradeCost b = spec.costAt(1);
-			this.costAField = field(COST_WIDTH, "costA", a == null ? "" : a.item().toString());
-			this.costBField = field(COST_WIDTH, "costB", b == null ? "" : b.item().toString());
-			this.countField = field(COUNT_WIDTH, "count", b == null ? "-1" : String.valueOf(b.count()));
-		}
-
-		private static EditBox field(int width, String name, String value) {
-			EditBox box = new EditBox(Minecraft.getInstance().font, 0, 0, width, 14, Component.literal(name));
-			box.setMaxLength(128);
-			box.setValue(value);
-			box.setResponder(text -> {});
-			return box;
-		}
-
 		public EditBox[] fields() {
-			return new EditBox[]{this.costAField, this.costBField, this.countField};
+			return new EditBox[0];
 		}
 
-		private @Nullable EditBox focusedField() {
+		void flushEdits() {}
+
+		/** Writes the row's draft; a no-op for rows without editable state. */
+		void commit() {}
+
+		/** Whether the click landed on this row (used to skip committing it). */
+		boolean clickedIn(MouseButtonEvent click) {
+			return click.x() > this.x && click.x() < this.x + this.entryWidth
+					&& click.y() > this.y && click.y() < this.y + this.entryHeight;
+		}
+
+		@Nullable
+		EditBox focusedField() {
 			for (EditBox field : fields()) {
 				if (field.isFocused()) return field;
 			}
 			return null;
 		}
 
-		/** Writes the row's draft, refusing (and flagging) unusable input. */
+		protected void prepare(GuiGraphicsExtractor context) {
+			this.x = this.getX();
+			this.y = this.getY();
+			this.entryWidth = this.getWidth();
+			this.entryHeight = this.getHeight();
+			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
+		}
+
+		protected void place(GuiGraphicsExtractor context, EditBox field, int x, int width,
+				int mouseX, int mouseY, float deltaTicks) {
+			field.setWidth(Math.max(MIN_FIELD, width));
+			field.setX(x);
+			field.setY(this.y + 3);
+			context.pose().pushMatrix();
+			field.extractRenderState(context, mouseX, mouseY, deltaTicks);
+			context.pose().popMatrix();
+		}
+
+		protected static String fit(Font font, String text, int width) {
+			if (font.width(text) <= width) return text;
+			String result = text;
+			while (!result.isEmpty() && font.width(result + "…") > width) {
+				result = result.substring(0, result.length() - 1);
+			}
+			return result + "…";
+		}
+
+		protected static @Nullable Identifier parseItem(String text) {
+			if (text == null || text.isBlank()) return null;
+			String value = text.trim();
+			// a namespaceless "book" means minecraft:book, like everywhere else
+			return value.indexOf(':') >= 0
+					? Identifier.tryParse(value)
+					: Identifier.tryParse("minecraft:" + value);
+		}
+
+		/** -1 (no limit), 0 (not required) or 1..64; null when the text is not usable. */
+		protected static @Nullable Integer parseCount(String text) {
+			if (text == null || text.isBlank()) return TradeOfferSpec.UNLIMITED;
+			try {
+				int value = Integer.parseInt(text.trim());
+				if (value < TradeOfferSpec.UNLIMITED || value > 64) return null;
+				return value;
+			} catch (NumberFormatException e) {
+				return null;
+			}
+		}
+
+		protected static EditBox field(String name, String value) {
+			EditBox box = new EditBox(Minecraft.getInstance().font, 0, 0, 40, 14, Component.literal(name));
+			box.setMaxLength(128);
+			box.setValue(value);
+			box.setResponder(text -> {});
+			return box;
+		}
+
+		@Override
+		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			for (EditBox field : fields()) {
+				if (field.isMouseOver(click.x(), click.y()) && field.mouseClicked(click, doubled)) {
+					field.setFocused(true);
+					return true;
+				}
+			}
+			return false;
+		}
+
+		@Override
+		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
+			for (EditBox field : fields()) {
+				if (field.isFocused() && field.mouseDragged(drag, mouseX, mouseY)) return true;
+			}
+			return false;
+		}
+	}
+
+	/** A plain band with a label: separates the enchantment rows from the goods. */
+	private static class SectionHeaderRow extends Row {
+		private final String labelKey;
+
+		SectionHeaderRow(String labelKey) {
+			this.labelKey = labelKey;
+		}
+
+		@Override
+		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			prepare(context);
+			Font font = Minecraft.getInstance().font;
+			context.text(font, Component.translatable(this.labelKey), this.x + 4, this.y + 6, 0xFF404040);
+		}
+	}
+
+	/** One enchantment: the Cost A item, the Cost B item and its amount. */
+	public static class OfferRow extends Row {
+
+		private final Identifier id;
+		private final EditBox costAField;
+		private final EditBox costBField;
+		private final EditBox countField;
+		private @Nullable String errorKey = null;
+
+		public OfferRow(Identifier id) {
+			this.id = id;
+			TradeOfferSpec spec = TradeMasterConfig.INSTANCE.specFor(id);
+			TradeOfferSpec.TradeCost a = spec.costAt(0);
+			TradeOfferSpec.TradeCost b = spec.costAt(1);
+			this.costAField = field("costA", a == null ? "" : a.item().toString());
+			this.costBField = field("costB", b == null ? "" : b.item().toString());
+			this.countField = field("count", b == null ? "-1" : String.valueOf(b.count()));
+		}
+
+		@Override
+		public EditBox[] fields() {
+			return new EditBox[]{this.costAField, this.costBField, this.countField};
+		}
+
+		@Override
 		void commit() {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			Identifier itemA = parseItem(this.costAField.getValue());
@@ -311,91 +411,205 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 
 		@Override
-		void flushEdits() {
-			this.commit();
-		}
-
-		private static @Nullable Identifier parseItem(String text) {
-			if (text == null || text.isBlank()) return null;
-			String value = text.trim();
-			// a namespaceless "book" means minecraft:book, like everywhere else
-			Identifier id = value.indexOf(':') >= 0
-					? Identifier.tryParse(value)
-					: Identifier.tryParse("minecraft:" + value);
-			return id;
-		}
-
-		private static @Nullable Integer parseCount(String text) {
-			if (text == null || text.isBlank()) return TradeOfferSpec.UNLIMITED;
-			try {
-				int value = Integer.parseInt(text.trim());
-				if (value < TradeOfferSpec.UNLIMITED || value > 64) return null;
-				return value;
-			} catch (NumberFormatException e) {
-				return null;
-			}
-		}
-
-		@Override
 		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			prepare(context);
 			Font font = Minecraft.getInstance().font;
-			this.x = this.getX();
-			this.y = this.getY();
-			this.entryWidth = this.getWidth();
-			this.entryHeight = this.getHeight();
-			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
-
-			int right = this.x + this.entryWidth - 2;
-			int countX = right - COUNT_WIDTH;
-			int costBX = countX - FIELD_GAP - COST_WIDTH;
-			int costAX = costBX - FIELD_GAP - COST_WIDTH;
-			String name = EnchantmentNamer.displayName(this.id, this.translationKey);
-			int nameWidth = Math.max(20, costAX - FIELD_GAP - (this.x + 4));
-			context.text(font, Component.literal(fit(font, name, nameWidth)), this.x + 4, this.y + 6, 0xFFFFFFFF);
+			int costWidth = costWidthFor(this.entryWidth);
+			int countX = this.x + this.entryWidth - 2 - NUM_WIDTH;
+			int costBX = countX - FIELD_GAP - costWidth;
+			int costAX = costBX - FIELD_GAP - costWidth;
+			String name = EnchantmentNamer.demandDisplayName(this.id);
+			context.text(font, Component.literal(fit(font, name, Math.max(20, costAX - FIELD_GAP - (this.x + 4)))),
+					this.x + 4, this.y + 6, 0xFFFFFFFF);
 			if (this.errorKey != null) {
 				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
-			place(context, this.costAField, costAX, mouseX, mouseY, deltaTicks);
-			place(context, this.costBField, costBX, mouseX, mouseY, deltaTicks);
-			place(context, this.countField, countX, mouseX, mouseY, deltaTicks);
+			place(context, this.costAField, costAX, costWidth, mouseX, mouseY, deltaTicks);
+			place(context, this.costBField, costBX, costWidth, mouseX, mouseY, deltaTicks);
+			place(context, this.countField, countX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
+		}
+	}
+
+	/** One custom good. The result item is the good's identity, so it is shown as a
+	 * label; the row edits its amount, its price cap and its cost slots, and carries an
+	 * enable toggle plus a remove button on the right. */
+	public static class GoodRow extends Row {
+
+		private final Identifier id;
+		private final EditBox resultCountField;
+		private final EditBox priceField;
+		private final EditBox costAField;
+		private final EditBox costBField;
+		private final EditBox countField;
+		private @Nullable String errorKey = null;
+
+		public GoodRow(GoodSpec good) {
+			this.id = good.id();
+			TradeOfferSpec.TradeCost a = good.spec().costAt(0);
+			TradeOfferSpec.TradeCost b = good.spec().costAt(1);
+			this.resultCountField = field("amount", String.valueOf(good.resultCount()));
+			this.priceField = field("price", String.valueOf(good.maxPrice()));
+			this.costAField = field("costA", a == null ? "" : a.item().toString());
+			this.costBField = field("costB", b == null ? "" : b.item().toString());
+			this.countField = field("count", b == null ? "-1" : String.valueOf(b.count()));
 		}
 
-		private static String fit(Font font, String text, int width) {
-			if (font.width(text) <= width) return text;
-			String ellipsis = "…";
-			String result = text;
-			while (!result.isEmpty() && font.width(result + ellipsis) > width) {
-				result = result.substring(0, result.length() - 1);
+		@Override
+		public EditBox[] fields() {
+			return new EditBox[]{this.resultCountField, this.priceField,
+					this.costAField, this.costBField, this.countField};
+		}
+
+		@Override
+		void commit() {
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			Integer amount = parseCount(this.resultCountField.getValue());
+			Integer price = parseCount(this.priceField.getValue());
+			Identifier itemA = parseItem(this.costAField.getValue());
+			Identifier itemB = parseItem(this.costBField.getValue());
+			Integer count = parseCount(this.countField.getValue());
+			boolean badItem = (!this.costAField.getValue().isBlank() && itemA == null)
+					|| (!this.costBField.getValue().isBlank() && itemB == null);
+			boolean badNumber = amount == null || amount < 1 || price == null || price < 0 || count == null;
+			if (badItem || badNumber) {
+				this.errorKey = badItem ? "trademaster.offer.invalid_item" : "trademaster.offer.invalid_count";
+				return;
 			}
-			return result + ellipsis;
-		}
-
-		private void place(GuiGraphicsExtractor context, EditBox field, int x,
-				int mouseX, int mouseY, float deltaTicks) {
-			field.setX(x);
-			field.setY(this.y + 3);
-			context.pose().pushMatrix();
-			field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			this.errorKey = null;
+			GoodSpec existing = config.goodFor(this.id);
+			if (existing == null) return;
+			List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
+			costs.add(new TradeOfferSpec.TradeCost(itemA == null ? TradeOfferSpec.AIR : itemA, 0));
+			costs.add(new TradeOfferSpec.TradeCost(itemB == null ? TradeOfferSpec.AIR : itemB, count));
+			// slots 3+ are config-file only and must survive a save
+			List<TradeOfferSpec.TradeCost> declared = existing.costs();
+			for (int slot = 2; slot < declared.size(); slot++) {
+				costs.add(declared.get(slot));
+			}
+			GoodSpec updated = new GoodSpec(this.id, amount, existing.enabled(), price, List.copyOf(costs));
+			if (updated.equals(existing)) return;
+			config.goods.set(config.goods.indexOf(existing), updated);
+			config.save();
 		}
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-			for (EditBox field : fields()) {
-				if (field.isMouseOver(click.x(), click.y()) && field.mouseClicked(click, doubled)) {
-					field.setFocused(true);
-					return true;
-				}
+			if (super.mouseClicked(click, doubled)) return true;
+			if (click.y() <= this.y || click.y() >= this.y + this.entryHeight - 4) return false;
+			int removeX = this.x + this.entryWidth - 2 - 14;
+			int toggleX = removeX - FIELD_GAP - 12;
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			GoodSpec existing = config.goodFor(this.id);
+			if (existing == null) return false;
+			if (click.x() >= removeX && click.x() < removeX + 14) {
+				config.goods.remove(existing);
+				config.save();
+				return true;
+			}
+			if (click.x() >= toggleX && click.x() < toggleX + 12) {
+				config.goods.set(config.goods.indexOf(existing), existing.withEnabled(!existing.enabled()));
+				config.save();
+				return true;
 			}
 			return false;
 		}
 
 		@Override
-		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
-			for (EditBox field : fields()) {
-				if (field.isFocused() && field.mouseDragged(drag, mouseX, mouseY)) return true;
+		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			prepare(context);
+			Font font = Minecraft.getInstance().font;
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(this.id);
+			boolean enabled = good == null || good.enabled();
+			int right = this.x + this.entryWidth - 2;
+			int removeX = right - 14;
+			int toggleX = removeX - FIELD_GAP - 12;
+			int countX = toggleX - FIELD_GAP - NUM_WIDTH;
+			int priceX = countX - FIELD_GAP - NUM_WIDTH;
+			int amountX = priceX - FIELD_GAP - NUM_WIDTH;
+			int costWidth = Math.max(MIN_FIELD, (amountX - FIELD_GAP - (this.x + 4) - 56) / 3);
+			int costBX = amountX - FIELD_GAP - costWidth;
+			int costAX = costBX - FIELD_GAP - costWidth;
+			int nameWidth = Math.max(16, costAX - FIELD_GAP - (this.x + 4));
+
+			String name = EnchantmentNamer.demandDisplayName(this.id);
+			context.text(font, Component.literal(fit(font, name, nameWidth)), this.x + 4, this.y + 6,
+					enabled ? 0xFFFFFFFF : 0xFF808080);
+			if (this.errorKey != null) {
+				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
+			}
+			context.text(font, Component.literal(enabled ? "\u25A3" : "\u25A2"), toggleX + 2, this.y + 6,
+					enabled ? 0xFF00C000 : 0xFF808080);
+			context.text(font, Component.literal("\u2715"), removeX + 3, this.y + 6, 0xFFFF5555);
+			place(context, this.costAField, costAX, costWidth, mouseX, mouseY, deltaTicks);
+			place(context, this.costBField, costBX, costWidth, mouseX, mouseY, deltaTicks);
+			place(context, this.resultCountField, amountX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
+			place(context, this.priceField, priceX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
+			place(context, this.countField, countX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
+		}
+	}
+
+	/** Adds a good: type the result item id and click the plus. */
+	public static class AddGoodRow extends Row {
+		private final EditBox resultField;
+		private @Nullable String errorKey = null;
+
+		public AddGoodRow() {
+			this.resultField = field("result", "");
+			this.resultField.setResponder(text -> this.errorKey = null);
+		}
+
+		@Override
+		public EditBox[] fields() {
+			return new EditBox[]{this.resultField};
+		}
+
+		@Override
+		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (super.mouseClicked(click, doubled)) return true;
+			int plusX = this.x + this.entryWidth - 2 - 14;
+			if (click.y() > this.y && click.y() < this.y + this.entryHeight - 4
+					&& click.x() >= plusX && click.x() < plusX + 14) {
+				return this.add();
 			}
 			return false;
+		}
+
+		/** Creates the good, refusing an unusable or already used result item. */
+		private boolean add() {
+			Identifier result = parseItem(this.resultField.getValue());
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			if (result == null || result.equals(TradeOfferSpec.AIR)) {
+				this.errorKey = "trademaster.offer.invalid_item";
+				return true;
+			}
+			if (config.goodFor(result) != null) {
+				this.errorKey = "trademaster.offer.good_exists";
+				return true;
+			}
+			// a good pays the price slot in emeralds by default and requires no second
+			// cost until one is entered; the result item IS its identity
+			List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
+			costs.add(new TradeOfferSpec.TradeCost(TradeOfferSpec.EMERALD, 0));
+			costs.add(new TradeOfferSpec.TradeCost(TradeOfferSpec.AIR, TradeOfferSpec.UNLIMITED));
+			config.goods.add(new GoodSpec(result, 1, true, 64, List.copyOf(costs)));
+			this.resultField.setValue("");
+			this.errorKey = null;
+			config.save();
+			return true;
+		}
+
+		@Override
+		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			prepare(context);
+			Font font = Minecraft.getInstance().font;
+			int plusX = this.x + this.entryWidth - 2 - 14;
+			int fieldX = plusX - FIELD_GAP - 100;
+			context.text(font, Component.translatable("trademaster.offers.add_good"), this.x + 4, this.y + 6, 0xFFE0E000);
+			context.text(font, Component.literal("+"), plusX + 4, this.y + 6, 0xFF00C000);
+			if (this.errorKey != null) {
+				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
+			}
+			place(context, this.resultField, fieldX, 100, mouseX, mouseY, deltaTicks);
 		}
 	}
 }

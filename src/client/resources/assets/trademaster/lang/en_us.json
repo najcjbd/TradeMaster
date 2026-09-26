@@ -219,5 +219,8 @@
   "trademaster.settings.nonBookDisposal": "Custom good disposal",
   "trademaster.settings.nonBookDisposal.stop": "Chest → stop when no chest takes it",
   "trademaster.settings.nonBookDisposal.drop": "Chest → drop when no chest takes it",
-  "trademaster.settings.nonBookDisposal.comment": "What to do with a bought good (not a book, so the grindstone cannot disenchant it) when every bound chest refuses it: stop and let you handle it, or drop it facing the configured drop direction."
+  "trademaster.settings.nonBookDisposal.comment": "What to do with a bought good (not a book, so the grindstone cannot disenchant it) when every bound chest refuses it: stop and let you handle it, or drop it facing the configured drop direction.",
+  "trademaster.offers.goods_header": "Goods (the result item is the identity: remove and re-add to change it; amount · price · cost A · cost B · B amount · enable ▣ · remove ✕)",
+  "trademaster.offers.add_good": "Add a good (enter the result item id)",
+  "trademaster.offer.good_exists": "That result item is already a good (one good per result item)"
 }
