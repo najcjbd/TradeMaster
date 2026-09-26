@@ -77,6 +77,11 @@ public class ChestDepositor implements BookDisposal {
 	private int dropAimTicks = 0;
 	private boolean dropSent = false;
 	private boolean dropResent = false;
+	/** The stack the current drop is moving: captured when the drop is staged, because
+	 * by the time the server confirms the drop the slot is already empty and the amount
+	 * is gone. The allowance is booked only on that confirmation (what actually left). */
+	private Item dropItem = null;
+	private int dropCount = 0;
 
 	/** How many of each item this pass may take out of the inventory because THIS RUN
 	 * produced it (bought goods). Empty = the usual behaviour: enchanted books only. */
@@ -113,8 +118,10 @@ public class ChestDepositor implements BookDisposal {
 		}
 
 		// Every chest has been tried (or there are none at all): either drop what is
-		// left over — when the option says so — or report the chests as full.
-		if (this.index >= this.chests.size()) {
+		// left over — when the option says so — or report the chests as full. Once the
+		// drop flow has started it must be allowed to run: re-deciding here every tick
+		// would re-enter startDropOrFail forever and the DROP_* states would never run.
+		if (this.index >= this.chests.size() && !inDropFlow()) {
 			return startDropOrFail(player);
 		}
 
@@ -277,10 +284,15 @@ public class ChestDepositor implements BookDisposal {
 					this.noProgressTicks = 0;
 					this.lastBookCount = scan.count();
 				}
+				// capture the stack BEFORE the click: handleContainerInput applies the
+				// move locally first, so reading the slot afterwards would see it empty
+				// and the allowance would never be spent
+				ItemStack before = scan.firstSlot().getItem().copy();
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 						scan.firstSlot().index, 0, ContainerInput.QUICK_MOVE, player);
-				// the pass may only take what this run produced: book the move
-				consumeAllowance(scan.firstSlot().getItem());
+				// the pass may only take what this run produced: book what actually left
+				ItemStack after = scan.firstSlot().getItem();
+				consumeAllowance(before.getItem(), before.getCount() - after.getCount());
 			}
 			case EVALUATE -> {
 				if (player.containerMenu != player.inventoryMenu) {
@@ -311,6 +323,10 @@ public class ChestDepositor implements BookDisposal {
 				int selected = player.getInventory().getSelectedSlot();
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;
+				// capture what this drop will move: by the time the server confirms it,
+				// the slot is empty and the amount can no longer be read
+				this.dropItem = slot.getItem().getItem();
+				this.dropCount = slot.getItem().getCount();
 				if (slot.index == 36 + selected) {
 					// already the selected hotbar slot: straight to aiming
 					this.state = State.DROP_AIM;
@@ -362,7 +378,8 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DROP_WAIT -> {
 				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
-					// the drop landed: back to the next item
+					// the drop landed: book what actually left, then take the next item
+					consumeAllowance(this.dropItem, this.dropCount);
 					this.state = State.DROP_STAGE;
 					return StepResult.RUNNING;
 				}
@@ -370,7 +387,6 @@ public class ChestDepositor implements BookDisposal {
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS,
 							BlockPos.ZERO, Direction.DOWN));
-					consumeAllowance(player.getInventory().getItem(this.dropSlot));
 					this.dropSent = true;
 					this.dropWaitTicks = 0;
 				} else if (++this.dropWaitTicks > 60) {
@@ -478,12 +494,22 @@ public class ChestDepositor implements BookDisposal {
 		return false;
 	}
 
+	/** A menu slot that holds a stack the player carries in the main inventory or the
+	 * hotbar. The menu index must be >= 9: in InventoryMenu 0-4 are the crafting grid
+	 * and 5-8 the WORN ARMOR, whose container is also the player inventory — without
+	 * this bound a worn armor piece would be counted (and, on the drop path, taken off
+	 * the player) as if it were carried. The offhand (45) passes here and is skipped
+	 * separately, only where the drop flow cannot use it. */
+	private static boolean isMainInventorySlot(LocalPlayer player, Slot slot) {
+		return slot.container == player.getInventory() && slot.index >= 9;
+	}
+
 	/** One pass over the open container's player slots: first disposable slot + total. */
 	private BookScan scanBooks(LocalPlayer player) {
 		Slot first = null;
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
-			if (slot.container == player.getInventory() && disposable(slot.getItem())) {
+			if (isMainInventorySlot(player, slot) && disposable(slot.getItem())) {
 				if (first == null) first = slot;
 				count++;
 			}
@@ -499,21 +525,32 @@ public class ChestDepositor implements BookDisposal {
 		return droppable(stack);
 	}
 
-	/** Consumes one moved stack from the produced-goods allowance. */
-	private void consumeAllowance(ItemStack stack) {
-		if (stack.isEmpty() || stack.is(Items.ENCHANTED_BOOK)) return;
-		Integer left = this.goodsAllowance.get(stack.getItem());
+	/** Consumes {@code moved} of {@code item} from the produced-goods allowance. Called
+	 * only for what the server actually moved (never for a refused click), so the
+	 * allowance stays an upper bound on THIS run's output rather than on the player's
+	 * whole stock. */
+	private void consumeAllowance(Item item, int moved) {
+		if (item == null || moved <= 0 || item == Items.ENCHANTED_BOOK) return;
+		Integer left = this.goodsAllowance.get(item);
 		if (left == null) return;
-		if (left <= stack.getCount()) this.goodsAllowance.remove(stack.getItem());
-		else this.goodsAllowance.put(stack.getItem(), left - stack.getCount());
+		if (left <= moved) this.goodsAllowance.remove(item);
+		else this.goodsAllowance.put(item, left - moved);
 	}
 
 	private int countDisposables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
-			if (slot.container == player.getInventory() && disposable(slot.getItem())) count++;
+			if (isMainInventorySlot(player, slot) && disposable(slot.getItem())) count++;
 		}
 		return count;
+	}
+
+	/** True while the drop flow owns the tick: the top-of-tick "all chests tried"
+	 * decision must not fire again, or startDropOrFail would loop instead of letting
+	 * the DROP_* states actually drop anything. */
+	private boolean inDropFlow() {
+		return this.state == State.DROP_STAGE || this.state == State.DROP_STAGE_WAIT
+				|| this.state == State.DROP_AIM || this.state == State.DROP_WAIT;
 	}
 
 	/** Every chest refused (or there are none): drop the leftover PRODUCED goods when
@@ -527,6 +564,11 @@ public class ChestDepositor implements BookDisposal {
 			this.look.reset();
 			this.dropSlot = -1;
 			this.dropWaitTicks = 0;
+			this.dropAimTicks = 0;
+			this.dropSent = false;
+			this.dropResent = false;
+			this.dropItem = null;
+			this.dropCount = 0;
 			return StepResult.RUNNING;
 		}
 		restoreHotbarSelection(player);
@@ -552,7 +594,7 @@ public class ChestDepositor implements BookDisposal {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.index >= 45) continue;
-			if (slot.container == player.getInventory() && droppable(slot.getItem())) count++;
+			if (isMainInventorySlot(player, slot) && droppable(slot.getItem())) count++;
 		}
 		return count;
 	}
@@ -563,7 +605,7 @@ public class ChestDepositor implements BookDisposal {
 	private @Nullable Slot findDroppableSlot(LocalPlayer player) {
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.index >= 45) continue;
-			if (slot.container == player.getInventory() && droppable(slot.getItem())) return slot;
+			if (isMainInventorySlot(player, slot) && droppable(slot.getItem())) return slot;
 		}
 		return null;
 	}

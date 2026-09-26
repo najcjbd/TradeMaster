@@ -138,6 +138,7 @@
   "trademaster.settings.enchantment_unavailable": "已失效",
   "trademaster.message.unmatchable_targets": "以下启用的附魔永远无法刷出（原版最低价已超过价格上限）：%s",
   "trademaster.message.unavailable_targets": "以下启用的附魔永远无法刷出（注册表中不存在或不可交易）：%s",
+  "trademaster.message.unmatchable_goods": "以下启用的货品永远无法刷出（结果物品不存在或为空气、价格上限为 0，或缺少可支付的 cost）：%s",
   "commands.trademaster.already_running": "Trade Master 已在运行",
   "commands.trademaster.not_running": "Trade Master 未在运行",
   "trademaster.settings.placeDelay": "放置延时（慢速模式）",

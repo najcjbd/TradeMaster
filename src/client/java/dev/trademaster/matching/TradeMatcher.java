@@ -177,25 +177,23 @@ public class TradeMatcher {
 		this.needs.clear();
 		this.targets.clear();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
-			// a target whose vanilla minimum price exceeds the configured max can
-			// never match: keep it out of the needs (start() warns about it)
-			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
-			// a row switched off with an AIR result is never offered: keeping it in the
-			// needs would leave an unsatisfiable demand alive for the whole run
-			if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) continue;
-			// a kept-but-dead config entry (enchantment removed from the registry
-			// or untradeable after a datapack/mod change) can never be offered by a
-			// villager either — Select All could still enable it, and without this
-			// guard the run would spin forever on a need nothing can satisfy
-			if (!registryTradeable(target.id())) continue;
+			// a target whose vanilla minimum price exceeds the configured max can never
+			// match, one switched off with an AIR result is never offered, and one whose
+			// enchantment left the registry / lost TRADEABLE can never be offered either:
+			// keeping any of them in the needs would leave an unsatisfiable demand alive
+			// for the whole run (start() warns about the price case)
+			if (!targetMatchable(target)) continue;
 			this.targets.put(target.id(), target);
 			this.needs.computeIfAbsent(target.id(),
 							k -> new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a)))
 					.enqueue(target.maxPrice());
 		}
 		// custom goods ride the same table: their id is their result item, so the
-		// budget / hunt / locked machinery needs no second code path
+		// budget / hunt / locked machinery needs no second code path. A good that can
+		// never be offered (air/absent result, price cap 0, no payable price slot) must
+		// be skipped here too, or the run rerolls forever on a need nothing can satisfy.
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			if (!goodMatchable(good)) continue;
 			this.needs.computeIfAbsent(good.id(),
 							k -> new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a)))
 					.enqueue(good.maxPrice());
@@ -233,6 +231,29 @@ public class TradeMatcher {
 		Registry<Enchantment> registry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
 		Holder<Enchantment> holder = registry.get(id).orElse(null);
 		return holder != null && holder.is(EnchantmentTags.TRADEABLE);
+	}
+
+	/** Whether an enchantment target can ever be offered: its vanilla minimum price must
+	 * fit its configured max, its spec result must not be an air item, and the
+	 * enchantment must still be tradeable. buildNeeds, resyncTargets and the material
+	 * precheck must all agree on this set, or the precheck demands materials for a trade
+	 * that no villager can ever offer. */
+	public static boolean targetMatchable(EnchantmentTarget target) {
+		if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) return false;
+		if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) return false;
+		return registryTradeable(target.id());
+	}
+
+	/** Whether a custom good can ever be offered: its result item must still exist and
+	 * not be an air item, its price cap must allow at least one emerald, and its spec
+	 * must declare a payable price slot (slot 1). A good that cannot match must not be
+	 * enqueued, or the run rerolls forever on a need no villager can satisfy. */
+	public static boolean goodMatchable(GoodSpec good) {
+		if (good.maxPrice() < 1) return false;
+		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
+		if (good.resultItem() == null) return false;
+		TradeOfferSpec.TradeCost slot0 = good.spec().costAt(0);
+		return slot0 != null && slot0.item() != null && !TradeMasterConfig.INSTANCE.isAirItem(slot0.item());
 	}
 
 	public boolean isEmpty() {
@@ -500,6 +521,8 @@ public class TradeMatcher {
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
 			if (good != null) {
 				if (!good.enabled()) continue;   // disabled mid-run: the hunt pauses
+				// a good that can no longer be offered must not keep a hunt alive
+				if (!goodMatchable(good)) continue;
 				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
 				if (goodBudget < 1) continue;
 				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
@@ -564,6 +587,9 @@ public class TradeMatcher {
 			this.needs.put(target.id(), queue);
 		}
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			// a good that can no longer be offered (result item gone, price cap 0, ...)
+			// is dropped from the enabled set, so the removeIf below prunes it
+			if (!goodMatchable(good)) continue;
 			enabledIds.add(good.id());
 			if (this.needs.containsKey(good.id())) continue;
 			if (lockedIds.contains(good.id()) && !this.huntPrices.containsKey(good.id())) continue;
@@ -594,7 +620,7 @@ public class TradeMatcher {
 			Component customName = villager.getCustomName();
 			if (customName == null) continue;
 			Set<Identifier> deductedHere = new HashSet<>();
-			for (NamedBook book : parseVillagerBooks(customName.getString())) {
+			for (NamedBook book : parseVillagerBooks(customName.getString(), nameToId)) {
 				for (NamedPart part : book.parts()) {
 					Identifier id = nameToId.get(EnchantmentNamer.canonical(part.name()));
 					if (id == null || !deductedHere.add(id)) continue;
@@ -631,8 +657,9 @@ public class TradeMatcher {
 
 	/** Books are the segments between price tokens: a maximal run of non-integer
 	 * tokens followed by an integer. Display names can contain spaces, so the
-	 * split must key off the prices, not fixed positions. */
-	private static List<NamedBook> parseVillagerBooks(String name) {
+	 * split must key off the prices, not fixed positions. {@code nameToId} is the
+	 * deduction index, used to disambiguate a name that ends in a roman-looking token. */
+	private static List<NamedBook> parseVillagerBooks(String name, Map<String, Identifier> nameToId) {
 		String[] tokens = name.trim().split("\\s+");
 		List<NamedBook> books = new ArrayList<>();
 		int start = 0;
@@ -644,7 +671,7 @@ public class TradeMatcher {
 				continue;
 			}
 			if (i > start) {
-				List<NamedPart> parts = parseBookSpan(java.util.Arrays.asList(tokens).subList(start, i));
+				List<NamedPart> parts = parseBookSpan(java.util.Arrays.asList(tokens).subList(start, i), nameToId);
 				if (!parts.isEmpty()) books.add(new NamedBook(parts, price));
 			}
 			start = i + 1;
@@ -652,12 +679,19 @@ public class TradeMatcher {
 		return books;
 	}
 
-	private static List<NamedPart> parseBookSpan(List<String> span) {
+	private static List<NamedPart> parseBookSpan(List<String> span, Map<String, Identifier> nameToId) {
 		// a detached trailing level token: legacy "{name} {roman} {price}" and
 		// combo displays whose last part's roman sits after a space
 		String last = span.get(span.size() - 1);
 		int detachedLevel = parseLevel(last);
 		if (detachedLevel > 0 && span.size() >= 2) {
+			// a name whose own text ends in a roman-looking token (a custom good named
+			// "... IV") would otherwise be read as "{name} {level}" and never resolve
+			// back. When the WHOLE span is a configured name, that reading wins.
+			String whole = String.join(" ", span);
+			if (nameToId.containsKey(EnchantmentNamer.canonical(whole))) {
+				return List.of(new NamedPart(whole, 0));
+			}
 			String rest = String.join(" ", span.subList(0, span.size() - 1));
 			if (!rest.contains("+")) {
 				return rest.isEmpty() ? List.of() : List.of(new NamedPart(rest, detachedLevel));

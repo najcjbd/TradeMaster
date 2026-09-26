@@ -138,6 +138,7 @@
   "trademaster.settings.enchantment_unavailable": "unavailable",
   "trademaster.message.unmatchable_targets": "Enabled enchantments that can never match (vanilla minimum price above the price cap): %s",
   "trademaster.message.unavailable_targets": "Enabled enchantments that can never match (missing from the registry or not tradeable): %s",
+  "trademaster.message.unmatchable_goods": "Enabled goods that can never match (result item missing or air, price cap 0, or no payable cost): %s",
   "commands.trademaster.already_running": "Trade Master is already running",
   "commands.trademaster.not_running": "Trade Master is not running",
   "trademaster.settings.placeDelay": "Place delay (slow mode)",

@@ -43,6 +43,14 @@ public record TradeOfferSpec(List<TradeCost> costs, Identifier result) {
 				ENCHANTED_BOOK);
 	}
 
+	/** Default cost slots for a custom good: pay the price slot in emeralds and require
+	 * no second cost — the result item is the good's identity, so a book slot would be
+	 * meaningless. Used for a good written with no costs (an otherwise unmatchable
+	 * "pays nothing" declaration) and for a good added from the offers tab. */
+	public static List<TradeCost> defaultGoodCosts() {
+		return List.of(new TradeCost(EMERALD, 0), new TradeCost(AIR, UNLIMITED));
+	}
+
 	/** Count meaning for a slot: a negative count is "no limit" (the server's own cap
 	 * applies), 0 is "this slot is not required", a positive count is the cap. Slot 1
 	 * ignores its stored count entirely — its amount is the target's price. */

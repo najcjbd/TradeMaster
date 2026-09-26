@@ -228,6 +228,14 @@ public final class RerollController {
 		}
 		if (player == null || mc.level == null) return false;
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// commit any in-flight settings draft FIRST: the start can come from the command
+		// or a hotkey while the settings screen is open with an unfocused draft, and the
+		// "missing position" guard below reads the config the row has not written yet —
+		// without this a run is refused with a bogus "position missing"
+		if (Minecraft.getInstance().gui.screen()
+				instanceof dev.trademaster.gui.TradeMasterScreen settingsScreen) {
+			settingsScreen.flushSettingsDrafts();
+		}
 		// name the position that is actually missing: always saying "lectern"
 		// sends the user re-picking the wrong slot
 		String missingPosKey = config.lecternPos == null ? "trademaster.settings.lecternPos"
@@ -242,13 +250,7 @@ public final class RerollController {
 		// a proper region supersedes an earlier acknowledgement of the sphere
 		// fallback: once real coordinates are configured, a later loss of them must
 		// ask for confirmation again
-		// (the start can also come from the command / a hotkey while the settings
-		// screen is open with an unfocused draft: commit it first, or the snapshots
-		// below are taken from a config the player is still editing)
-		if (Minecraft.getInstance().gui.screen()
-				instanceof dev.trademaster.gui.TradeMasterScreen settingsScreen) {
-			settingsScreen.flushSettingsDrafts();
-		}
+		if (regionConfigured()) regionFallbackConfirmed = false;
 		// maLiLib's own config screen only pushes its edits to the model on CLOSE:
 		// starting now would snapshot the pre-edit values, so refuse and say why
 		if (dev.trademaster.config.MaliLibAdapter.isConfigScreenOpen()) {
@@ -256,7 +258,6 @@ public final class RerollController {
 					.withStyle(ChatFormatting.RED));
 			return false;
 		}
-		if (regionConfigured()) regionFallbackConfirmed = false;
 		// the confirmation is only valid for the world it was granted in: entering
 		// another world must ask again instead of silently using that world's sphere
 		Object level = Minecraft.getInstance().level;
@@ -297,7 +298,7 @@ public final class RerollController {
 			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
 		}
-		warnUnmatchableTargets(mc);
+		warnUnmatchableDemands(mc);
 		// material/axe/lectern failures must reject the start right here: deferring
 		// them to the first precheck tick reported "started", closed the GUI and the
 		// user's in-progress pick, then stopped one tick later
@@ -1990,6 +1991,11 @@ public final class RerollController {
 	 * this runs every tick. */
 	private static long targetsFingerprint() {
 		long h = 1125899906842597L;
+		// the air list decides whether a spec result / cost item counts, so it changes
+		// which demands are live: editing it mid-run must rebuild the needs too
+		for (String item : TradeMasterConfig.INSTANCE.airItems) {
+			h = h * 31 + (item == null ? 0 : item.hashCode());
+		}
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enchantments.values()) {
 			h = h * 31 + (target.enabled() ? 1 : 0);
 			if (!target.enabled()) continue;
@@ -2031,12 +2037,15 @@ public final class RerollController {
 				|| (phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent());
 	}
 
-	/** Enabled targets whose vanilla minimum price exceeds the configured max can
-	 * never match: buildNeeds leaves them out, so the user sees why nothing is
-	 * rolled for them. */
-	private static void warnUnmatchableTargets(Minecraft mc) {
+	/** Enabled demands that buildNeeds leaves out because they can never match, so the
+	 * user sees why nothing is rolled for them: enchantment targets whose vanilla
+	 * minimum price exceeds the configured max, targets no longer in the registry /
+	 * not tradeable, and goods that cannot be offered (result item gone or air, price
+	 * cap 0, or no payable price slot). */
+	private static void warnUnmatchableDemands(Minecraft mc) {
 		List<String> dead = new ArrayList<>();
 		List<String> unavailable = new ArrayList<>();
+		List<String> goods = new ArrayList<>();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			if (!TradeMatcher.registryTradeable(target.id())) {
 				unavailable.add(target.id().toString());
@@ -2050,12 +2059,19 @@ public final class RerollController {
 						: target.id().toString());
 			}
 		}
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			if (!TradeMatcher.goodMatchable(good)) goods.add(good.id().toString());
+		}
 		if (!dead.isEmpty()) {
 			chat(Component.translatable("trademaster.message.unmatchable_targets", String.join(", ", dead))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!unavailable.isEmpty()) {
 			chat(Component.translatable("trademaster.message.unavailable_targets", String.join(", ", unavailable))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+		if (!goods.isEmpty()) {
+			chat(Component.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 	}
@@ -2200,7 +2216,15 @@ public final class RerollController {
 			AABB box = new AABB(
 					Math.min(origin.getX(), far.getX()), Math.min(origin.getY(), far.getY()), Math.min(origin.getZ(), far.getZ()),
 					Math.max(origin.getX(), far.getX()) + 1, Math.max(origin.getY(), far.getY()) + 1, Math.max(origin.getZ(), far.getZ()) + 1);
-			return client.level.getEntitiesOfClass(Villager.class, box);
+			List<Villager> region = new ArrayList<>(client.level.getEntitiesOfClass(Villager.class, box));
+			// the arrival point need not lie inside the configured region (see
+			// tickAwaitVillager's baby check): a villager parked there is grabbable, so
+			// include it — otherwise rest mode waits forever for one that never enters
+			// the box, checking only the box here but the arrival point for babies
+			for (Villager arrived : villagersAtArrivalPoint(client, s.lecternPos)) {
+				if (!region.contains(arrived)) region.add(arrived);
+			}
+			return region;
 		}
 		Vec3 center = Vec3.atCenterOf(s.lecternPos);
 		double radius = sphereRadius();

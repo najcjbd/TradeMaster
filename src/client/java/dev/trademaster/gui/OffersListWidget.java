@@ -120,8 +120,12 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	@Override
 	public boolean isMouseOver(double x, double y) {
 		// the scrollbar sits on the widget's right edge, outside the bounds the Screen
-		// uses to route mouse events: claim it explicitly
-		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y);
+		// uses to route mouse events: claim it explicitly. The air-item header band is
+		// drawn ABOVE the widget's top (its rows start below it), so it must be claimed
+		// too, or the Screen never routes a click there and the field can never focus.
+		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y)
+				|| (x >= this.getX() && x < this.getX() + this.width
+						&& y >= AIR_Y - 1 && y <= AIR_Y + 15);
 	}
 
 	@Override
@@ -645,10 +649,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			// a good pays the price slot in emeralds by default and requires no second
 			// cost until one is entered; the result item IS its identity
-			List<TradeOfferSpec.TradeCost> costs = new ArrayList<>();
-			costs.add(new TradeOfferSpec.TradeCost(TradeOfferSpec.EMERALD, 0));
-			costs.add(new TradeOfferSpec.TradeCost(TradeOfferSpec.AIR, TradeOfferSpec.UNLIMITED));
-			config.goods.add(new GoodSpec(result, 1, true, 64, List.copyOf(costs)));
+			config.goods.add(new GoodSpec(result, 1, true, 64, TradeOfferSpec.defaultGoodCosts()));
 			this.resultField.setValue("");
 			this.errorKey = null;
 			config.save();

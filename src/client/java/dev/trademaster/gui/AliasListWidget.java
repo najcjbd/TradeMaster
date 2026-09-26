@@ -272,11 +272,11 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			// that the index happily keeps distinct — a pure false rejection.
 			for (EnchantmentTarget other : config.enabledTargets()) {
 				if (other.id().equals(id)) continue;
-				// the index ALSO drops targets that are not tradeable or whose vanilla
-				// minimum price exceeds the configured max ("dead" targets): such a name
-				// cannot collide there, so refusing it here is a pure false rejection
-				if (!TradeMatcher.registryTradeable(other.id())) continue;
-				if (TradeMasterConfig.minPrice(other.level(), other.id()) > other.maxPrice()) continue;
+				// the index ALSO drops targets that are not tradeable, whose vanilla
+				// minimum price exceeds the configured max, or whose spec result is an
+				// air item ("dead" targets): such a name cannot collide there, so
+				// refusing it here is a pure false rejection. Same gate as buildNeeds.
+				if (!TradeMatcher.targetMatchable(other)) continue;
 				String refusal = collision(probe, other.id(),
 						EnchantmentNamer.demandDisplayName(other.id()), other.id().getPath());
 				if (refusal != null) return refusal;
@@ -298,9 +298,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				boolean live = config.goodFor(otherId) != null;
 				if (!live) {
 					EnchantmentTarget otherTarget = config.enchantments.get(otherId);
-					live = otherTarget != null && otherTarget.enabled()
-							&& TradeMatcher.registryTradeable(otherId)
-							&& TradeMasterConfig.minPrice(otherTarget.level(), otherId) <= otherTarget.maxPrice();
+					live = otherTarget != null && otherTarget.enabled() && TradeMatcher.targetMatchable(otherTarget);
 				}
 				if (!live) continue;
 				if (EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(entry.getKey())).equals(probe)) {

@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -175,7 +176,7 @@ public final class ConfigPersistence {
 	private static void writeFrom(TradeMasterConfig c, JsonObject root) {
 		root.addProperty("configVersion", CONFIG_VERSION);
 
-		JsonObject mechanism = new JsonObject();
+		JsonObject mechanism = sectionForWrite(root, "mechanism");
 		mechanism.addProperty("reroll", c.rerollMechanism.name());
 		mechanism.addProperty("detection", c.detectionMode.name());
 		mechanism.addProperty("reserveCheaperTraders", c.reserveCheaperTraders);
@@ -197,7 +198,7 @@ public final class ConfigPersistence {
 		mechanism.addProperty("debugLog", c.debugLog);
 		root.add("mechanism", mechanism);
 
-		JsonObject naming = new JsonObject();
+		JsonObject naming = sectionForWrite(root, "naming");
 		naming.addProperty("enabled", c.namingEnabled);
 		naming.addProperty("forceNamePriceOne", c.forceNamePriceOne);
 		JsonObject customNames = new JsonObject();
@@ -212,7 +213,7 @@ public final class ConfigPersistence {
 		naming.add("nameHistory", nameHistory);
 		root.add("naming", naming);
 
-		JsonObject positions = new JsonObject();
+		JsonObject positions = sectionForWrite(root, "positions");
 		positions.add("lectern", writePos(c.lecternPos));
 		positions.add("summonButton", writePos(c.summonButtonPos));
 		positions.add("sendAwayButton", writePos(c.sendAwayButtonPos));
@@ -226,7 +227,7 @@ public final class ConfigPersistence {
 		positions.add("chests", chests);
 		root.add("positions", positions);
 
-		JsonObject grindstone = new JsonObject();
+		JsonObject grindstone = sectionForWrite(root, "grindstone");
 		grindstone.addProperty("enabled", c.grindstoneEnabled);
 		grindstone.add("pos", writePos(c.grindstonePos));
 		grindstone.addProperty("openRetries", c.grindstoneOpenRetries);
@@ -241,7 +242,7 @@ public final class ConfigPersistence {
 
 		root.add("offers", writeOffers(c, root));
 
-		JsonObject antiCheat = new JsonObject();
+		JsonObject antiCheat = sectionForWrite(root, "antiCheat");
 		antiCheat.addProperty("legitMode", c.legitMode);
 		antiCheat.addProperty("slowMode", c.slowMode);
 		antiCheat.addProperty("tpToVillager", c.tpToVillager);
@@ -252,10 +253,12 @@ public final class ConfigPersistence {
 		antiCheat.addProperty("interactDelay", c.interactDelay);
 		root.add("antiCheat", antiCheat);
 
+		JsonObject oldEnchantments = getSection(root, "enchantments");
 		JsonObject enchantments = new JsonObject();
 		for (Map.Entry<Identifier, EnchantmentTarget> entry : c.enchantments.entrySet()) {
 			EnchantmentTarget t = entry.getValue();
-			JsonObject o = new JsonObject();
+			// seed from the entry on disk so a hand-written key inside it survives
+			JsonObject o = entryObject(oldEnchantments, entry.getKey());
 			o.addProperty("enabled", t.enabled());
 			o.addProperty("level", t.level());
 			o.addProperty("maxPrice", t.maxPrice());
@@ -263,7 +266,12 @@ public final class ConfigPersistence {
 		}
 		root.add("enchantments", enchantments);
 
-		root.add("hotkeys", MaliLibAdapter.writeHotkeys());
+		// merge the adapter's keys into the on-disk object: same reason as above
+		JsonObject hotkeys = sectionForWrite(root, "hotkeys");
+		for (Map.Entry<String, JsonElement> entry : MaliLibAdapter.writeHotkeys().entrySet()) {
+			hotkeys.add(entry.getKey(), entry.getValue());
+		}
+		root.add("hotkeys", hotkeys);
 	}
 
 	private static void readInto(TradeMasterConfig c, JsonObject root) {
@@ -295,7 +303,10 @@ public final class ConfigPersistence {
 
 		JsonObject naming = sectionOrRoot(root, "naming");
 		if (naming != null) {
-			c.namingEnabled = readBool(naming, "enabled", c.namingEnabled);
+			// a FLAT file (no sections) cannot say which "enabled" it meant: reading the
+			// root key here AND for the grindstone let one section switch off the other.
+			// Only a real section object may carry it.
+			if (naming != root) c.namingEnabled = readBool(naming, "enabled", c.namingEnabled);
 			c.forceNamePriceOne = readBool(naming, "forceNamePriceOne", c.forceNamePriceOne);
 			JsonObject customNames = getSection(naming, "customNames");
 			// only clear when the file actually carries the section: a partial
@@ -356,7 +367,8 @@ public final class ConfigPersistence {
 
 		JsonObject grindstone = sectionOrRoot(root, "grindstone");
 		if (grindstone != null) {
-			c.grindstoneEnabled = readBool(grindstone, "enabled", c.grindstoneEnabled);
+			// see the naming branch: a flat file's single "enabled" must not drive both
+			if (grindstone != root) c.grindstoneEnabled = readBool(grindstone, "enabled", c.grindstoneEnabled);
 			c.grindstonePos = readPos(grindstone.get("pos"));
 			c.grindstoneOpenRetries = Math.min(Math.max(-1,
 					readInt(grindstone, "openRetries", c.grindstoneOpenRetries)), 999);
@@ -418,14 +430,22 @@ public final class ConfigPersistence {
 							? Identifier.tryParse(resultElement.getAsString())
 							: null;
 					if (result == null || result.equals(TradeOfferSpec.ENCHANTED_BOOK)) continue;
+					// an air result can never be produced (an offer's air result has
+					// count 0): accept it and the good becomes an unsatisfiable need
+					if (c.isAirItem(result)) continue;
 					if (c.goodFor(result) != null) continue;   // one good per result item
+					// a good written with no costs would declare "pays nothing" and match
+					// nothing: fall back to the good's default shape (emerald price slot,
+					// no second cost), exactly like a good added from the offers tab
+					List<TradeOfferSpec.TradeCost> costs = readCosts(o.get("costs"));
+					if (costs.isEmpty()) costs = TradeOfferSpec.defaultGoodCosts();
 					// normalised HERE, not only on write: a hand-written slot without an
 					// item must become air immediately, or the GUI would NPE on it
 					c.goods.add(new GoodSpec(result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
-							readCosts(o.get("costs"))).normalized());
+							costs).normalized());
 				}
 			}
 		}
@@ -446,16 +466,24 @@ public final class ConfigPersistence {
 
 		JsonObject enchantments = sectionOrRoot(root, "enchantments");
 		if (enchantments != null) {
-			c.enchantments.clear();
+			// parse first, replace only when the file actually yielded targets: a
+			// wrong-typed or absent section resolves to the flat root and finds nothing,
+			// and clearing the whole table then would reset every enabled/level/price
+			// choice to the registry defaults and persist that loss
+			Map<Identifier, EnchantmentTarget> parsed = new LinkedHashMap<>();
 			for (Map.Entry<String, JsonElement> entry : enchantments.entrySet()) {
 				Identifier id = Identifier.tryParse(entry.getKey());
 				if (id == null || !entry.getValue().isJsonObject()) continue;
 				JsonObject o = entry.getValue().getAsJsonObject();
-				c.enchantments.put(id, new EnchantmentTarget(
+				parsed.put(id, new EnchantmentTarget(
 						id,
 						readBool(o, "enabled", false),
 						Math.max(1, Math.min(99, readInt(o, "level", 1))),
 						Math.max(1, Math.min(64, readInt(o, "maxPrice", 64)))));
+			}
+			if (!parsed.isEmpty()) {
+				c.enchantments.clear();
+				c.enchantments.putAll(parsed);
 			}
 		}
 
@@ -510,7 +538,7 @@ public final class ConfigPersistence {
 		JsonObject specs = new JsonObject();
 		for (Map.Entry<Identifier, TradeOfferSpec> entry : c.tradeSpecs.entrySet()) {
 			TradeOfferSpec spec = entry.getValue().normalized();
-			JsonObject o = entryObject(oldSpecs, entry.getKey().toString());
+			JsonObject o = entryObject(oldSpecs, entry.getKey());
 			o.add("costs", writeCosts(spec.costs()));
 			o.addProperty("result", spec.result().toString());
 			specs.add(entry.getKey().toString(), o);
@@ -521,7 +549,7 @@ public final class ConfigPersistence {
 		JsonArray goods = new JsonArray();
 		for (GoodSpec good : c.goods) {
 			GoodSpec g = good.normalized();
-			JsonObject o = goodEntryObject(oldGoods, g.result().toString());
+			JsonObject o = goodEntryObject(oldGoods, g.result());
 			o.addProperty("result", g.result().toString());
 			o.addProperty("resultCount", g.resultCount());
 			o.addProperty("enabled", g.enabled());
@@ -572,9 +600,13 @@ public final class ConfigPersistence {
 
 	/** Reads one spec. A slot may be written as a plain item string ("minecraft:book",
 	 * meaning one) or as {item, count}; a slot whose item is missing or unparsable
-	 * becomes air, i.e. "not required". Positions are never dropped or reordered. */
+	 * becomes air, i.e. "not required". Positions are never dropped or reordered.
+	 * A spec written with NO costs at all is a mistake that would declare "pays
+	 * nothing" and match nothing: it falls back to the default shape, exactly as an
+	 * absent spec does. */
 	private static TradeOfferSpec readOfferSpec(JsonObject o) {
 		List<TradeOfferSpec.TradeCost> costs = readCosts(o.get("costs"));
+		if (costs.isEmpty()) costs = TradeOfferSpec.defaults().costs();
 		Identifier result = TradeOfferSpec.ENCHANTED_BOOK;
 		JsonElement resultElement = o.get("result");
 		if (resultElement != null && resultElement.isJsonPrimitive()) {
@@ -602,22 +634,41 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonArray() ? e.getAsJsonArray() : null;
 	}
 
-	/** The object already stored for {@code key} under {@code specs}, so a hand-written
-	 * key this version does not know about survives the save; a fresh object otherwise. */
-	private static JsonObject entryObject(@Nullable JsonObject specs, String key) {
-		JsonObject existing = specs == null ? null : getSection(specs, key);
+	/** The named section already on disk, reused so hand-written keys this version does
+	 * not know about survive a save; a fresh object when there is none (or it has the
+	 * wrong type). Mirrors how the root itself is seeded from disk. */
+	private static JsonObject sectionForWrite(JsonObject root, String name) {
+		JsonObject existing = getSection(root, name);
 		return existing != null ? existing : new JsonObject();
 	}
 
+	/** The object already stored for {@code id} under {@code specs}, so a hand-written
+	 * key this version does not know about survives the save; a fresh object otherwise.
+	 * Matching is by PARSED id: a namespaceless hand-written key ("sharpness") loads as
+	 * minecraft:sharpness, so a raw-string lookup would miss it. */
+	private static JsonObject entryObject(@Nullable JsonObject specs, Identifier id) {
+		if (specs != null) {
+			for (Map.Entry<String, JsonElement> e : specs.entrySet()) {
+				if (!e.getValue().isJsonObject()) continue;
+				Identifier parsed = Identifier.tryParse(e.getKey());
+				if (parsed != null && parsed.equals(id)) return e.getValue().getAsJsonObject();
+			}
+		}
+		return new JsonObject();
+	}
+
 	/** The stored goods entry whose result is {@code result}: goods are identified by
-	 * their result item, so that is the key a hand-written extra key hangs off. */
-	private static JsonObject goodEntryObject(@Nullable JsonArray goods, String result) {
+	 * their result item, so that is the key a hand-written extra key hangs off. Matched
+	 * by parsed id, for the same namespaceless reason as {@link #entryObject}. */
+	private static JsonObject goodEntryObject(@Nullable JsonArray goods, Identifier result) {
 		if (goods != null) {
 			for (JsonElement e : goods) {
 				if (!e.isJsonObject()) continue;
 				JsonObject o = e.getAsJsonObject();
 				JsonElement r = o.get("result");
-				if (r != null && r.isJsonPrimitive() && r.getAsString().equals(result)) return o;
+				if (r == null || !r.isJsonPrimitive()) continue;
+				Identifier parsed = Identifier.tryParse(r.getAsString());
+				if (parsed != null && parsed.equals(result)) return o;
 			}
 		}
 		return new JsonObject();

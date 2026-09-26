@@ -4,6 +4,7 @@ import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
+import dev.trademaster.matching.TradeMatcher;
 import dev.trademaster.strategy.LecternRestock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -55,21 +56,34 @@ public final class Preconditions {
 		if (config.summonButtonPos == null) return missing("trademaster.settings.summonButtonPos");
 		if (config.sendAwayButtonPos == null) return missing("trademaster.settings.sendAwayButtonPos");
 
-		List<EnchantmentTarget> enabled = config.enabledTargets();
-		List<GoodSpec> goods = config.enabledGoods();
+		// the SAME live set the matcher can actually match: a row buildNeeds leaves out
+		// (air result, vanilla minimum above its max, no longer tradeable) must not
+		// demand materials here, or the run is refused (or stopped mid-run) for a trade
+		// no villager can ever offer
+		List<EnchantmentTarget> enabled = new ArrayList<>();
+		for (EnchantmentTarget target : config.enabledTargets()) {
+			if (TradeMatcher.targetMatchable(target)) enabled.add(target);
+		}
+		List<GoodSpec> goods = new ArrayList<>();
+		for (GoodSpec good : config.enabledGoods()) {
+			if (TradeMatcher.goodMatchable(good)) goods.add(good);
+		}
 		if (enabled.isEmpty() && goods.isEmpty()) {
 			return Component.translatable("trademaster.message.no_enchantments");
 		}
 
-		// What the specs declare: the largest cap any enabled target asks for per item
-		// (an "unlimited" slot asks for at least one), so the run can always pay for the
-		// target that needs an item most. Slot 1 is the price slot: its item is required
-		// in that target's own price amount. An air item means the slot is free.
+		// What the specs declare: for each target, the SUM of that target's slots per
+		// item (an "unlimited" slot asks for at least one), then the largest such total
+		// across targets. Slot 1 is the price slot: its item is required in that target's
+		// own price amount. An air item means the slot is free. The per-target sum (not
+		// the per-slot max) matches the matcher's allowance, which also sums a target's
+		// slots of the same item.
 		Map<Item, Integer> required = new LinkedHashMap<>();
 		boolean emeraldPrice = false;
 		for (EnchantmentTarget target : enabled) {
 			TradeOfferSpec spec = config.specFor(target.id());
 			List<TradeOfferSpec.TradeCost> costs = spec.costs();
+			Map<Item, Integer> perTarget = new LinkedHashMap<>();
 			for (int slot = 0; slot < costs.size(); slot++) {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
@@ -86,12 +100,14 @@ public final class Preconditions {
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
 				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
-				required.merge(item, needed, Math::max);
+				perTarget.merge(item, needed, Integer::sum);
 			}
+			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));
 		}
 		// custom goods declare the same kind of cost slots, with the good's price cap
 		for (GoodSpec good : goods) {
 			List<TradeOfferSpec.TradeCost> costs = good.spec().costs();
+			Map<Item, Integer> perTarget = new LinkedHashMap<>();
 			for (int slot = 0; slot < costs.size(); slot++) {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
@@ -102,8 +118,9 @@ public final class Preconditions {
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
 				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
-				required.merge(item, needed, Math::max);
+				perTarget.merge(item, needed, Integer::sum);
 			}
+			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));
 		}
 		if (emeraldPrice) {
 			// the emerald floor (largest max price, raised by hunt / the 64 cap) still

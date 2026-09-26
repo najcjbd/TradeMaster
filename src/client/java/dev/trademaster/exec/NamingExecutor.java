@@ -123,9 +123,13 @@ public class NamingExecutor {
 		this.nameRecords = List.copyOf(records);
 		// the anvil caps names at 50 chars: a long multi-book combo cannot be named,
 		// skip naming instead of wedging on a result slot that never fills
-		if (!isAnvilSafeName(composed.toString())) {
+		if (composed.length() > 50) {
 			this.name = null;
 			this.failReason = "name-too-long";
+		} else if (!isAnvilSafeName(composed.toString())) {
+			// not merely too long: filterText stripped it (format codes) or it is empty
+			this.name = null;
+			this.failReason = "invalid-name";
 		} else {
 			this.name = composed.toString();
 		}
@@ -201,7 +205,7 @@ public class NamingExecutor {
 		else key = switch (reason) {
 			case "anvil-missing", "anvil-open" -> "anvil";
 			case "tag-none", "tag-insert", "tag-menu" -> "tag";
-			case "rename-menu", "rename-cost", "invalid-name", "name-too-long" -> "rename";
+			case "rename-menu", "rename-cost", "invalid-name", "name-too-long", "xp-cost" -> "rename";
 			case "take-menu", "take-tag", "close-tag" -> "take";
 			case "equip-menu", "equip-hand" -> "equip";
 			case "apply-hand", "apply-villager", "verify-timeout" -> "apply";

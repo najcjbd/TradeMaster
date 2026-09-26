@@ -111,6 +111,14 @@ public class GrindstoneRecycler implements BookDisposal {
 	 * the offhand still holds exactly that and not something the player put there. */
 	private ItemStack stagedDisplaced = ItemStack.EMPTY;
 
+	/** Storage-slot staging (hotbar full): the hotbar slot the book was swapped into,
+	 * the book's original inventory (container) slot, and the item that swap displaced
+	 * out of the hotbar into that storage slot. Restored once the book is gone, or the
+	 * player's item would be left in an arbitrary inventory slot. */
+	private int storageStageSlot = -1;
+	private int storageStageSource = -1;
+	private ItemStack storageDisplaced = ItemStack.EMPTY;
+
 	public GrindstoneRecycler() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		this.grindstone = config.grindstonePos;
@@ -502,6 +510,12 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageOffhand = false;
 					this.dropStageSource = invSlot;
 					this.dropStageResent = false;
+					// a full hotbar makes target an OCCUPIED slot: record what the swap
+					// pushes into the book's old storage slot, to be returned once the
+					// book is dropped (undoStorageStage)
+					this.storageStageSlot = target;
+					this.storageStageSource = invSlot;
+					this.storageDisplaced = player.getInventory().getItem(target).copy();
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							inventoryMenuSlot(invSlot), target, ContainerInput.SWAP, player);
 				}
@@ -612,7 +626,31 @@ public class GrindstoneRecycler implements BookDisposal {
 		if (player == null) return;
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 		undoOffhandStage(player);
+		undoStorageStage(player);
 		restoreHotbarSelection(player);
+	}
+
+	/** Returns the item a storage-slot staging swap displaced out of the hotbar (the
+	 * hotbar was full, so the book was swapped into an OCCUPIED slot, pushing that
+	 * slot's item into the book's old storage slot). Runs only when the post-drop state
+	 * is still observed: the hotbar slot empty (the book left it) AND the storage slot
+	 * still holding exactly that item. */
+	private void undoStorageStage(net.minecraft.client.player.LocalPlayer player) {
+		int slot = this.storageStageSlot;
+		int source = this.storageStageSource;
+		ItemStack displaced = this.storageDisplaced;
+		this.storageStageSlot = -1;
+		this.storageStageSource = -1;
+		this.storageDisplaced = ItemStack.EMPTY;
+		if (slot < 0 || source < 0 || displaced.isEmpty()) return;
+		if (player.containerMenu != player.inventoryMenu) return;
+		if (!player.getInventory().getItem(slot).isEmpty()) return;
+		if (!ItemStack.isSameItemSameComponents(player.getInventory().getItem(source), displaced)) return;
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.gameMode == null) return;
+		if (player.getInventory().getSelectedSlot() != slot) Interactions.selectHotbarSlot(player, slot);
+		mc.gameMode.handleContainerInput(player.containerMenu.containerId,
+				inventoryMenuSlot(source), slot, ContainerInput.SWAP, player);
 	}
 
 	/** Returns the item an offhand staging swap displaced into the offhand. Runs only
@@ -666,6 +704,9 @@ public class GrindstoneRecycler implements BookDisposal {
 
 	/** Back to the grindstone after a chest/drop detour. */
 	private StepResult toGrindstone(net.minecraft.client.player.LocalPlayer player) {
+		// a completed drop may have staged the book out of an occupied hotbar slot:
+		// put the displaced item back before anything else reads the inventory
+		undoStorageStage(player);
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 		this.state = State.SEEK;
 		this.look.reset();
