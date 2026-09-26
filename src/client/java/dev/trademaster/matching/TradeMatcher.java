@@ -18,6 +18,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.network.chat.Component;
@@ -56,6 +57,33 @@ public class TradeMatcher {
 				copy.add(stack == null ? ItemStack.EMPTY : stack.copy());
 			}
 			return List.copyOf(copy);
+		}
+
+		/** Whether a live result stack is still the one this book was matched with: the
+		 * same item with at least the matched amount (a bonus is fine), and for an
+		 * enchanted book the same enchantment set — the drift-proof part. Shared by the
+		 * executor's per-stage check and the controller's "offer unchanged" check, and
+		 * used for custom goods, whose result is not a book. */
+		public boolean resultMatches(ItemStack stack) {
+			if (stack == null || stack.isEmpty()) return false;
+			if (!this.result.is(Items.ENCHANTED_BOOK)) {
+				return stack.is(this.result.getItem()) && stack.getCount() >= this.result.getCount();
+			}
+			if (!stack.is(Items.ENCHANTED_BOOK)) return false;
+			ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
+			if (enchantments.size() != this.bookEnchantments.size()) return false;
+			for (MatchPart part : this.bookEnchantments) {
+				boolean found = false;
+				for (var entry : enchantments.entrySet()) {
+					Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+					if (id != null && id.equals(part.id()) && entry.getIntValue() == part.level()) {
+						found = true;
+						break;
+					}
+				}
+				if (!found) return false;
+			}
+			return true;
 		}
 
 		/** Whether a live offer charges exactly what this book was matched with. */
@@ -437,6 +465,17 @@ public class TradeMatcher {
 	 * the needs table while hunt mode is on. */
 	public void applyHuntOverrides() {
 		for (Map.Entry<Identifier, Integer> entry : this.huntPrices.entrySet()) {
+			// a hunt-marked custom good is kept alive on the same terms
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
+			if (good != null) {
+				if (!good.enabled()) continue;   // disabled mid-run: the hunt pauses
+				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
+				if (goodBudget < 1) continue;
+				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
+				goodQueue.enqueue(goodBudget);
+				this.needs.put(entry.getKey(), goodQueue);
+				continue;
+			}
 			EnchantmentTarget target = this.targets.get(entry.getKey());
 			if (target == null) continue; // disabled mid-run: the hunt pauses
 			int budget = budgetFor(entry.getKey(), target);
@@ -601,8 +640,17 @@ public class TradeMatcher {
 		for (String token : span) {
 			for (String sub : token.split("\\+")) {
 				NamedPart part = splitNameLevel(sub);
-				if (part == null) return List.of();
-				parts.add(part);
+				if (part != null) {
+					parts.add(part);
+					continue;
+				}
+				// a part with NO level token: a custom good is named with just the item's
+				// name (the level is a BOOK's format anchor). The whole span is one such
+				// name — a book's parts always carry their level — and a level of 0 fails
+				// every enchantment's level check, so this cannot mis-deduct an enchantment
+				String whole = String.join(" ", span).trim();
+				if (whole.isEmpty()) return List.of();
+				return List.of(new NamedPart(whole, 0));
 			}
 		}
 		return parts;

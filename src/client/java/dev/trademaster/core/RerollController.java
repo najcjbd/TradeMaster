@@ -39,6 +39,7 @@ import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.MerchantMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
@@ -194,6 +195,13 @@ public final class RerollController {
 	public static int maxHuntBudget() {
 		int max = 0;
 		for (Map.Entry<Identifier, Integer> entry : huntMarkedPrices.entrySet()) {
+			// a custom good's hunt is capped by its own price, exactly like a target's
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
+			if (good != null) {
+				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
+				if (goodBudget > max) max = goodBudget;
+				continue;
+			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
 			// the mark-1 budget; an unknown target (disabled/removed mid-run) is left
 			// uncapped rather than pretending a 64 cap
@@ -319,6 +327,13 @@ public final class RerollController {
 		sneakPaused = false;
 		xpNamingPaused = false;
 		LecternRestock.resetRestock();
+		s.goodBaseline.clear();
+		if (Minecraft.getInstance().player != null) {
+			for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
+				Item item = good.resultItem();
+				if (item != null) s.goodBaseline.put(item, Preconditions.countItem(Minecraft.getInstance().player, item));
+			}
+		}
 		enter(Phase.PRECHECK);
 		chat(Component.translatable("trademaster.message.started").withStyle(ChatFormatting.GREEN));
 		return true;
@@ -564,12 +579,18 @@ public final class RerollController {
 	private static @Nullable BookDisposal createBookDisposal() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		// a bought GOOD cannot be disenchanted: while one sits in the inventory the
-		// chest/drop path must run, whatever the book-disposal mode says
+		// chest/drop path must run, whatever the book-disposal mode says. Only the
+		// EXCESS over the run's baseline is touched, so the player's own items that
+		// match a good's result are never stored or dropped
 		LocalPlayer disposerHolder = Minecraft.getInstance().player;
-		if (disposerHolder != null && ChestDepositor.holdsGood(disposerHolder)) {
+		Map<Item, Integer> produced = producedGoods(disposerHolder);
+		if (!produced.isEmpty()) {
 			if (!config.chestPositions.isEmpty()
 					|| config.nonBookDisposal == dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP) {
-				return new ChestDepositor(config.chestPositions);
+				// in grindstone mode the books are still the recycler's business, so this
+				// pass takes the produced goods only
+				boolean goodsOnly = config.grindstoneEnabled && config.grindstonePos != null;
+				return new ChestDepositor(config.chestPositions, produced, goodsOnly);
 			}
 			return null;
 		}
@@ -579,6 +600,26 @@ public final class RerollController {
 		}
 		if (config.chestPositions.isEmpty()) return null;
 		return new ChestDepositor(config.chestPositions);
+	}
+
+	/** How many of each good's result item this run PRODUCED (carried now minus the
+	 * start-of-run baseline), for goods that were actually matched this run. Books are
+	 * not part of it: they are the recycler's/depositor's usual business. */
+	private static Map<Item, Integer> producedGoods(@Nullable LocalPlayer player) {
+		Map<Item, Integer> produced = new LinkedHashMap<>();
+		RunSession s = session;
+		if (player == null || s == null) return produced;
+		for (Identifier id : s.lockedIds) {
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+			if (good == null) continue;
+			Item item = good.resultItem();
+			if (item == null) continue;
+			int now = Preconditions.countItem(player, item);
+			int baseline = s.goodBaseline.getOrDefault(item, 0);
+			int excess = now - baseline;
+			if (excess > 0) produced.merge(item, excess, Integer::sum);
+		}
+		return produced;
 	}
 
 	private static void tickPrecheck(Minecraft client, LocalPlayer player, RunSession s) {
@@ -1942,6 +1983,15 @@ public final class RerollController {
 			h = h * 31 + target.level();
 			h = h * 31 + target.maxPrice();
 		}
+		// custom goods shape the needs too (enabling one, or editing its price/amount,
+		// must rebuild the table just like an enchantment edit)
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
+			h = h * 31 + (good.enabled() ? 1 : 0);
+			if (!good.enabled()) continue;
+			h = h * 31 + good.id().hashCode();
+			h = h * 31 + good.maxPrice();
+			h = h * 31 + good.resultCount();
+		}
 		return h;
 	}
 
@@ -2227,27 +2277,11 @@ public final class RerollController {
 		if (trade.offerIndex() < 0 || trade.offerIndex() >= offers.size()) return false;
 		MerchantOffer offer = offers.get(trade.offerIndex());
 		if (offer.isOutOfStock()) return false;
-		if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
-				|| !offer.getResult().is(Items.ENCHANTED_BOOK)) return false;
-		if (offer.getBaseCostA().getCount() != trade.price()) return false;
-		// the book's FULL enchantment set must equal the set recorded at match time:
-		// datapack books carry several enchantments, and a regenerated offer could
-		// keep one matched part at the same price while silently changing the rest
-		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(offer.getResult());
-		var expected = trade.purchase().bookEnchantments();
-		if (enchantments.size() != expected.size()) return false;
-		for (var part : expected) {
-			boolean found = false;
-			for (var entry : enchantments.entrySet()) {
-				Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-				if (id != null && id.equals(part.id()) && entry.getIntValue() == part.level()) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) return false;
-		}
-		return true;
+		// the WHOLE cost shape and the result, not a hardcoded "emerald + book +
+		// enchanted book": a custom spec (or a custom good, whose result is any item)
+		// must be judged against what was actually matched
+		if (!trade.purchase().costsMatch(OfferCosts.slots(offer))) return false;
+		return trade.purchase().resultMatches(offer.getResult());
 	}
 
 	private static int resolveLockSlot(MerchantOffers offers, RunSession s) {
@@ -2263,7 +2297,7 @@ public final class RerollController {
 			if (alt >= 0) return alt;
 		}
 		if (hit != null && hit.offerIndex() < offers.size()
-				&& offers.get(hit.offerIndex()).getResult().is(Items.ENCHANTED_BOOK)) {
+				&& hit.purchase().resultMatches(offers.get(hit.offerIndex()).getResult())) {
 			return hit.offerIndex();
 		}
 		// Defensive tail, unreachable today (audited 2026-09-19): LOCK is only entered

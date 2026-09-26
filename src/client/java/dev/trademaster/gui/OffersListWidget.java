@@ -48,9 +48,12 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	private static final int AIR_Y = 28;
 
 	private final EditBox airField;
+	/** Asked for a rebuild after a good is added/removed/toggled (the row list changed). */
+	private final Runnable rebuild;
 
-	public OffersListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
+	public OffersListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
 		super(client, width, height, top, itemHeight);
+		this.rebuild = rebuild;
 
 		this.airField = new EditBox(client.font, 8, AIR_Y,
 				Math.max(60, this.width - 140), 14, Component.literal("air items"));
@@ -61,9 +64,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 		this.addEntry(new SectionHeaderRow("trademaster.offers.goods_header"));
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
-			this.addEntry(new GoodRow(good));
+			this.addEntry(new GoodRow(good, this.rebuild));
 		}
-		this.addEntry(new AddGoodRow());
+		this.addEntry(new AddGoodRow(this.rebuild));
 	}
 
 	/** Item field width for the enchantment rows at this row width. */
@@ -242,7 +245,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return new EditBox[0];
 		}
 
-		void flushEdits() {}
+		/** The screen's flush chains call this; the rows write through commit(). */
+		void flushEdits() {
+			commit();
+		}
 
 		/** Writes the row's draft; a no-op for rows without editable state. */
 		void commit() {}
@@ -250,7 +256,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		/** Whether the click landed on this row (used to skip committing it). */
 		boolean clickedIn(MouseButtonEvent click) {
 			return click.x() > this.x && click.x() < this.x + this.entryWidth
-					&& click.y() > this.y && click.y() < this.y + this.entryHeight;
+					&& click.y() > this.y && click.y() < this.y + this.entryHeight - 4;
 		}
 
 		@Nullable
@@ -349,7 +355,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
-			context.text(font, Component.translatable(this.labelKey), this.x + 4, this.y + 6, 0xFF404040);
+			String label = Component.translatable(this.labelKey).getString();
+			context.text(font, Component.literal(fit(font, label, Math.max(0, this.entryWidth - 8))),
+					this.x + 4, this.y + 6, 0xFF404040);
 		}
 	}
 
@@ -436,6 +444,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	public static class GoodRow extends Row {
 
 		private final Identifier id;
+		private final @Nullable Runnable rebuild;
 		private final EditBox resultCountField;
 		private final EditBox priceField;
 		private final EditBox costAField;
@@ -443,8 +452,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		private final EditBox countField;
 		private @Nullable String errorKey = null;
 
-		public GoodRow(GoodSpec good) {
+		public GoodRow(GoodSpec good, @Nullable Runnable rebuild) {
 			this.id = good.id();
+			this.rebuild = rebuild;
 			TradeOfferSpec.TradeCost a = good.spec().costAt(0);
 			TradeOfferSpec.TradeCost b = good.spec().costAt(1);
 			this.resultCountField = field("amount", String.valueOf(good.resultCount()));
@@ -496,17 +506,18 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (super.mouseClicked(click, doubled)) return true;
 			if (click.y() <= this.y || click.y() >= this.y + this.entryHeight - 4) return false;
-			int removeX = this.x + this.entryWidth - 2 - 14;
-			int toggleX = removeX - FIELD_GAP - 12;
+			int removeX = this.x + this.entryWidth - 2 - 16;
+			int toggleX = removeX - 2 - 14;
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			GoodSpec existing = config.goodFor(this.id);
 			if (existing == null) return false;
-			if (click.x() >= removeX && click.x() < removeX + 14) {
+			if (click.x() >= removeX && click.x() < removeX + 16) {
 				config.goods.remove(existing);
 				config.save();
+				if (this.rebuild != null) this.rebuild.run();
 				return true;
 			}
-			if (click.x() >= toggleX && click.x() < toggleX + 12) {
+			if (click.x() >= toggleX && click.x() < toggleX + 14) {
 				config.goods.set(config.goods.indexOf(existing), existing.withEnabled(!existing.enabled()));
 				config.save();
 				return true;
@@ -521,15 +532,22 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(this.id);
 			boolean enabled = good == null || good.enabled();
 			int right = this.x + this.entryWidth - 2;
-			int removeX = right - 14;
-			int toggleX = removeX - FIELD_GAP - 12;
+			int removeX = right - 16;
+			int toggleX = removeX - 2 - 14;
 			int countX = toggleX - FIELD_GAP - NUM_WIDTH;
 			int priceX = countX - FIELD_GAP - NUM_WIDTH;
 			int amountX = priceX - FIELD_GAP - NUM_WIDTH;
 			int costWidth = Math.max(MIN_FIELD, (amountX - FIELD_GAP - (this.x + 4) - 56) / 3);
 			int costBX = amountX - FIELD_GAP - costWidth;
 			int costAX = costBX - FIELD_GAP - costWidth;
-			int nameWidth = Math.max(16, costAX - FIELD_GAP - (this.x + 4));
+			if (costAX < this.x + 4) {
+				// a narrow row: shrink the two item fields instead of pushing cost A out
+				// of the row (it used to land at a negative x and overlap the label)
+				costWidth = Math.max(10, (amountX - FIELD_GAP - (this.x + 4) - FIELD_GAP * 2) / 2);
+				costBX = amountX - FIELD_GAP - costWidth;
+				costAX = costBX - FIELD_GAP - costWidth;
+			}
+			int nameWidth = Math.max(0, costAX - FIELD_GAP - (this.x + 4));
 
 			String name = EnchantmentNamer.demandDisplayName(this.id);
 			context.text(font, Component.literal(fit(font, name, nameWidth)), this.x + 4, this.y + 6,
@@ -539,7 +557,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			context.text(font, Component.literal(enabled ? "\u25A3" : "\u25A2"), toggleX + 2, this.y + 6,
 					enabled ? 0xFF00C000 : 0xFF808080);
-			context.text(font, Component.literal("\u2715"), removeX + 3, this.y + 6, 0xFFFF5555);
+			context.text(font, Component.literal("\u2715"), removeX + 4, this.y + 6, 0xFFFF5555);
 			place(context, this.costAField, costAX, costWidth, mouseX, mouseY, deltaTicks);
 			place(context, this.costBField, costBX, costWidth, mouseX, mouseY, deltaTicks);
 			place(context, this.resultCountField, amountX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
@@ -553,7 +571,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		private final EditBox resultField;
 		private @Nullable String errorKey = null;
 
-		public AddGoodRow() {
+		private final @Nullable Runnable rebuild;
+
+		public AddGoodRow(@Nullable Runnable rebuild) {
+			this.rebuild = rebuild;
 			this.resultField = field("result", "");
 			this.resultField.setResponder(text -> this.errorKey = null);
 		}
@@ -582,8 +603,18 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				this.errorKey = "trademaster.offer.invalid_item";
 				return true;
 			}
+			if (result.equals(TradeOfferSpec.ENCHANTED_BOOK)) {
+				// enchanted books are the enchantment tab's business: a good with that
+				// result would never match anything
+				this.errorKey = "trademaster.offer.invalid_item";
+				return true;
+			}
 			if (config.goodFor(result) != null) {
 				this.errorKey = "trademaster.offer.good_exists";
+				return true;
+			}
+			if (resultItemMissing(result)) {
+				this.errorKey = "trademaster.offer.unknown_item";
 				return true;
 			}
 			// a good pays the price slot in emeralds by default and requires no second
@@ -595,7 +626,14 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.resultField.setValue("");
 			this.errorKey = null;
 			config.save();
+			// the new row only appears after a rebuild
+			if (this.rebuild != null) this.rebuild.run();
 			return true;
+		}
+
+		/** Whether the id names no item at all (the registry is up once a screen is open). */
+		private static boolean resultItemMissing(Identifier id) {
+			return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id).isEmpty();
 		}
 
 		@Override

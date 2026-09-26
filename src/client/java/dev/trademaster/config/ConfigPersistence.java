@@ -240,7 +240,7 @@ public final class ConfigPersistence {
 		grindstone.add("customCurses", customCurses);
 		root.add("grindstone", grindstone);
 
-		root.add("offers", writeOffers(c));
+		root.add("offers", writeOffers(c, root));
 
 		JsonObject antiCheat = new JsonObject();
 		antiCheat.addProperty("legitMode", c.legitMode);
@@ -410,7 +410,8 @@ public final class ConfigPersistence {
 					Identifier result = resultElement != null && resultElement.isJsonPrimitive()
 							? Identifier.tryParse(resultElement.getAsString())
 							: null;
-					if (result == null) continue;
+					if (result == null || result.equals(TradeOfferSpec.ENCHANTED_BOOK)) continue;
+					if (c.goodFor(result) != null) continue;   // one good per result item
 					c.goods.add(new GoodSpec(result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
@@ -482,8 +483,11 @@ public final class ConfigPersistence {
 	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
 	 * positions are preserved (slot 2 stays slot 2), so hand-added slots 3..N survive
 	 * a save and are matched positionally. */
-	private static JsonObject writeOffers(TradeMasterConfig c) {
-		JsonObject offers = new JsonObject();
+	private static JsonObject writeOffers(TradeMasterConfig c, JsonObject root) {
+		// update the section IN PLACE: a hand-written key inside it (a note, a key from
+		// a newer version) must survive a save, exactly like the rest of the file
+		JsonObject offers = getSection(root, "offers");
+		if (offers == null) offers = new JsonObject();
 		JsonArray air = new JsonArray();
 		for (String item : c.airItems) {
 			if (item != null && !item.isBlank()) air.add(item.trim());
@@ -544,7 +548,7 @@ public final class ConfigPersistence {
 				if (itemElement != null && itemElement.isJsonPrimitive()) {
 					item = Identifier.tryParse(itemElement.getAsString());
 				}
-				count = readInt(co, "count", 0);
+				count = readInt(co, "count", 1);
 			}
 			costs.add(new TradeOfferSpec.TradeCost(item, count));
 		}

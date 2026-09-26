@@ -68,8 +68,12 @@ public record GoodSpec(Identifier result, int resultCount, boolean enabled, int 
 	/** Clamped copy for a clean write: the result count is at least one and the price
 	 * never negative. */
 	public GoodSpec normalized() {
+		// reuse the spec's sanitiser: a hand-written slot with no item becomes air and
+		// the counts are clamped, so a typo can never reach the writer as a null item
+		// (which would throw and make every later save fail)
+		List<TradeOfferSpec.TradeCost> clean =
+				new TradeOfferSpec(this.costs, this.result).normalized().costs();
 		return new GoodSpec(this.result, Math.max(1, Math.min(64, this.resultCount)),
-				this.enabled, Math.max(0, Math.min(64, this.maxPrice)),
-				List.copyOf(this.costs));
+				this.enabled, Math.max(0, Math.min(64, this.maxPrice)), clean);
 	}
 }

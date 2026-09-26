@@ -41,18 +41,30 @@ public final class OfferCosts {
 		List<ItemStack> slots = new ArrayList<>(fields.size());
 		for (Field field : fields) {
 			ItemStack stack = readAsStack(offer, field);
-			if (stack != null) slots.add(stack);
+			// an empty/unreadable slot stays in place as EMPTY: dropping it would shift
+			// every later slot, and the positional fingerprint would then read a stable
+			// offer as drifted
+			slots.add(stack == null ? ItemStack.EMPTY : stack);
 		}
 		return slots;
 	}
 
-	/** Declared ItemCost / Optional&lt;ItemCost&gt; fields, in declaration order. */
+	/** Declared ItemCost / Optional&lt;ItemCost&gt; fields, in declaration order, walking
+	 * the whole class hierarchy: a mod that extends the trade object may add slots, and
+	 * the parent's slots must come FIRST or the extra ones would be read as slot 1. */
 	private static List<Field> findSlotFields(Class<?> type) {
+		List<Class<?>> chain = new ArrayList<>(2);
+		for (Class<?> current = type; current != null && current != Object.class;
+				current = current.getSuperclass()) {
+			chain.add(current);
+		}
 		List<Field> found = new ArrayList<>(2);
-		for (Field field : type.getDeclaredFields()) {
-			Class<?> raw = field.getType();
-			if (raw == ItemCost.class || raw == Optional.class) {
-				found.add(field);
+		for (int i = chain.size() - 1; i >= 0; i--) {
+			for (Field field : chain.get(i).getDeclaredFields()) {
+				Class<?> raw = field.getType();
+				if (raw == ItemCost.class || raw == Optional.class) {
+					found.add(field);
+				}
 			}
 		}
 		return found;

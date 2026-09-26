@@ -19,6 +19,7 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.ChestBlock;
@@ -27,6 +28,7 @@ import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Deposits enchanted books into the bound chests, in order, when the
@@ -79,8 +81,21 @@ public class ChestDepositor implements BookDisposal {
 	private boolean dropSent = false;
 	private boolean dropResent = false;
 
+	/** How many of each item this pass may take out of the inventory because THIS RUN
+	 * produced it (bought goods). Empty = the usual behaviour: enchanted books only. */
+	private final Map<Item, Integer> goodsAllowance;
+	/** When true the pass takes only those produced goods: used in grindstone mode,
+	 * where the books are still the recycler's business. */
+	private final boolean goodsOnly;
+
 	public ChestDepositor(List<BlockPos> chests) {
+		this(chests, Map.of(), false);
+	}
+
+	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsAllowance, boolean goodsOnly) {
 		this.chests = List.copyOf(chests);
+		this.goodsAllowance = new java.util.HashMap<>(goodsAllowance);
+		this.goodsOnly = goodsOnly;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
 	}
 
@@ -100,12 +115,10 @@ public class ChestDepositor implements BookDisposal {
 			return StepResult.failed(Component.translatable("trademaster.error.deposit-timeout"));
 		}
 
-		// Defensive, unreachable today (audited 2026-09-19): the constructor requires
-		// a non-empty chest list and the index only grows in advance(), which reports
-		// the same failure once it runs past the end.
+		// Every chest has been tried (or there are none at all): either drop what is
+		// left over — when the option says so — or report the chests as full.
 		if (this.index >= this.chests.size()) {
-			restoreHotbarSelection(player);
-			return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
+			return startDropOrFail(player);
 		}
 
 		switch (this.state) {
@@ -269,6 +282,8 @@ public class ChestDepositor implements BookDisposal {
 				}
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 						scan.firstSlot().index, 0, ContainerInput.QUICK_MOVE, player);
+				// the pass may only take what this run produced: book the move
+				consumeAllowance(scan.firstSlot().getItem());
 			}
 			case EVALUATE -> {
 				if (player.containerMenu != player.inventoryMenu) {
@@ -330,6 +345,13 @@ public class ChestDepositor implements BookDisposal {
 				Vec3 target = player.getEyePosition().add(
 						Vec3.directionFromRotation(config.curseDropPitch, config.curseDropYaw).scale(100.0));
 				if (!this.look.tick(player, target)) return StepResult.RUNNING;
+				// LookStep does nothing outside legit mode: without this the item is
+				// dropped facing wherever the player happened to look, not the configured
+				// direction (the recycler sets it explicitly for the same reason)
+				if (!config.legitMode) {
+					player.setYRot(config.curseDropYaw);
+					player.setXRot(config.curseDropPitch);
+				}
 				// give the rotation a few ticks to reach the server before the drop
 				if (++this.dropAimTicks >= 3) {
 					this.dropSent = false;
@@ -348,6 +370,7 @@ public class ChestDepositor implements BookDisposal {
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS,
 							BlockPos.ZERO, Direction.DOWN));
+					consumeAllowance(player.getInventory().getItem(this.dropSlot));
 					this.dropSent = true;
 					this.dropWaitTicks = 0;
 				} else if (++this.dropWaitTicks > 60) {
@@ -373,19 +396,7 @@ public class ChestDepositor implements BookDisposal {
 		}
 		this.index++;
 		if (this.index >= this.chests.size()) {
-			// every chest refused: drop what is left when the option says so, otherwise
-			// stop as before (the run then waits for the player to free space)
-			if (TradeMasterConfig.INSTANCE.nonBookDisposal
-							== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
-					&& (countDisposables(player) > 0 || disposable(player.getOffhandItem()))) {
-				this.state = State.DROP_STAGE;
-				this.look.reset();
-				this.dropSlot = -1;
-				this.dropWaitTicks = 0;
-				return StepResult.RUNNING;
-			}
-			restoreHotbarSelection(player);
-			return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
+			return startDropOrFail(player);
 		}
 		this.state = State.SEEK;
 		this.look.reset();
@@ -464,7 +475,7 @@ public class ChestDepositor implements BookDisposal {
 	}
 
 	/** One pass over the open container's player slots: first disposable slot + total. */
-	private static BookScan scanBooks(LocalPlayer player) {
+	private BookScan scanBooks(LocalPlayer player) {
 		Slot first = null;
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
@@ -479,14 +490,24 @@ public class ChestDepositor implements BookDisposal {
 	/** What this depositor takes out of the inventory: an enchanted book, or the result
 	 * item of a configured good (the grindstone cannot disenchant a good, so storing or
 	 * dropping it is the only way it leaves the inventory). */
-	private static boolean disposable(ItemStack stack) {
+	/** What this pass may take out of the inventory: enchanted books (unless this pass
+	 * is goods-only) and the produced goods it still has an allowance for. */
+	private boolean disposable(ItemStack stack) {
 		if (stack.isEmpty()) return false;
-		if (stack.is(Items.ENCHANTED_BOOK)) return true;
-		Identifier item = BuiltInRegistries.ITEM.getKey(stack.getItem());
-		return item != null && TradeMasterConfig.INSTANCE.goodFor(item) != null;
+		if (!this.goodsOnly && stack.is(Items.ENCHANTED_BOOK)) return true;
+		return droppable(stack);
 	}
 
-	private static int countDisposables(LocalPlayer player) {
+	/** Consumes one moved stack from the produced-goods allowance. */
+	private void consumeAllowance(ItemStack stack) {
+		if (stack.isEmpty() || stack.is(Items.ENCHANTED_BOOK)) return;
+		Integer left = this.goodsAllowance.get(stack.getItem());
+		if (left == null) return;
+		if (left <= stack.getCount()) this.goodsAllowance.remove(stack.getItem());
+		else this.goodsAllowance.put(stack.getItem(), left - stack.getCount());
+	}
+
+	private int countDisposables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.container == player.getInventory() && disposable(slot.getItem())) count++;
@@ -494,25 +515,43 @@ public class ChestDepositor implements BookDisposal {
 		return count;
 	}
 
+	/** Every chest refused (or there are none): drop the leftover PRODUCED goods when
+	 * the disposal option says so, otherwise report the chests as full — books are never
+	 * dropped, only stored, so the option cannot throw a player's books away. */
+	private StepResult startDropOrFail(LocalPlayer player) {
+		if (TradeMasterConfig.INSTANCE.nonBookDisposal
+						== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
+				&& (countDroppableGoods(player) > 0 || droppable(player.getOffhandItem()))) {
+			this.state = State.DROP_STAGE;
+			this.look.reset();
+			this.dropSlot = -1;
+			this.dropWaitTicks = 0;
+			return StepResult.RUNNING;
+		}
+		restoreHotbarSelection(player);
+		return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
+	}
+
+	/** A produced good the pass may still drop (books excluded: they are stored only). */
+	private boolean droppable(ItemStack stack) {
+		return !stack.isEmpty() && !stack.is(Items.ENCHANTED_BOOK)
+				&& this.goodsAllowance.getOrDefault(stack.getItem(), 0) > 0;
+	}
+
+	private int countDroppableGoods(LocalPlayer player) {
+		int count = 0;
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.container == player.getInventory() && droppable(slot.getItem())) count++;
+		}
+		return count;
+	}
+
 	/** First inventory slot holding something this depositor disposes of. */
-	private static @Nullable Slot findDisposableSlot(LocalPlayer player) {
+	private @Nullable Slot findDisposableSlot(LocalPlayer player) {
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.container == player.getInventory() && disposable(slot.getItem())) return slot;
 		}
 		return null;
-	}
-
-	/** Whether the inventory holds at least one configured good (which the grindstone
-	 * cannot disenchant, so it must go through the chest/drop path). */
-	public static boolean holdsGood(LocalPlayer player) {
-		for (int i = 0; i < 36; i++) {
-			ItemStack stack = player.getInventory().getItem(i);
-			if (!stack.isEmpty() && !stack.is(Items.ENCHANTED_BOOK)
-					&& TradeMasterConfig.INSTANCE.goodFor(BuiltInRegistries.ITEM.getKey(stack.getItem())) != null) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	private static void selectEmptyHotbarSlot(LocalPlayer player) {
@@ -526,7 +565,7 @@ public class ChestDepositor implements BookDisposal {
 
 	/** First hotbar slot not holding a book (the selected one first: no extra
 	 * switch needed), or -1 when every hotbar slot is a book. */
-	private static int findNonBookHotbarSlot(LocalPlayer player) {
+	private int findNonBookHotbarSlot(LocalPlayer player) {
 		int selected = player.getInventory().getSelectedSlot();
 		if (!disposable(player.getInventory().getItem(selected))) return selected;
 		for (int i = 0; i < 9; i++) {

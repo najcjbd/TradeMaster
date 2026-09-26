@@ -220,7 +220,8 @@
   "trademaster.settings.nonBookDisposal.stop": "存箱→无箱则停机",
   "trademaster.settings.nonBookDisposal.drop": "存箱→无箱则丢弃",
   "trademaster.settings.nonBookDisposal.comment": "买到的货品（非附魔书，砂轮去不了魔）在绑定的箱子都存不下时怎么办：停机等你处理，或者朝丢弃朝向丢在地上。",
-  "trademaster.offers.goods_header": "货品（结果物品即身份：改结果请删除后重加；结果数 · 价格 · 物品A · 物品B · B数量 · 启用 ▣ · 删除 ✕）",
+  "trademaster.offers.goods_header": "货品（结果物品即身份，改结果请删除后重加）· 从左到右：物品A · 物品B · B数量 · 结果数 · 价格 · 启用 ▣ · 删除 ✕",
   "trademaster.offers.add_good": "新增货品（填结果物品 id）",
-  "trademaster.offer.good_exists": "这个结果物品已经是货品了（一支货品一个结果物品）"
+  "trademaster.offer.good_exists": "这个结果物品已经是货品了（一支货品一个结果物品）",
+  "trademaster.offer.unknown_item": "没有这个物品 id"
 }

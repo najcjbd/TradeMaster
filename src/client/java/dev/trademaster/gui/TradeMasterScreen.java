@@ -166,6 +166,7 @@ public class TradeMasterScreen extends Screen {
 	private void requestRebuild() {
 		// the rebuild replaces the list widget: remember where the user scrolled
 		if (this.settingsList != null) this.pendingScroll = this.settingsList.scrollAmount();
+		if (this.offersList != null) this.pendingOfferScroll = this.offersList.scrollAmount();
 		this.pendingRebuild = true;
 	}
 
@@ -204,7 +205,7 @@ public class TradeMasterScreen extends Screen {
 				// the list starts below the air-item header (58) and must still end
 				// above the button row: -94 keeps the same bottom edge as the other tabs
 				this.offersList = new OffersListWidget(this.minecraft,
-						this.width - 20, this.height - 94, 58, 22);
+						this.width - 20, this.height - 94, 58, 22, this::requestRebuild);
 				if (this.pendingOfferScroll >= 0) {
 					this.offersList.setScrollAmount(this.pendingOfferScroll);
 				}

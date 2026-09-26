@@ -1,6 +1,7 @@
 package dev.trademaster.core;
 
 import dev.trademaster.config.EnchantmentTarget;
+import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.strategy.LecternRestock;
@@ -55,7 +56,8 @@ public final class Preconditions {
 		if (config.sendAwayButtonPos == null) return missing("trademaster.settings.sendAwayButtonPos");
 
 		List<EnchantmentTarget> enabled = config.enabledTargets();
-		if (enabled.isEmpty()) {
+		List<GoodSpec> goods = config.enabledGoods();
+		if (enabled.isEmpty() && goods.isEmpty()) {
 			return Component.translatable("trademaster.message.no_enchantments");
 		}
 
@@ -72,6 +74,20 @@ public final class Preconditions {
 				TradeOfferSpec.TradeCost cost = costs.get(slot);
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
 				int cap = TradeOfferSpec.capFor(slot, cost, target.maxPrice());
+				if (cap <= 0) continue;
+				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
+				if (item == null) continue;
+				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				required.merge(item, cap, Math::max);
+			}
+		}
+		// custom goods declare the same kind of cost slots, with the good's price cap
+		for (GoodSpec good : goods) {
+			List<TradeOfferSpec.TradeCost> costs = good.spec().costs();
+			for (int slot = 0; slot < costs.size(); slot++) {
+				TradeOfferSpec.TradeCost cost = costs.get(slot);
+				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
+				int cap = TradeOfferSpec.capFor(slot, cost, good.maxPrice());
 				if (cap <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
@@ -211,13 +227,23 @@ public final class Preconditions {
 		// enchanted book is not the plain book a trade asks for)
 		int[] need = new int[pending.size()];
 		for (int slot = 0; slot < pending.size(); slot++) need[slot] = pending.get(slot).getCount();
+		// a stack may satisfy only as much as it holds: without tracking what is left,
+		// one stack would cover several cost slots and the check would pass on items the
+		// player does not have (the server then rejects the purchase)
+		int[] remaining = new int[36];
+		for (int i = 0; i < 36; i++) {
+			ItemStack stack = player.getInventory().getItem(i);
+			remaining[i] = stack.isEmpty() ? 0 : stack.getCount();
+		}
 		for (int i = 0; i < 36; i++) {
 			ItemStack stack = player.getInventory().getItem(i);
 			if (stack.isEmpty()) continue;
 			for (int slot = 0; slot < pending.size(); slot++) {
-				if (need[slot] <= 0) continue;
+				if (need[slot] <= 0 || remaining[i] <= 0) continue;
 				if (ItemStack.isSameItemSameComponents(stack, pending.get(slot))) {
-					need[slot] -= Math.min(need[slot], stack.getCount());
+					int take = Math.min(need[slot], remaining[i]);
+					need[slot] -= take;
+					remaining[i] -= take;
 				}
 			}
 		}

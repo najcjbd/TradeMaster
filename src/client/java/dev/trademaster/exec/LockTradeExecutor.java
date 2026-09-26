@@ -200,10 +200,8 @@ public class LockTradeExecutor {
 		if (this.slot < 0 || this.slot >= offers.size()) return false;
 		var offer = offers.get(this.slot);
 		if (offer.isOutOfStock()) return false;
-		if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
-				|| !offer.getResult().is(Items.ENCHANTED_BOOK)) return false;
-		// the whole cost shape, not just the price: a custom spec may pay in another
-		// item, and a regenerated offer must not be applied to this click
+		// the whole cost shape AND the result: a custom spec may pay in another item or
+		// need no second slot, and a custom good's result is not a book at all
 		if (!this.expected.purchase().costsMatch(OfferCosts.slots(offer))) return false;
 		return resultMatches(this.expected, offer.getResult());
 	}
@@ -218,28 +216,10 @@ public class LockTradeExecutor {
 	 * set recorded at match time (purchase().bookEnchantments()), ids and levels alike.
 	 * Datapack/mod offers can put several enchantments on one book, so the whole set
 	 * is the fingerprint — a regenerated offer would differ in at least one entry. */
+	/** The price paid must still buy the same thing: the matched result's shape (item
+	 * and amount for a good, the full enchantment set for a book) is compared by
+	 * {@link TradeMatcher.MatchedBook#resultMatches}. */
 	private static boolean resultMatches(TradeMatcher.MatchedTrade expected, ItemStack stack) {
-		ItemStack expectedResult = expected.purchase().result();
-		if (!expectedResult.is(Items.ENCHANTED_BOOK)) {
-			// a custom good: the result item (and at least the matched amount) must match
-			return stack.is(expectedResult.getItem()) && stack.getCount() >= expectedResult.getCount();
-		}
-		ItemStack book = stack;
-		if (!book.is(Items.ENCHANTED_BOOK)) return false;
-		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(book);
-		var expectedParts = expected.purchase().bookEnchantments();
-		if (enchantments.size() != expectedParts.size()) return false;
-		for (var part : expectedParts) {
-			boolean found = false;
-			for (var entry : enchantments.entrySet()) {
-				var id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-				if (id != null && id.equals(part.id()) && entry.getIntValue() == part.level()) {
-					found = true;
-					break;
-				}
-			}
-			if (!found) return false;
-		}
-		return true;
+		return expected.purchase().resultMatches(stack);
 	}
 }

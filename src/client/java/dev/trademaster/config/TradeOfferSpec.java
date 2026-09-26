@@ -57,9 +57,11 @@ public record TradeOfferSpec(List<TradeCost> costs, Identifier result) {
 		return Math.max(0, cost.count());
 	}
 
-	/** What "no limit" resolves to in a comparison: the same 64 the emerald price is
-	 * clamped to server-side. */
-	public static final int UNLIMITED_CAP = 64;
+	/** What "no limit" resolves to in a comparison. Deliberately far above any real
+	 * trade (the 64 emerald clamp applies to the PRICE, not to item counts): a server
+	 * that charges more than the old 64 must still match, or "-1 no limit" would
+	 * silently become "at most 64" and change behaviour for such servers. */
+	public static final int UNLIMITED_CAP = 1_000_000;
 
 	/** One cost slot: the item that must be paid, and how many (see the count rules
 	 * above). An air item as the item means the slot is not used at all. */
@@ -72,7 +74,7 @@ public record TradeOfferSpec(List<TradeCost> costs, Identifier result) {
 		List<TradeCost> kept = new ArrayList<>(this.costs.size());
 		for (TradeCost cost : this.costs) {
 			Identifier item = cost == null || cost.item() == null ? AIR : cost.item();
-			int count = cost == null ? 0 : Math.max(UNLIMITED, Math.min(64, cost.count()));
+			int count = cost == null ? 0 : Math.max(UNLIMITED, Math.min(UNLIMITED_CAP, cost.count()));
 			kept.add(new TradeCost(item, count));
 		}
 		Identifier res = this.result == null ? ENCHANTED_BOOK : this.result;
