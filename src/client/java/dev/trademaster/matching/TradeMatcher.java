@@ -43,7 +43,32 @@ public class TradeMatcher {
 	/** One qualifying enchanted-book offer. {@code parts} are the enchantments that
 	 * matched an enabled target at sufficient level; {@code bookEnchantments} is the
 	 * book's FULL set (lock fingerprints must reject any change to it, matched or not). */
-	public record MatchedBook(List<MatchPart> parts, List<MatchPart> bookEnchantments, int price, int offerIndex) {}
+	public record MatchedBook(List<MatchPart> parts, List<MatchPart> bookEnchantments, int price,
+			int offerIndex, List<ItemStack> costs) {
+		/** Canonical copy of a book's charged cost slots, for the drift fingerprint: the
+		 * live offer must charge the same items in the same amounts right before the
+		 * purchase, or the click would apply to a regenerated trade. */
+		public static List<ItemStack> fingerprintCosts(List<ItemStack> slots) {
+			List<ItemStack> copy = new ArrayList<>(slots.size());
+			for (ItemStack stack : slots) {
+				copy.add(stack == null ? ItemStack.EMPTY : stack.copy());
+			}
+			return List.copyOf(copy);
+		}
+
+		/** Whether a live offer charges exactly what this book was matched with. */
+		public boolean costsMatch(List<ItemStack> liveSlots) {
+			if (liveSlots.size() != this.costs.size()) return false;
+			for (int i = 0; i < liveSlots.size(); i++) {
+				ItemStack live = liveSlots.get(i);
+				ItemStack matched = this.costs.get(i);
+				if (live == null) live = ItemStack.EMPTY;
+				if (!ItemStack.isSameItemSameComponents(live, matched)) return false;
+				if (live.getCount() != matched.getCount()) return false;
+			}
+			return true;
+		}
+	}
 
 	/** Budget bookkeeping for one deducted need, so restore/undo/reset can return
 	 * exactly what the match consumed. {@code seenPrice} is the book price that was
@@ -211,7 +236,8 @@ public class TradeMatcher {
 				// check (price <= that target's slot) — vanilla behavior unchanged
 				if (price > Math.min(budget, 64)) continue;
 			}
-			qualifying.add(new MatchedBook(parts, bookEnchantments, price, i));
+			qualifying.add(new MatchedBook(parts, bookEnchantments, price, i,
+					MatchedBook.fingerprintCosts(OfferCosts.slots(offer))));
 		}
 		if (qualifying.isEmpty()) return null;
 		// one purchase locks the villager: buy the cheapest qualifying book

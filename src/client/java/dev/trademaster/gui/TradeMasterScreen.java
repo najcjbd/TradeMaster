@@ -16,7 +16,7 @@ import org.jetbrains.annotations.Nullable;
 
 public class TradeMasterScreen extends Screen {
 
-	public enum Tab { ENCHANTMENTS, SETTINGS, KEYBINDS, ALIASES }
+	public enum Tab { ENCHANTMENTS, SETTINGS, KEYBINDS, ALIASES, OFFERS }
 
 	private final @Nullable Screen parent;
 	private Tab tab = Tab.ENCHANTMENTS;
@@ -26,6 +26,8 @@ public class TradeMasterScreen extends Screen {
 	private double pendingScroll = -1;
 	/** Same for the enchantments list on resize rebuilds (R23-09). */
 	private double pendingEnchantScroll = -1;
+	/** Same for the offers list. */
+	private double pendingOfferScroll = -1;
 	/** Same for the aliases list (no scroll restore would jump it back to the top). */
 	private double pendingAliasScroll = -1;
 
@@ -33,6 +35,7 @@ public class TradeMasterScreen extends Screen {
 	private SettingsListWidget settingsList;
 	private KeybindsListWidget keybindsList;
 	private AliasListWidget aliasesList;
+	private OffersListWidget offersList;
 
 	public TradeMasterScreen(@Nullable Screen parent) {
 		super(Component.literal("Trade Master"));
@@ -49,6 +52,7 @@ public class TradeMasterScreen extends Screen {
 		// the rebuild never blurs them
 		if (this.settingsList != null) this.settingsList.flushEdits();
 		if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 		// same rebuild resets scroll to the top: remember where the user was.
 		// Tab switches never capture here — the tab is already flipped by then
 		if (this.tab == Tab.SETTINGS && this.settingsList != null) {
@@ -60,12 +64,15 @@ public class TradeMasterScreen extends Screen {
 		if (this.tab == Tab.ALIASES && this.aliasesList != null) {
 			this.pendingAliasScroll = this.aliasesList.scrollAmount();
 		}
+		if (this.tab == Tab.OFFERS && this.offersList != null) {
+			this.pendingOfferScroll = this.offersList.scrollAmount();
+		}
 		// four tabs must still fit a narrow (Android/FCL) screen: shrink them rather
 		// than let the last one clip off the right edge. No floor at all — a floor of
 		// ANY size makes the row wider than the screen once the width drops below it,
 		// and an unreachable tab is worse than a cramped one
-		int tabWidth = Math.min(80, Math.max(1, (this.width - 10) / 4 - 2));
-		int tabsWidth = (tabWidth + 2) * 4 - 2;
+		int tabWidth = Math.min(80, Math.max(1, (this.width - 10) / 5 - 2));
+		int tabsWidth = (tabWidth + 2) * 5 - 2;
 		// narrow (Android/FCL) screens: a centered row wider than the screen
 		// would clip at both edges — clamp it fully on-screen instead
 		int x = Math.max(2, Math.min(this.width / 2 - tabsWidth / 2, this.width - tabsWidth - 2));
@@ -73,6 +80,7 @@ public class TradeMasterScreen extends Screen {
 		addTabButton(x + tabWidth + 2, Tab.SETTINGS, "trademaster.tab.settings", tabWidth);
 		addTabButton(x + (tabWidth + 2) * 2, Tab.KEYBINDS, "trademaster.tab.keybinds", tabWidth);
 		addTabButton(x + (tabWidth + 2) * 3, Tab.ALIASES, "trademaster.tab.aliases", tabWidth);
+		addTabButton(x + (tabWidth + 2) * 4, Tab.OFFERS, "trademaster.tab.offers", tabWidth);
 
 		// the row must fit too: scale ALL THREE buttons on narrow screens, and again
 		// with NO floor — a 34px floor still overflowed below ~112px logical width
@@ -92,6 +100,7 @@ public class TradeMasterScreen extends Screen {
 							// the config and stop the run on the very next tick
 							if (this.settingsList != null) this.settingsList.flushEdits();
 							if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 							// a refused start (missing coordinates, all targets done...)
 							// must keep this screen open: it is the only place the
 							// user can fix the reported problem
@@ -118,6 +127,7 @@ public class TradeMasterScreen extends Screen {
 							// the widgets, and saving without them wrote the OLD value
 							if (this.settingsList != null) this.settingsList.flushEdits();
 							if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 							TradeMasterConfig.INSTANCE.save();
 							if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
@@ -135,6 +145,7 @@ public class TradeMasterScreen extends Screen {
 			if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 			if (this.settingsList != null) this.settingsList.flushEdits();
 			if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 			this.tab = tab;
 			// defer: rebuilding mid-dispatch would mutate Screen.children while iterating
 			this.pendingRebuild = true;
@@ -163,8 +174,10 @@ public class TradeMasterScreen extends Screen {
 		this.settingsList = null;
 		this.keybindsList = null;
 		this.aliasesList = null;
+		this.offersList = null;
 		if (this.tab != Tab.SETTINGS) this.pendingScroll = -1;
 		if (this.tab != Tab.ENCHANTMENTS) this.pendingEnchantScroll = -1;
+		if (this.tab != Tab.OFFERS) this.pendingOfferScroll = -1;
 		if (this.tab != Tab.ALIASES) this.pendingAliasScroll = -1;
 		switch (this.tab) {
 			case ENCHANTMENTS -> {
@@ -186,6 +199,17 @@ public class TradeMasterScreen extends Screen {
 				}
 				this.pendingScroll = -1;
 				this.addRenderableWidget(this.settingsList);
+			}
+			case OFFERS -> {
+				// the list starts below the air-item header (58) and must still end
+				// above the button row: -94 keeps the same bottom edge as the other tabs
+				this.offersList = new OffersListWidget(this.minecraft,
+						this.width - 20, this.height - 94, 58, 22);
+				if (this.pendingOfferScroll >= 0) {
+					this.offersList.setScrollAmount(this.pendingOfferScroll);
+				}
+				this.pendingOfferScroll = -1;
+				this.addRenderableWidget(this.offersList);
 			}
 			case KEYBINDS -> {
 				this.keybindsList = new KeybindsListWidget(this.minecraft,
@@ -235,6 +259,7 @@ public class TradeMasterScreen extends Screen {
 		if (this.enchantmentsList != null && this.enchantmentsList.keyPressed(input)) return true;
 		if (this.settingsList != null && this.settingsList.keyPressed(input)) return true;
 		if (this.aliasesList != null && this.aliasesList.keyPressed(input)) return true;
+		if (this.offersList != null && this.offersList.keyPressed(input)) return true;
 		return false;
 	}
 
@@ -243,6 +268,7 @@ public class TradeMasterScreen extends Screen {
 		if (this.enchantmentsList != null && this.enchantmentsList.charTyped(input)) return true;
 		if (this.settingsList != null && this.settingsList.charTyped(input)) return true;
 		if (this.aliasesList != null && this.aliasesList.charTyped(input)) return true;
+		if (this.offersList != null && this.offersList.charTyped(input)) return true;
 		return super.charTyped(input);
 	}
 
@@ -282,6 +308,7 @@ public class TradeMasterScreen extends Screen {
 		if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 		if (this.settingsList != null) this.settingsList.flushEdits();
 		if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 	}
 
 	@Override
@@ -291,6 +318,7 @@ public class TradeMasterScreen extends Screen {
 		if (this.enchantmentsList != null) this.enchantmentsList.flushEdits();
 		if (this.settingsList != null) this.settingsList.flushEdits();
 		if (this.aliasesList != null) this.aliasesList.flushEdits();
+		if (this.offersList != null) this.offersList.flushEdits();
 		TradeMasterConfig.INSTANCE.save();
 		super.removed();
 	}

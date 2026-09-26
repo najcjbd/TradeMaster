@@ -16,6 +16,7 @@ import dev.trademaster.exec.GrindstoneRecycler;
 import dev.trademaster.exec.LockTradeExecutor;
 import dev.trademaster.exec.NamingExecutor;
 import dev.trademaster.gui.PositionPicker;
+import dev.trademaster.matching.OfferCosts;
 import dev.trademaster.matching.TradeMatcher;
 import dev.trademaster.strategy.AxeRerollStrategy;
 import dev.trademaster.strategy.LecternRestock;
@@ -1307,13 +1308,19 @@ public final class RerollController {
 			}
 			int slot = resolveLockSlot(offers, s);
 			if (slot < 0) {
-				// nothing on the list can be paid for at all
-				stop(Component.translatable("trademaster.message.material_short_emeralds",
-						TradeMasterConfig.INSTANCE.minLockEmeralds), ChatFormatting.RED);
+				// nothing on the list can be paid for at all: name what the matched offer
+				// asks for when we can point at it, otherwise stay generic
+				Component reason = Component.translatable("trademaster.message.material_short");
+				if (s.matchedTrade != null && s.matchedTrade.offerIndex() < offers.size()) {
+					Component lack = Preconditions.shortfall(player,
+							OfferCosts.slots(offers.get(s.matchedTrade.offerIndex())));
+					if (lack != null) reason = lack;
+				}
+				stop(reason, ChatFormatting.RED);
 				return;
 			}
 			MerchantOffer offer = offers.get(slot);
-			if (!Preconditions.checkLockMaterials(player, offer.getBaseCostA(), offer.getCostB())) {
+			if (!Preconditions.checkLockMaterials(player, OfferCosts.slots(offer))) {
 				// the matched offer became unaffordable (emeralds spent manually):
 				// the villager is still unlocked, so treat it like a drift — give the
 				// budget back and re-detect. The affordability gate in handleOffers
@@ -1777,8 +1784,8 @@ public final class RerollController {
 		if (hit != null) {
 			LocalPlayer player = Minecraft.getInstance().player;
 			MerchantOffer matchedOffer = snapshot.offers().get(hit.offerIndex());
-			boolean payable = player != null && Preconditions.checkLockMaterials(player,
-					matchedOffer.getBaseCostA(), matchedOffer.getCostB());
+			boolean payable = player != null
+					&& Preconditions.checkLockMaterials(player, OfferCosts.slots(matchedOffer));
 			if (!payable) {
 				// The matched book cannot be paid for. Locking the villager is what the
 				// run is after and a single purchase does it, so buy the cheapest OTHER
@@ -1810,7 +1817,13 @@ public final class RerollController {
 					// priced above the emerald floor — so this must not fall through.
 					s.matcher.undoMatch(hit);
 					closeMerchantMenuIfOpen(Minecraft.getInstance());
-					stop(Component.translatable("trademaster.message.material_short_emeralds", hit.price()),
+					// name the slot that cannot be paid; the emerald wording stays as the
+					// fallback when the offer vanished before we could look at it
+					Component lack = hit.offerIndex() < snapshot.offers().size()
+							? Preconditions.shortfall(player, OfferCosts.slots(snapshot.offers().get(hit.offerIndex())))
+							: null;
+					stop(lack != null ? lack
+							: Component.translatable("trademaster.message.material_short"),
 							ChatFormatting.RED);
 					return;
 				}
@@ -2213,8 +2226,7 @@ public final class RerollController {
 		TradeMatcher.MatchedTrade hit = s.matchedTrade;
 		LocalPlayer player = Minecraft.getInstance().player;
 		boolean matchedPayable = hit != null && player != null && hit.offerIndex() < offers.size()
-				&& Preconditions.checkLockMaterials(player,
-						offers.get(hit.offerIndex()).getBaseCostA(), offers.get(hit.offerIndex()).getCostB());
+				&& Preconditions.checkLockMaterials(player, OfferCosts.slots(offers.get(hit.offerIndex())));
 		if (!matchedPayable && player != null) {
 			// the matched book is unaffordable (emeralds spent, or a combo priced
 			// above what the player carries while every single target still fits):
@@ -2246,7 +2258,7 @@ public final class RerollController {
 					|| !offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
 			int price = offer.getBaseCostA().getCount();
 			if (price >= bestPrice) continue;
-			if (!Preconditions.checkLockMaterials(player, offer.getBaseCostA(), offer.getCostB())) continue;
+			if (!Preconditions.checkLockMaterials(player, OfferCosts.slots(offer))) continue;
 			bestSlot = i;
 			bestPrice = price;
 		}
@@ -2265,7 +2277,8 @@ public final class RerollController {
 			if (id != null) parts.add(new TradeMatcher.MatchPart(id, entry.getIntValue()));
 		}
 		return new TradeMatcher.MatchedBook(List.copyOf(parts), List.copyOf(parts),
-				offer.getBaseCostA().getCount(), slot);
+				offer.getBaseCostA().getCount(), slot,
+				TradeMatcher.MatchedBook.fingerprintCosts(OfferCosts.slots(offer)));
 	}
 
 	/** One book's matched parts joined with "+" (vanilla fullname per part). */

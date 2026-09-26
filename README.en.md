@@ -101,6 +101,19 @@ Both mechanisms **force the axe into the main hand** before breaking; the `place
 
 All three modes use a **3-second wall clock** and **containerId correlation** to reject offer packets that do not belong to the current interaction (a previous villager's late packet, a merchant screen someone else opened, …).
 
+## Unusual offers (the Offers tab)
+
+Datapack/modded servers often sell in shapes other than "emeralds + book". The fifth tab, **Offers**, describes them:
+
+- **One row per enchantment**: `Cost A item` (default `minecraft:emerald`; its **amount** is always that enchantment's price from the enchantments tab), `Cost B item` (default `minecraft:book`) and `Cost B amount`.
+- **Amount meaning**: `-1` = **no limit** (the default, matching the old behaviour of "any number of books"); `0` = **this slot is not required**; `1..64` = a cap.
+- **An empty item = that slot is not required** (same as an air item).
+- **Air items (the header list)**: ids listed there (default `minecraft:air`) mean "this slot is free" on the OFFER side (some datapacks spell a free slot as air) and "not required" on the spec side, exactly like an empty field.
+- **Matching rule = subset**: every item the offer charges must be listed for that row, and the total charged per item may not exceed what the row allows; a slot the row declares but the offer does not charge still matches (you pay less). So the **order of slots does not matter** — as long as nothing costs more, it buys.
+  - Counter-examples: the offer charges an item the row never lists → **no match** (that item would be paid for nothing); an item exceeds its cap → **no match**.
+- **Cost C and beyond**: the vanilla protocol carries only two cost slots, so slot 3+ is **config-file only** (`offers.specs.<enchantment>.costs`, append to the array; a save never drops or shifts a slot). If a mod or fork extends the trade object with more slots, they are read generically in declaration order and compared by the same subset rule.
+- **Stock checks**: the materials precheck (and the one before each lock) covers these items and names the missing item and amount; a mid-run shortage goes through the emergency purchase first and stops only if that fails too.
+
 ## Matching and budget
 
 - Every **enabled** enchantment keeps a max-heap of acceptable prices (its "price slot").
@@ -226,7 +239,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | `/trademaster` (alias `/tm`) | bare command = toggle start/stop |
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
-| Hotkey `V` | Opens the main menu (four tabs: enchantments / settings / keybinds / **aliases**) |
+| Hotkey `V` | Opens the main menu (five tabs: enchantments / settings / keybinds / **aliases** / **offers**) |
 | maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
 
 ## Config entry points

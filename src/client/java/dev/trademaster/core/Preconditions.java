@@ -2,18 +2,25 @@ package dev.trademaster.core;
 
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.strategy.LecternRestock;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /** Startup and per-loop precondition checks. */
 public final class Preconditions {
@@ -52,8 +59,35 @@ public final class Preconditions {
 			return Component.translatable("trademaster.message.no_enchantments");
 		}
 
+		// What the specs declare: the largest cap any enabled target asks for per item
+		// (an "unlimited" slot asks for at least one), so the run can always pay for the
+		// target that needs an item most. Slot 1 is the price slot: its item is required
+		// in that target's own price amount. An air item means the slot is free.
+		Map<Item, Integer> required = new LinkedHashMap<>();
+		boolean emeraldPrice = false;
+		for (EnchantmentTarget target : enabled) {
+			TradeOfferSpec spec = config.specFor(target.id());
+			List<TradeOfferSpec.TradeCost> costs = spec.costs();
+			for (int slot = 0; slot < costs.size(); slot++) {
+				TradeOfferSpec.TradeCost cost = costs.get(slot);
+				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
+				int cap = TradeOfferSpec.capFor(slot, cost, target.maxPrice());
+				if (cap <= 0) continue;
+				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
+				if (item == null) continue;
+				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				required.merge(item, cap, Math::max);
+			}
+		}
+		if (emeraldPrice) {
+			// the emerald floor (largest max price, raised by hunt / the 64 cap) still
+			// governs the emerald budget machinery
+			required.merge(Items.EMERALD, emeraldFloor(enabled), Math::max);
+		}
+
 		// one inventory pass for every item requirement
-		int emeralds = 0, books = 0, lecterns = 0;
+		Map<Item, Integer> carried = new LinkedHashMap<>();
+		int lecterns = 0;
 		boolean axeCarried = false;
 		boolean axeNearlyBroken = false;
 		// every mechanism breaks the lectern at some point (task chain's break step,
@@ -67,8 +101,7 @@ public final class Preconditions {
 			// trades can only pay from the main inventory: count emeralds/books
 			// there exclusively so precheck matches checkLockMaterials' view
 			// (lecterns still count the offhand — the rig places from it)
-			if (i < 36 && item == Items.EMERALD) emeralds += stack.getCount();
-			else if (i < 36 && item == Items.BOOK) books += stack.getCount();
+			if (i < 36 && required.containsKey(item)) carried.merge(item, stack.getCount(), Integer::sum);
 			else if (item == Items.LECTERN) lecterns += stack.getCount();
 			// with preventAxeBreaking on, nearly-broken axes are unusable (the
 			// strategies refuse them): don't count them, fail up front instead
@@ -81,11 +114,12 @@ public final class Preconditions {
 
 		// name the missing material and the amount: "not enough materials" left the
 		// player guessing whether to restock emeralds, books, a lectern or a tag
-		if (emeralds < emeraldFloor(enabled)) {
-			return Component.translatable("trademaster.message.material_short_emeralds", emeraldFloor(enabled));
-		}
-		if (books < 1) {
-			return Component.translatable("trademaster.message.material_short_books");
+		for (Map.Entry<Item, Integer> entry : required.entrySet()) {
+			int have = carried.getOrDefault(entry.getKey(), 0);
+			if (have < entry.getValue()) {
+				return Component.translatable("trademaster.message.material_short_item",
+						itemName(entry.getKey()), entry.getValue(), have);
+			}
 		}
 
 		if (lecterns < 1 && !LecternRestock.isLecternAt(client.level, lectern)) {
@@ -101,6 +135,12 @@ public final class Preconditions {
 		}
 
 		return null;
+	}
+
+	/** The item's display name (an ItemStack is needed to resolve it, and this only
+	 * runs on the failure path). */
+	private static Component itemName(Item item) {
+		return new ItemStack(item).getHoverName();
 	}
 
 	private static Component missing(String positionKey) {
@@ -144,21 +184,50 @@ public final class Preconditions {
 		return false;
 	}
 
-	/** Re-checks lock materials right before executing the lock trade. */
+	/** Re-checks lock materials right before executing the lock trade: every slot the
+	 * LIVE offer charges must be payable (empty slots cost nothing, and an "air" item
+	 * is a datapack's way of saying the same). */
 	public static boolean checkLockMaterials(LocalPlayer player, ItemStack costA, ItemStack costB) {
-		int needA = costA.getCount();
-		int needB = costB.getCount();
+		return checkLockMaterials(player, List.of(costA, costB));
+	}
+
+	public static boolean checkLockMaterials(LocalPlayer player, List<ItemStack> costs) {
+		return shortfall(player, costs) == null;
+	}
+
+	/** What the player cannot pay, as a message naming the item and the amount, or
+	 * null when every cost slot is covered. */
+	public static @Nullable Component shortfall(LocalPlayer player, List<ItemStack> costs) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		List<ItemStack> pending = new ArrayList<>();
+		for (ItemStack cost : costs) {
+			if (cost == null || cost.isEmpty()) continue;
+			Identifier id = BuiltInRegistries.ITEM.getKey(cost.getItem());
+			if (config.isAirItem(id)) continue;
+			pending.add(cost);
+		}
+		if (pending.isEmpty()) return null;
+		// a stack matches a slot only when the components match too (a renamed or
+		// enchanted book is not the plain book a trade asks for)
+		int[] need = new int[pending.size()];
+		for (int slot = 0; slot < pending.size(); slot++) need[slot] = pending.get(slot).getCount();
 		for (int i = 0; i < 36; i++) {
 			ItemStack stack = player.getInventory().getItem(i);
-			if (needA > 0 && ItemStack.isSameItemSameComponents(stack, costA)) {
-				int take = Math.min(needA, stack.getCount());
-				needA -= take;
-			}
-			if (needB > 0 && ItemStack.isSameItemSameComponents(stack, costB)) {
-				int take = Math.min(needB, stack.getCount());
-				needB -= take;
+			if (stack.isEmpty()) continue;
+			for (int slot = 0; slot < pending.size(); slot++) {
+				if (need[slot] <= 0) continue;
+				if (ItemStack.isSameItemSameComponents(stack, pending.get(slot))) {
+					need[slot] -= Math.min(need[slot], stack.getCount());
+				}
 			}
 		}
-		return needA <= 0 && needB <= 0;
+		for (int slot = 0; slot < pending.size(); slot++) {
+			if (need[slot] > 0) {
+				return Component.translatable("trademaster.message.material_short_item",
+						itemName(pending.get(slot).getItem()), pending.get(slot).getCount(),
+						pending.get(slot).getCount() - need[slot]);
+			}
+		}
+		return null;
 	}
 }

@@ -195,8 +195,6 @@
   "trademaster.settings.customCurses.comment": "Extra curse enchantment ids from mods (comma-separated, e.g. somemod:soul_bound); such books cannot be ground and are stored/dropped like vanilla curses; vanilla ids are not allowed here",
   "trademaster.hotkey.startStop.comment": "Start or stop the reroll pipeline",
   "trademaster.hotkey.pickPosition.comment": "Capture the looked-at block position for the pending slot",
-  "trademaster.message.material_short_emeralds": "Not enough emeralds (need ≥%d), stopping",
-  "trademaster.message.material_short_books": "No book left to use, stopping",
   "trademaster.error.button-timeout": "Button press timed out (summon / send away), stopping",
   "trademaster.error.deposit-timeout": "Depositing enchanted books timed out, stopping",
   "trademaster.error.grindstone-timeout": "Grindstone recycling timed out, stopping",
@@ -208,5 +206,14 @@
   "trademaster.naming_fail.apply": "could not apply the name to the villager",
   "trademaster.naming_fail.timeout": "that step timed out",
   "trademaster.naming_fail.other": "another reason",
-  "trademaster.status.precheck": "Preparing"
+  "trademaster.status.precheck": "Preparing",
+  "trademaster.message.material_short_item": "Not enough %s (need %d, have %d), stopping",
+  "trademaster.tab.offers": "Offers",
+  "trademaster.column.air_items": "Air items",
+  "trademaster.air.hint": "Comma separated; an item listed here (or an empty field) counts as a free slot",
+  "trademaster.column.cost_a": "Cost A item (amount = the enchantments-tab price)",
+  "trademaster.column.cost_b": "Cost B item",
+  "trademaster.column.cost_count": "Amount",
+  "trademaster.offer.invalid_item": "Not a valid item id (leave empty = this slot is not required)",
+  "trademaster.offer.invalid_count": "Amount must be -1 (no limit), 0 (not required) or 1..64"
 }

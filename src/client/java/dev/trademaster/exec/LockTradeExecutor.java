@@ -1,6 +1,7 @@
 package dev.trademaster.exec;
 
 import dev.trademaster.core.Preconditions;
+import dev.trademaster.matching.OfferCosts;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -201,7 +202,9 @@ public class LockTradeExecutor {
 		if (offer.isOutOfStock()) return false;
 		if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
 				|| !offer.getResult().is(Items.ENCHANTED_BOOK)) return false;
-		if (offer.getBaseCostA().getCount() != this.expected.price()) return false;
+		// the whole cost shape, not just the price: a custom spec may pay in another
+		// item, and a regenerated offer must not be applied to this click
+		if (!this.expected.purchase().costsMatch(OfferCosts.slots(offer))) return false;
 		return bookHas(this.expected, offer.getResult());
 	}
 
