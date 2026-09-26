@@ -563,6 +563,16 @@ public final class RerollController {
 	 */
 	private static @Nullable BookDisposal createBookDisposal() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// a bought GOOD cannot be disenchanted: while one sits in the inventory the
+		// chest/drop path must run, whatever the book-disposal mode says
+		LocalPlayer disposerHolder = Minecraft.getInstance().player;
+		if (disposerHolder != null && ChestDepositor.holdsGood(disposerHolder)) {
+			if (!config.chestPositions.isEmpty()
+					|| config.nonBookDisposal == dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP) {
+				return new ChestDepositor(config.chestPositions);
+			}
+			return null;
+		}
 		if (config.grindstoneEnabled && config.grindstonePos != null
 				&& config.curseDropYaw != null && config.curseDropPitch != null) {
 			return new GrindstoneRecycler();

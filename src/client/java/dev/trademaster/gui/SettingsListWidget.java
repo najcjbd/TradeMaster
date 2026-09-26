@@ -34,6 +34,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		addEntry(new CycleRow("trademaster.settings.mechanism",
 				() -> c.rerollMechanism.getDisplayName(),
 				cycle -> c.rerollMechanism = dev.trademaster.config.RerollMechanism.valueOf(nextEnum(c.rerollMechanism.name(), dev.trademaster.config.RerollMechanism.values(), cycle))));
+		addEntry(new CycleRow("trademaster.settings.nonBookDisposal",
+				() -> c.nonBookDisposal.getDisplayName(),
+				cycle -> c.nonBookDisposal = dev.trademaster.config.NonBookDisposal.valueOf(nextEnum(c.nonBookDisposal.name(), dev.trademaster.config.NonBookDisposal.values(), cycle))));
 		addEntry(new CycleRow("trademaster.settings.detection",
 				() -> c.detectionMode.getDisplayName(),
 				cycle -> c.detectionMode = dev.trademaster.config.DetectionMode.valueOf(nextEnum(c.detectionMode.name(), dev.trademaster.config.DetectionMode.values(), cycle))));

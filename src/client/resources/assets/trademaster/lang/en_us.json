@@ -215,5 +215,9 @@
   "trademaster.column.cost_b": "Cost B item",
   "trademaster.column.cost_count": "Amount",
   "trademaster.offer.invalid_item": "Not a valid item id (leave empty = this slot is not required)",
-  "trademaster.offer.invalid_count": "Amount must be -1 (no limit), 0 (not required) or 1..64"
+  "trademaster.offer.invalid_count": "Amount must be -1 (no limit), 0 (not required) or 1..64",
+  "trademaster.settings.nonBookDisposal": "Custom good disposal",
+  "trademaster.settings.nonBookDisposal.stop": "Chest → stop when no chest takes it",
+  "trademaster.settings.nonBookDisposal.drop": "Chest → drop when no chest takes it",
+  "trademaster.settings.nonBookDisposal.comment": "What to do with a bought good (not a book, so the grindstone cannot disenchant it) when every bound chest refuses it: stop and let you handle it, or drop it facing the configured drop direction."
 }

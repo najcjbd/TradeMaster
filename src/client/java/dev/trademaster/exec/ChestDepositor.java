@@ -9,6 +9,8 @@ import dev.trademaster.strategy.RerollStrategy.StepResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
+import net.minecraft.resources.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
@@ -34,7 +36,7 @@ import java.util.List;
  */
 public class ChestDepositor implements BookDisposal {
 
-	private enum State { SEEK, AWAIT_OPEN, DEPOSIT, EVALUATE }
+	private enum State { SEEK, AWAIT_OPEN, DEPOSIT, EVALUATE, DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT }
 
 	private record BookScan(@Nullable Slot firstSlot, int count) {}
 
@@ -69,6 +71,13 @@ public class ChestDepositor implements BookDisposal {
 	/** Hotbar slot selected before this depositor switched away; restored when the
 	 * deposit ends so the player keeps their original hand. */
 	private int originalSlot = -1;
+	/** Drop flow (used when every chest refuses a good and the disposal option is
+	 * "drop"): the selected slot holding the item to drop, plus its send/wait state. */
+	private int dropSlot = -1;
+	private int dropWaitTicks = 0;
+	private int dropAimTicks = 0;
+	private boolean dropSent = false;
+	private boolean dropResent = false;
 
 	public ChestDepositor(List<BlockPos> chests) {
 		this.chests = List.copyOf(chests);
@@ -179,7 +188,7 @@ public class ChestDepositor implements BookDisposal {
 					// wait and let EVALUATE see the stale offhand book on a laggy
 					// dedicated server. A rejected swap times out into the retry
 					// decision below
-					if (!player.getOffhandItem().is(Items.ENCHANTED_BOOK)) {
+					if (!disposable(player.getOffhandItem())) {
 						this.swapWaitTicks = -1;
 					} else if (++this.swapWaitTicks > 20) {
 						this.swapWaitTicks = -1;
@@ -220,7 +229,7 @@ public class ChestDepositor implements BookDisposal {
 				BookScan scan = scanBooks(player);
 				if (scan.firstSlot() == null) {
 					this.lastBookCount = 0;
-					if (player.getOffhandItem().is(Items.ENCHANTED_BOOK) && !this.offhandSwapped) {
+					if (disposable(player.getOffhandItem()) && !this.offhandSwapped) {
 						int swapSlot = findNonBookHotbarSlot(player);
 						// Defensive, unreachable today (audited 2026-09-19): reaching here
 					// means no book sits in any of the 36 inventory slots, so the nine
@@ -266,12 +275,92 @@ public class ChestDepositor implements BookDisposal {
 					player.closeContainer();
 					return StepResult.RUNNING;
 				}
-				if (Preconditions.countItem(player, Items.ENCHANTED_BOOK) == 0) {
+				if (countDisposables(player) == 0) {
 					undoOffhandStage(player);
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
 				}
 				return advance(mc, player);
+			}
+			case DROP_STAGE -> {
+				if (player.containerMenu != player.inventoryMenu) {
+					player.closeContainer();
+					return StepResult.RUNNING;
+				}
+				Slot slot = findDisposableSlot(player);
+				if (slot == null) {
+					// everything is gone (both the offhand staging and the inventory)
+					if (disposable(player.getOffhandItem())) {
+						this.state = State.DROP_AIM;
+						return StepResult.RUNNING;
+					}
+					undoOffhandStage(player);
+					restoreHotbarSelection(player);
+					return StepResult.DONE;
+				}
+				int selected = player.getInventory().getSelectedSlot();
+				this.dropSlot = selected;
+				this.dropWaitTicks = 0;
+				if (slot.index == 36 + selected) {
+					// already the selected hotbar slot: straight to aiming
+					this.state = State.DROP_AIM;
+					this.dropAimTicks = 0;
+					return StepResult.RUNNING;
+				}
+				// SWAP it into the selected slot (the raw drop packet drops whatever is
+				// selected), then wait for the server sync before aiming
+				mc.gameMode.handleContainerInput(player.containerMenu.containerId, slot.index,
+						selected, ContainerInput.SWAP, player);
+				this.state = State.DROP_STAGE_WAIT;
+			}
+			case DROP_STAGE_WAIT -> {
+				if (disposable(player.getInventory().getItem(this.dropSlot))) {
+					this.state = State.DROP_AIM;
+					this.dropAimTicks = 0;
+				} else if (++this.dropWaitTicks > 60) {
+					return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+				}
+			}
+			case DROP_AIM -> {
+				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+				if (config.curseDropYaw == null || config.curseDropPitch == null) {
+					// dropping blind is never allowed
+					return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+				}
+				Vec3 target = player.getEyePosition().add(
+						Vec3.directionFromRotation(config.curseDropPitch, config.curseDropYaw).scale(100.0));
+				if (!this.look.tick(player, target)) return StepResult.RUNNING;
+				// give the rotation a few ticks to reach the server before the drop
+				if (++this.dropAimTicks >= 3) {
+					this.dropSent = false;
+					this.dropResent = false;
+					this.dropWaitTicks = 0;
+					this.state = State.DROP_WAIT;
+				}
+			}
+			case DROP_WAIT -> {
+				if (!disposable(player.getInventory().getItem(this.dropSlot))) {
+					// the drop landed: back to the next item
+					this.state = State.DROP_STAGE;
+					return StepResult.RUNNING;
+				}
+				if (!this.dropSent) {
+					player.connection.send(new ServerboundPlayerActionPacket(
+							ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS,
+							BlockPos.ZERO, Direction.DOWN));
+					this.dropSent = true;
+					this.dropWaitTicks = 0;
+				} else if (++this.dropWaitTicks > 60) {
+					if (!this.dropResent) {
+						// one resend: idempotent — if the first packet landed, the selected
+						// slot is empty server-side and this does nothing
+						this.dropResent = true;
+						this.dropSent = false;
+						this.dropWaitTicks = 0;
+					} else {
+						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+					}
+				}
 			}
 		}
 		return StepResult.RUNNING;
@@ -284,6 +373,17 @@ public class ChestDepositor implements BookDisposal {
 		}
 		this.index++;
 		if (this.index >= this.chests.size()) {
+			// every chest refused: drop what is left when the option says so, otherwise
+			// stop as before (the run then waits for the player to free space)
+			if (TradeMasterConfig.INSTANCE.nonBookDisposal
+							== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
+					&& (countDisposables(player) > 0 || disposable(player.getOffhandItem()))) {
+				this.state = State.DROP_STAGE;
+				this.look.reset();
+				this.dropSlot = -1;
+				this.dropWaitTicks = 0;
+				return StepResult.RUNNING;
+			}
 			restoreHotbarSelection(player);
 			return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
 		}
@@ -363,17 +463,56 @@ public class ChestDepositor implements BookDisposal {
 		return false;
 	}
 
-	/** One pass over the open container's player slots: first book slot + total. */
+	/** One pass over the open container's player slots: first disposable slot + total. */
 	private static BookScan scanBooks(LocalPlayer player) {
 		Slot first = null;
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
-			if (slot.container == player.getInventory() && slot.getItem().is(Items.ENCHANTED_BOOK)) {
+			if (slot.container == player.getInventory() && disposable(slot.getItem())) {
 				if (first == null) first = slot;
 				count++;
 			}
 		}
 		return new BookScan(first, count);
+	}
+
+	/** What this depositor takes out of the inventory: an enchanted book, or the result
+	 * item of a configured good (the grindstone cannot disenchant a good, so storing or
+	 * dropping it is the only way it leaves the inventory). */
+	private static boolean disposable(ItemStack stack) {
+		if (stack.isEmpty()) return false;
+		if (stack.is(Items.ENCHANTED_BOOK)) return true;
+		Identifier item = BuiltInRegistries.ITEM.getKey(stack.getItem());
+		return item != null && TradeMasterConfig.INSTANCE.goodFor(item) != null;
+	}
+
+	private static int countDisposables(LocalPlayer player) {
+		int count = 0;
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.container == player.getInventory() && disposable(slot.getItem())) count++;
+		}
+		return count;
+	}
+
+	/** First inventory slot holding something this depositor disposes of. */
+	private static @Nullable Slot findDisposableSlot(LocalPlayer player) {
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.container == player.getInventory() && disposable(slot.getItem())) return slot;
+		}
+		return null;
+	}
+
+	/** Whether the inventory holds at least one configured good (which the grindstone
+	 * cannot disenchant, so it must go through the chest/drop path). */
+	public static boolean holdsGood(LocalPlayer player) {
+		for (int i = 0; i < 36; i++) {
+			ItemStack stack = player.getInventory().getItem(i);
+			if (!stack.isEmpty() && !stack.is(Items.ENCHANTED_BOOK)
+					&& TradeMasterConfig.INSTANCE.goodFor(BuiltInRegistries.ITEM.getKey(stack.getItem())) != null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static void selectEmptyHotbarSlot(LocalPlayer player) {
@@ -389,9 +528,9 @@ public class ChestDepositor implements BookDisposal {
 	 * switch needed), or -1 when every hotbar slot is a book. */
 	private static int findNonBookHotbarSlot(LocalPlayer player) {
 		int selected = player.getInventory().getSelectedSlot();
-		if (!player.getInventory().getItem(selected).is(Items.ENCHANTED_BOOK)) return selected;
+		if (!disposable(player.getInventory().getItem(selected))) return selected;
 		for (int i = 0; i < 9; i++) {
-			if (!player.getInventory().getItem(i).is(Items.ENCHANTED_BOOK)) return i;
+			if (!disposable(player.getInventory().getItem(i))) return i;
 		}
 		return -1;
 	}

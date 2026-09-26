@@ -109,6 +109,10 @@ public final class TradeMasterConfig {
 	 * Identified by their result item, so `goodFor` is a plain list scan. */
 	public final List<GoodSpec> goods = new ArrayList<>();
 
+	/** What happens to a bought good when every bound chest refuses it: stop with a
+	 * message, or drop it facing the configured drop direction. */
+	public NonBookDisposal nonBookDisposal = NonBookDisposal.CHEST_THEN_STOP;
+
 	public List<GoodSpec> enabledGoods() {
 		List<GoodSpec> result = new ArrayList<>();
 		for (GoodSpec good : this.goods) {

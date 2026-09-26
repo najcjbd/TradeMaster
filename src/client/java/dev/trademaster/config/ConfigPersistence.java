@@ -396,6 +396,10 @@ public final class ConfigPersistence {
 					c.tradeSpecs.put(id, readOfferSpec(entry.getValue().getAsJsonObject()));
 				}
 			}
+			JsonElement disposal = offers.get("nonBookDisposal");
+			if (disposal != null && disposal.isJsonPrimitive()) {
+				c.nonBookDisposal = readEnum(offers, "nonBookDisposal", c.nonBookDisposal);
+			}
 			JsonElement goods = offers.get("goods");
 			if (goods != null && goods.isJsonArray()) {
 				c.goods.clear();
@@ -507,6 +511,7 @@ public final class ConfigPersistence {
 			goods.add(o);
 		}
 		offers.add("goods", goods);
+		offers.addProperty("nonBookDisposal", c.nonBookDisposal.name());
 		return offers;
 	}
 

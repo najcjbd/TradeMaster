@@ -215,5 +215,9 @@
   "trademaster.column.cost_b": "物品B",
   "trademaster.column.cost_count": "数量",
   "trademaster.offer.invalid_item": "物品 id 无效（留空=不需要该槽）",
-  "trademaster.offer.invalid_count": "数量需为 -1（不限量）/ 0（不需要）/ 1~64"
+  "trademaster.offer.invalid_count": "数量需为 -1（不限量）/ 0（不需要）/ 1~64",
+  "trademaster.settings.nonBookDisposal": "非书货品的处置",
+  "trademaster.settings.nonBookDisposal.stop": "存箱→无箱则停机",
+  "trademaster.settings.nonBookDisposal.drop": "存箱→无箱则丢弃",
+  "trademaster.settings.nonBookDisposal.comment": "买到的货品（非附魔书，砂轮去不了魔）在绑定的箱子都存不下时怎么办：停机等你处理，或者朝丢弃朝向丢在地上。"
 }
