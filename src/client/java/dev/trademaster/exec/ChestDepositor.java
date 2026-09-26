@@ -302,7 +302,7 @@ public class ChestDepositor implements BookDisposal {
 					player.closeContainer();
 					return StepResult.RUNNING;
 				}
-				Slot slot = findDisposableSlot(player);
+				Slot slot = findDroppableSlot(player);
 				if (slot == null) {
 					// everything is gone (both the offhand staging and the inventory)
 					if (disposable(player.getOffhandItem())) {
@@ -329,11 +329,16 @@ public class ChestDepositor implements BookDisposal {
 				this.state = State.DROP_STAGE_WAIT;
 			}
 			case DROP_STAGE_WAIT -> {
-				if (disposable(player.getInventory().getItem(this.dropSlot))) {
-					this.state = State.DROP_AIM;
-					this.dropAimTicks = 0;
-				} else if (++this.dropWaitTicks > 60) {
-					return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+				// the staging SWAP has no client-side prediction of its own: give the
+				// server a round trip to correct a REJECTED click before aiming, or a
+				// refusal would still be dropped against the local prediction
+				if (++this.dropWaitTicks >= 10) {
+					if (droppable(player.getInventory().getItem(this.dropSlot))) {
+						this.state = State.DROP_AIM;
+						this.dropAimTicks = 0;
+					} else if (this.dropWaitTicks > 60) {
+						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+					}
 				}
 			}
 			case DROP_AIM -> {
@@ -361,7 +366,7 @@ public class ChestDepositor implements BookDisposal {
 				}
 			}
 			case DROP_WAIT -> {
-				if (!disposable(player.getInventory().getItem(this.dropSlot))) {
+				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
 					// the drop landed: back to the next item
 					this.state = State.DROP_STAGE;
 					return StepResult.RUNNING;
@@ -521,7 +526,7 @@ public class ChestDepositor implements BookDisposal {
 	private StepResult startDropOrFail(LocalPlayer player) {
 		if (TradeMasterConfig.INSTANCE.nonBookDisposal
 						== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
-				&& (countDroppableGoods(player) > 0 || droppable(player.getOffhandItem()))) {
+				&& (countDroppables(player) > 0 || droppable(player.getOffhandItem()))) {
 			this.state = State.DROP_STAGE;
 			this.look.reset();
 			this.dropSlot = -1;
@@ -532,18 +537,31 @@ public class ChestDepositor implements BookDisposal {
 		return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
 	}
 
-	/** A produced good the pass may still drop (books excluded: they are stored only). */
+	/** Things this pass may DROP when no chest takes them: the goods this run produced,
+	 * plus cursed books (which can never be ground — in grindstone mode the recycler
+	 * owns those, so this pass leaves them alone). A normal book is only ever stored. */
 	private boolean droppable(ItemStack stack) {
-		return !stack.isEmpty() && !stack.is(Items.ENCHANTED_BOOK)
-				&& this.goodsAllowance.getOrDefault(stack.getItem(), 0) > 0;
+		if (stack.isEmpty()) return false;
+		if (!stack.is(Items.ENCHANTED_BOOK)) {
+			return this.goodsAllowance.getOrDefault(stack.getItem(), 0) > 0;
+		}
+		return !this.goodsOnly && GrindstoneRecycler.isCurseBook(stack);
 	}
 
-	private int countDroppableGoods(LocalPlayer player) {
+	private int countDroppables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.container == player.getInventory() && droppable(slot.getItem())) count++;
 		}
 		return count;
+	}
+
+	/** First inventory slot holding something this pass may drop (see droppable). */
+	private @Nullable Slot findDroppableSlot(LocalPlayer player) {
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.container == player.getInventory() && droppable(slot.getItem())) return slot;
+		}
+		return null;
 	}
 
 	/** First inventory slot holding something this depositor disposes of. */

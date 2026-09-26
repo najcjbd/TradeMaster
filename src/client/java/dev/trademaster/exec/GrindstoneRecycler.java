@@ -731,13 +731,21 @@ public class GrindstoneRecycler implements BookDisposal {
 	}
 
 	/** Curse check: vanilla curse tag or a user-configured mod curse id. */
-	private boolean isCursed(ItemStack stack) {
+	/** Whether an enchanted book carries a curse (the vanilla curse tag or a configured
+	 * curse id): such a book can never be ground, so it is junk exactly like a good.
+	 * Shared with the depositor's disposal rule; the instance path below keeps the
+	 * per-tick registry cache for the recycle scan. */
+	public static boolean isCurseBook(ItemStack stack) {
+		Minecraft mc = Minecraft.getInstance();
+		return isCurseBook(stack, mc.level == null ? null
+				: mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT));
+	}
+
+	public static boolean isCurseBook(ItemStack stack, @Nullable Registry<Enchantment> registry) {
 		if (!stack.is(Items.ENCHANTED_BOOK)) return false;
 		ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
 		if (enchantments.isEmpty()) return false;
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		// resolved once per tick (see tick()); null only before the first tick
-		Registry<Enchantment> registry = this.curseRegistry;
 		for (Holder<Enchantment> holder : enchantments.keySet()) {
 			if (holder.is(EnchantmentTags.CURSE)) return true;
 			if (registry != null && !config.customCurseEnchantments.isEmpty()) {
@@ -746,6 +754,11 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 		}
 		return false;
+	}
+
+	private boolean isCursed(ItemStack stack) {
+		// resolved once per tick in tick(); null only before the first tick
+		return isCurseBook(stack, this.curseRegistry);
 	}
 
 	/** Inventory slot (0-35) to inventoryMenu slot index: storage maps 1:1
