@@ -63,7 +63,23 @@ public final class EnchantmentNamer {
 	 * spaces never matches, and a collision that differs only in whitespace is
 	 * silently missed at alias-entry time but then drops BOTH sides from the index. */
 	public static String canonical(String name) {
-		return name.trim().replaceAll("\\s+", " ");
+		// hand written: this runs for every name in the deduction index, and
+		// replaceAll would compile the pattern again on every call
+		StringBuilder out = new StringBuilder(name.length());
+		boolean pendingSpace = false;
+		for (int i = 0; i < name.length(); i++) {
+			char c = name.charAt(i);
+			if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f') {
+				if (out.length() > 0) pendingSpace = true;
+				continue;
+			}
+			if (pendingSpace) {
+				out.append(' ');
+				pendingSpace = false;
+			}
+			out.append(c);
+		}
+		return out.toString();
 	}
 
 	private static String resolve(Identifier id, String translationKey) {

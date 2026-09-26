@@ -76,9 +76,12 @@ public final class Preconditions {
 				// the amount the player must CARRY, not the comparison cap: an
 				// "unlimited" slot needs one item, while the cap is the comparison
 				// sentinel used by the matcher
+				// 0 = "this slot is not required" (the matcher skips it), so it must
+				// not be demanded here either; a negative amount is "no limit" and
+				// only needs one item to be payable
 				int needed = slot == 0
 						? target.maxPrice()
-						: (cost.count() < 0 ? 1 : Math.max(1, cost.count()));
+						: (cost.count() < 0 ? 1 : cost.count());
 				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
@@ -94,7 +97,7 @@ public final class Preconditions {
 				if (cost == null || cost.item() == null || config.isAirItem(cost.item())) continue;
 				int needed = slot == 0
 						? good.maxPrice()
-						: (cost.count() < 0 ? 1 : Math.max(1, cost.count()));
+						: (cost.count() < 0 ? 1 : cost.count());
 				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;

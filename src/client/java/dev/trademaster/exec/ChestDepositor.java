@@ -301,11 +301,9 @@ public class ChestDepositor implements BookDisposal {
 				}
 				Slot slot = findDroppableSlot(player);
 				if (slot == null) {
-					// everything is gone (both the offhand staging and the inventory)
-					if (disposable(player.getOffhandItem())) {
-						this.state = State.DROP_AIM;
-						return StepResult.RUNNING;
-					}
+					// nothing left to drop: the offhand is deliberately not a drop
+					// target (it has no selected slot to drop from), so finishing here
+					// is correct — aiming at a stale slot used to loop until the timeout
 					undoOffhandStage(player);
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
@@ -566,14 +564,6 @@ public class ChestDepositor implements BookDisposal {
 		for (Slot slot : player.containerMenu.slots) {
 			if (slot.index >= 45) continue;
 			if (slot.container == player.getInventory() && droppable(slot.getItem())) return slot;
-		}
-		return null;
-	}
-
-	/** First inventory slot holding something this depositor disposes of. */
-	private @Nullable Slot findDisposableSlot(LocalPlayer player) {
-		for (Slot slot : player.containerMenu.slots) {
-			if (slot.container == player.getInventory() && disposable(slot.getItem())) return slot;
 		}
 		return null;
 	}

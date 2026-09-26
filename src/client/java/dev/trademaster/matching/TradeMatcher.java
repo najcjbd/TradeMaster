@@ -180,6 +180,9 @@ public class TradeMatcher {
 			// a target whose vanilla minimum price exceeds the configured max can
 			// never match: keep it out of the needs (start() warns about it)
 			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
+			// a row switched off with an AIR result is never offered: keeping it in the
+			// needs would leave an unsatisfiable demand alive for the whole run
+			if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) continue;
 			// a kept-but-dead config entry (enchantment removed from the registry
 			// or untradeable after a datapack/mod change) can never be offered by a
 			// villager either — Select All could still enable it, and without this
@@ -429,8 +432,13 @@ public class TradeMatcher {
 			// next full rebuild
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(need.id());
 			if (good != null) {
-				int markedGood = this.huntPrices.getOrDefault(need.id(), good.maxPrice());
-				int goodBudget = Math.min(markedGood - 1, good.maxPrice());
+				// an unmarked good is budgeted at its own price, exactly like
+				// budgetFor does for a target (taking price-1 here made a legitimate
+				// offer at the configured price stop matching, and dropped the good
+				// entirely at price 1)
+				Integer goodMark = this.huntPrices.get(need.id());
+				int goodBudget = goodMark == null ? good.maxPrice()
+						: Math.min(goodMark - 1, good.maxPrice());
 				if (goodBudget < 1) continue;
 				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 				goodQueue.enqueue(need.reserveAdded() ? Math.min(need.seenPrice() - 1, good.maxPrice()) : goodBudget);
@@ -514,6 +522,13 @@ public class TradeMatcher {
 		Set<Identifier> enabledIds = new HashSet<>();
 		for (EnchantmentTarget target : enabled) {
 			enabledIds.add(target.id());
+			// the same guard buildNeeds applies: a target whose vanilla minimum price
+			// exceeds its max can never be offered, and leaving it in `targets` let it
+			// ride along as a combo passenger on someone else's budget
+			if (!this.huntPrices.containsKey(target.id())
+					&& TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
+			// a row switched off with an AIR result is not offered either
+			if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) continue;
 			// refresh the target reference: the user may have edited level/price
 			// mid-run and tryMatch's level check reads from this map
 			this.targets.put(target.id(), target);

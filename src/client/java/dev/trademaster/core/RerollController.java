@@ -8,10 +8,12 @@ import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.RerollMechanism;
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.detection.DetectionHub;
 import dev.trademaster.detection.OfferSnapshot;
 import dev.trademaster.exec.BookDisposal;
 import dev.trademaster.exec.ButtonPresser;
+import dev.trademaster.exec.EnchantmentNamer;
 import dev.trademaster.exec.ChestDepositor;
 import dev.trademaster.exec.GrindstoneRecycler;
 import dev.trademaster.exec.LockTradeExecutor;
@@ -635,10 +637,15 @@ public final class RerollController {
 		if (TradeMasterConfig.INSTANCE.huntCheaper) {
 			s.matcher.resyncTargets(s.lockedIds);
 		}
-		Component failure = Preconditions.check();
-		if (failure != null) {
-			stop(failure.copy().withStyle(ChatFormatting.RED), null);
-			return;
+		// the precheck walks the whole inventory and builds four collections: it only
+		// needs to run periodically, not on every tick of the PRECHECK phase
+		int precheckInterval = Math.max(1, TradeMasterConfig.INSTANCE.villagerCheckInterval);
+		if (phaseTicks % precheckInterval == 0) {
+			Component failure = Preconditions.check();
+			if (failure != null) {
+				stop(failure.copy().withStyle(ChatFormatting.RED), null);
+				return;
+			}
 		}
 		if (!Preconditions.hasFreeSlot(player)) {
 			depositor = createBookDisposal();
@@ -989,7 +996,10 @@ public final class RerollController {
 		}
 		// Not a librarian yet. Under heavy lag the stored reference can point at a
 		// stale/recreated entity whose profession never updates: re-scan the arrival
-		// point for a librarian and switch to it if one is there.
+		// point for a librarian and switch to it if one is there. Throttled like the
+		// other waits — this ran an entity query EVERY tick for the whole wait
+		int scanInterval = Math.max(1, TradeMasterConfig.INSTANCE.villagerCheckInterval);
+		if (phaseTicks % scanInterval != 0) return;
 		Villager found = findArrivedVillager(client, s.lecternPos);
 		if (found != null && found != s.villager
 				&& found.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
@@ -1986,6 +1996,14 @@ public final class RerollController {
 			h = h * 31 + target.id().hashCode();
 			h = h * 31 + target.level();
 			h = h * 31 + target.maxPrice();
+			// the cost shape and the (air) result decide whether the row can be
+			// offered at all, so editing them must rebuild the needs too
+			TradeOfferSpec spec = TradeMasterConfig.INSTANCE.specFor(target.id());
+			h = h * 31 + (spec.result() == null ? 0 : spec.result().hashCode());
+			for (TradeOfferSpec.TradeCost cost : spec.costs()) {
+				h = h * 31 + (cost == null || cost.item() == null ? 0 : cost.item().hashCode());
+				h = h * 31 + (cost == null ? 0 : cost.count());
+			}
 		}
 		// custom goods shape the needs too (enabling one, or editing its price/amount,
 		// must rebuild the table just like an enchantment edit)
@@ -1995,6 +2013,10 @@ public final class RerollController {
 			h = h * 31 + good.id().hashCode();
 			h = h * 31 + good.maxPrice();
 			h = h * 31 + good.resultCount();
+			for (TradeOfferSpec.TradeCost cost : good.costs()) {
+				h = h * 31 + (cost == null || cost.item() == null ? 0 : cost.item().hashCode());
+				h = h * 31 + (cost == null ? 0 : cost.count());
+			}
 		}
 		return h;
 	}
@@ -2354,7 +2376,11 @@ public final class RerollController {
 		MutableComponent bookText = null;
 		for (TradeMatcher.MatchPart part : book.parts()) {
 			MutableComponent partText = null;
-			if (mc.level != null) {
+			if (part.level() <= 0) {
+				// a custom good: the part is an item, not an enchantment, so the
+				// enchantment registry lookup below would print its raw id
+				partText = Component.literal(EnchantmentNamer.demandDisplayName(part.id()));
+			} else if (mc.level != null) {
 				Enchantment enchantment = mc.level.registryAccess()
 						.lookupOrThrow(Registries.ENCHANTMENT).getValue(part.id());
 				if (enchantment != null) {

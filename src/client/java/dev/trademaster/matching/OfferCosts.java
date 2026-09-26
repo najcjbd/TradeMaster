@@ -63,12 +63,14 @@ public final class OfferCosts {
 			for (Field field : chain.get(i).getDeclaredFields()) {
 				Class<?> raw = field.getType();
 				if (raw == ItemCost.class) {
+					field.setAccessible(true);
 					found.add(field);
 					continue;
 				}
 				// an unrelated Optional field must not count as a cost slot, or the
 				// slots after it would be read one position off
 				if (raw == Optional.class && optionalHoldsItemCost(field)) {
+					field.setAccessible(true);
 					found.add(field);
 				}
 			}
@@ -90,7 +92,6 @@ public final class OfferCosts {
 	 * breaking the scan. */
 	private static ItemStack readAsStack(Object owner, Field field) {
 		try {
-			field.setAccessible(true);
 			Object value = field.get(owner);
 			if (value instanceof ItemCost cost) return cost.itemStack();
 			if (value instanceof Optional<?> optional) {

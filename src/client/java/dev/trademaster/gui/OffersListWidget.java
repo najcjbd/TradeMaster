@@ -80,8 +80,12 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		Font font = Minecraft.getInstance().font;
 		context.fill(5, AIR_Y - 1, this.width - 5, AIR_Y + 15, 0x1AC7C0C0);
 		context.text(font, Component.translatable("trademaster.column.air_items"), 8, AIR_Y + 4, 0xFF202020);
-		context.text(font, Component.translatable("trademaster.air.hint"),
-				this.airField.getX() + this.airField.getWidth() + 6, AIR_Y + 4, 0xFF606060);
+		int hintX = this.airField.getX() + this.airField.getWidth() + 6;
+		int hintWidth = this.width - hintX - 4;
+		if (hintWidth >= 8) {
+			String hint = Component.translatable("trademaster.air.hint").getString();
+			context.text(font, Component.literal(Row.fit(font, hint, hintWidth)), hintX, AIR_Y + 4, 0xFF606060);
+		}
 		this.airField.extractRenderState(context, 0, 0, 0.0f);
 
 		// the labels line up with the enchantment rows' three fields
@@ -144,7 +148,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		List<String> items = new ArrayList<>();
 		for (String token : this.airField.getValue().split("[,\\s]+")) {
 			if (token.isBlank()) continue;
-			Identifier id = Identifier.tryParse(token.trim());
+			// ids are lowercase: "AIR" must become minecraft:air instead of being dropped
+			Identifier id = Identifier.tryParse(token.trim().toLowerCase(java.util.Locale.ROOT));
 			if (id != null && !items.contains(id.toString())) items.add(id.toString());
 		}
 		config.airItems.clear();
@@ -206,19 +211,19 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 		// the air field lives in the fixed header, outside the rows, so this list owns
 		// its clicks (an EditBox does not take focus on its own)
-		if (this.airField.isMouseOver(click.x(), click.y())) {
-			this.airField.setFocused(true);
-			return this.airField.mouseClicked(click, doubled);
-		}
-		this.airField.setFocused(false);
-		// commit + unfocus every field the click did NOT land in, or two fields could
-		// hold focus at once and the keystrokes would reach the wrong row
+		// blur + commit the rows first, whoever the click belongs to: returning early
+		// for the air field used to leave a row field focused as well (two focuses)
 		for (Row row : this.children()) {
 			for (EditBox field : row.fields()) {
 				if (!field.isMouseOver(click.x(), click.y())) field.setFocused(false);
 			}
 			if (!row.clickedIn(click)) row.commit();
 		}
+		if (this.airField.isMouseOver(click.x(), click.y())) {
+			this.airField.setFocused(true);
+			return this.airField.mouseClicked(click, doubled);
+		}
+		this.airField.setFocused(false);
 		return super.mouseClicked(click, doubled);
 	}
 
@@ -277,7 +282,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		protected void place(GuiGraphicsExtractor context, EditBox field, int x, int width,
 				int mouseX, int mouseY, float deltaTicks) {
-			field.setWidth(Math.max(MIN_FIELD, width));
+			// the layout is the only authority on the width: re-raising it to MIN_FIELD
+			// here undid the narrow-row clamp and made the fields overlap
+			field.setWidth(Math.max(10, width));
 			field.setX(x);
 			field.setY(this.y + 3);
 			context.pose().pushMatrix();
@@ -365,6 +372,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	public static class OfferRow extends Row {
 
 		private final Identifier id;
+		/** Per-frame cache: the name only changes when the row is rebuilt, and fit()
+		 * cuts character by character (see SettingsListWidget's caches). */
+		private @Nullable String nameCache = null;
+		private int nameCacheWidth = -1;
+		private Component nameText = Component.empty();
 		private final EditBox costAField;
 		private final EditBox costBField;
 		private final EditBox countField;
@@ -426,9 +438,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			int countX = this.x + this.entryWidth - 2 - NUM_WIDTH;
 			int costBX = countX - FIELD_GAP - costWidth;
 			int costAX = costBX - FIELD_GAP - costWidth;
-			String name = EnchantmentNamer.demandDisplayName(this.id);
-			context.text(font, Component.literal(fit(font, name, Math.max(20, costAX - FIELD_GAP - (this.x + 4)))),
-					this.x + 4, this.y + 6, 0xFFFFFFFF);
+			int nameWidth = Math.max(20, costAX - FIELD_GAP - (this.x + 4));
+			if (this.nameCache == null) this.nameCache = EnchantmentNamer.demandDisplayName(this.id);
+			if (nameWidth != this.nameCacheWidth) {
+				this.nameCacheWidth = nameWidth;
+				this.nameText = Component.literal(fit(font, this.nameCache, nameWidth));
+			}
+			context.text(font, this.nameText, this.x + 4, this.y + 6, 0xFFFFFFFF);
 			if (this.errorKey != null) {
 				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
@@ -445,6 +461,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		private final Identifier id;
 		private final @Nullable Runnable rebuild;
+		/** See OfferRow's note: the fitted name is cached per width. */
+		private @Nullable String nameCache = null;
+		private int nameCacheWidth = -1;
+		private Component nameText = Component.empty();
 		private final EditBox resultCountField;
 		private final EditBox priceField;
 		private final EditBox costAField;
@@ -549,9 +569,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			int nameWidth = Math.max(0, costAX - FIELD_GAP - (this.x + 4));
 
-			String name = EnchantmentNamer.demandDisplayName(this.id);
-			context.text(font, Component.literal(fit(font, name, nameWidth)), this.x + 4, this.y + 6,
-					enabled ? 0xFFFFFFFF : 0xFF808080);
+			if (nameWidth >= 8) {
+				if (this.nameCache == null) this.nameCache = EnchantmentNamer.demandDisplayName(this.id);
+				if (nameWidth != this.nameCacheWidth) {
+					this.nameCacheWidth = nameWidth;
+					this.nameText = Component.literal(fit(font, this.nameCache, nameWidth));
+				}
+				context.text(font, this.nameText, this.x + 4, this.y + 6,
+						enabled ? 0xFFFFFFFF : 0xFF808080);
+			}
 			if (this.errorKey != null) {
 				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
@@ -641,13 +667,16 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
 			int plusX = this.x + this.entryWidth - 2 - 14;
-			int fieldX = plusX - FIELD_GAP - 100;
-			context.text(font, Component.translatable("trademaster.offers.add_good"), this.x + 4, this.y + 6, 0xFFE0E000);
+			int fieldWidth = Math.max(40, Math.min(100, plusX - FIELD_GAP - (this.x + 4) - 60));
+			int fieldX = plusX - FIELD_GAP - fieldWidth;
+			String label = Component.translatable("trademaster.offers.add_good").getString();
+			context.text(font, Component.literal(fit(font, label, Math.max(0, fieldX - FIELD_GAP - (this.x + 4)))),
+					this.x + 4, this.y + 6, 0xFFE0E000);
 			context.text(font, Component.literal("+"), plusX + 4, this.y + 6, 0xFF00C000);
 			if (this.errorKey != null) {
 				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
-			place(context, this.resultField, fieldX, 100, mouseX, mouseY, deltaTicks);
+			place(context, this.resultField, fieldX, fieldWidth, mouseX, mouseY, deltaTicks);
 		}
 	}
 }

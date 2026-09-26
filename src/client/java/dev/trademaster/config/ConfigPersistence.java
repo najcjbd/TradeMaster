@@ -384,7 +384,7 @@ public final class ConfigPersistence {
 				c.airItems.clear();
 				for (JsonElement e : air.getAsJsonArray()) {
 					if (!e.isJsonPrimitive()) continue;
-					String raw = e.getAsString().trim();
+					String raw = e.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
 					if (raw.isEmpty()) continue;
 					// the same normalisation the offers tab uses: a namespaceless entry
 					// means minecraft:, or a hand-written "AIR" would never match
