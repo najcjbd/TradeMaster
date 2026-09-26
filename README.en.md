@@ -106,7 +106,7 @@ All three modes use a **3-second wall clock** and **containerId correlation** to
 Datapack/modded servers often sell in shapes other than "emeralds + book". The fifth tab, **Offers**, describes them:
 
 - **One row per enchantment**: `Cost A item` (default `minecraft:emerald`; its **amount** is always that enchantment's price from the enchantments tab), `Cost B item` (default `minecraft:book`) and `Cost B amount`.
-- **Amount meaning**: `-1` = **no limit** (the default, matching the old behaviour of "any number of books"); `0` = **this slot is not required**; `1..64` = a cap.
+- **Amount meaning**: `-1` = **no limit** (the default, matching the old behaviour of "any number of books"); `0` = **this slot is not required**; `1..64` = a cap. **Slot 1 (cost A) has no amount here**: it always equals that row’s price (an enchantment’s top price from the enchantments tab, a good’s own "price" field); a hand-edited number there is ignored and written back.
 - **An empty item = that slot is not required** (same as an air item).
 - **Air items (the header list)**: ids listed there (default `minecraft:air`) mean "this slot is free" on the OFFER side (some datapacks spell a free slot as air) and "not required" on the spec side, exactly like an empty field.
 - **Matching rule = subset**: every item the offer charges must be listed for that row, and the total charged per item may not exceed what the row allows; a slot the row declares but the offer does not charge still matches (you pay less). So the **order of slots does not matter** — as long as nothing costs more, it buys.
