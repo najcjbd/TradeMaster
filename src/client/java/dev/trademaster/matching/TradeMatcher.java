@@ -246,14 +246,19 @@ public class TradeMatcher {
 
 	/** Whether a custom good can ever be offered: its result item must still exist and
 	 * not be an air item, its price cap must allow at least one emerald, and its spec
-	 * must declare a payable price slot (slot 1). A good that cannot match must not be
-	 * enqueued, or the run rerolls forever on a need no villager can satisfy. */
+	 * must declare at least one payable item. The matcher is an item-SET check (slot
+	 * position only fixes the price cap), so requiring slot 1 specifically would refuse
+	 * a good that declares its payable items in another slot. */
 	public static boolean goodMatchable(GoodSpec good) {
 		if (good.maxPrice() < 1) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
 		if (good.resultItem() == null) return false;
-		TradeOfferSpec.TradeCost slot0 = good.spec().costAt(0);
-		return slot0 != null && slot0.item() != null && !TradeMasterConfig.INSTANCE.isAirItem(slot0.item());
+		for (TradeOfferSpec.TradeCost cost : good.spec().costs()) {
+			if (cost == null || cost.item() == null) continue;
+			if (TradeMasterConfig.INSTANCE.isAirItem(cost.item())) continue;
+			if (BuiltInRegistries.ITEM.get(cost.item()).isPresent()) return true;
+		}
+		return false;
 	}
 
 	public boolean isEmpty() {
@@ -687,9 +692,13 @@ public class TradeMatcher {
 		if (detachedLevel > 0 && span.size() >= 2) {
 			// a name whose own text ends in a roman-looking token (a custom good named
 			// "... IV") would otherwise be read as "{name} {level}" and never resolve
-			// back. When the WHOLE span is a configured name, that reading wins.
+			// back. Only a GOOD is named without a level, so the whole-span reading is
+			// applied for a good alone: for an enchantment the legacy "{name} {roman}"
+			// reading must win, or an alias literally equal to "{name} {roman}" would
+			// strand its own book.
 			String whole = String.join(" ", span);
-			if (nameToId.containsKey(EnchantmentNamer.canonical(whole))) {
+			Identifier wholeId = nameToId.get(EnchantmentNamer.canonical(whole));
+			if (wholeId != null && TradeMasterConfig.INSTANCE.goodFor(wholeId) != null) {
 				return List.of(new NamedPart(whole, 0));
 			}
 			String rest = String.join(" ", span.subList(0, span.size() - 1));

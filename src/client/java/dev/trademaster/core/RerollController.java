@@ -294,11 +294,13 @@ public final class RerollController {
 		s.matcher.setHuntPrices(huntMarkedPrices);
 		s.matcher.setComboHuntPrices(comboHuntPrices);
 		refreshNeeds(mc, s);
+		// warn BEFORE the empty check: when every enabled demand is dead the matcher is
+		// empty, and returning on "all done" first hid exactly that case
+		warnUnmatchableDemands(mc);
 		if (s.matcher.isEmpty()) {
 			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
 		}
-		warnUnmatchableDemands(mc);
 		// material/axe/lectern failures must reject the start right here: deferring
 		// them to the first precheck tick reported "started", closed the GUI and the
 		// user's in-progress pick, then stopped one tick later
@@ -595,7 +597,10 @@ public final class RerollController {
 				// will really be available for them (it needs its drop direction)
 				boolean goodsOnly = config.grindstoneEnabled && config.grindstonePos != null
 						&& config.curseDropYaw != null && config.curseDropPitch != null;
-				return new ChestDepositor(config.chestPositions, produced, goodsOnly);
+				// the BASELINE goes in, not the produced snapshot: the depositor derives
+				// the allowance from the live inventory every tick, so a click the server
+				// refuses can never spend it
+				return new ChestDepositor(config.chestPositions, disposalBaseline(disposerHolder), goodsOnly);
 			}
 			// no chest and no drop option: the produced goods cannot leave the inventory
 			// here, but the ordinary path may still free space (grinding books), so fall
@@ -627,6 +632,24 @@ public final class RerollController {
 			if (excess > 0) produced.merge(item, excess, Integer::sum);
 		}
 		return produced;
+	}
+
+	/** The start-of-run count of every locked good's result item (0 when the player
+	 * carried none). The depositor is handed this and re-derives the allowance as
+	 * "count now minus baseline" from the live inventory each tick, so a click the
+	 * server refuses is corrected back and can never spend the allowance. */
+	private static Map<Item, Integer> disposalBaseline(@Nullable LocalPlayer player) {
+		Map<Item, Integer> baseline = new LinkedHashMap<>();
+		RunSession s = session;
+		if (player == null || s == null) return baseline;
+		for (Identifier id : s.lockedIds) {
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+			if (good == null) continue;
+			Item item = good.resultItem();
+			if (item == null) continue;
+			baseline.putIfAbsent(item, s.goodBaseline.getOrDefault(item, 0));
+		}
+		return baseline;
 	}
 
 	private static void tickPrecheck(Minecraft client, LocalPlayer player, RunSession s) {

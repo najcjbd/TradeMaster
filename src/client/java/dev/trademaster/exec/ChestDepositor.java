@@ -4,6 +4,7 @@ import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
+import dev.trademaster.core.Preconditions;
 import dev.trademaster.strategy.RerollStrategy.StepResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -59,6 +60,10 @@ public class ChestDepositor implements BookDisposal {
 	/** Item that staging swap pushed into the offhand (a copy), so the undo can prove
 	 * the offhand still holds exactly that and not something the player put there. */
 	private ItemStack stagedDisplaced = ItemStack.EMPTY;
+	/** The book/good the staging swap moved into the hotbar slot (a copy). The undo runs
+	 * once that slot is empty (the item was deposited/dropped) OR still holds exactly
+	 * this — either way the displaced item is returned to where it came from. */
+	private ItemStack stagedBook = ItemStack.EMPTY;
 	/** Ticks spent waiting for the server's offhand-swap slot sync to arrive;
 	 * -1 while not waiting. */
 	private int swapWaitTicks = -1;
@@ -77,15 +82,19 @@ public class ChestDepositor implements BookDisposal {
 	private int dropAimTicks = 0;
 	private boolean dropSent = false;
 	private boolean dropResent = false;
-	/** The stack the current drop is moving: captured when the drop is staged, because
-	 * by the time the server confirms the drop the slot is already empty and the amount
-	 * is gone. The allowance is booked only on that confirmation (what actually left). */
-	private Item dropItem = null;
-	private int dropCount = 0;
+	/** Menu slot the book was SWAPped out of when the drop was staged, or -1 when the
+	 * droppable item already sat in the selected hotbar slot. A container SWAP click is
+	 * applied LOCALLY first, so the drop may only proceed once this source slot is EMPTY
+	 * again — under a rejected click the server restores the book there. */
+	private int dropSourceSlot = -1;
 
-	/** How many of each item this pass may take out of the inventory because THIS RUN
-	 * produced it (bought goods). Empty = the usual behaviour: enchanted books only. */
-	private final Map<Item, Integer> goodsAllowance;
+	/** The start-of-run counts of every good's result item. The allowance is DERIVED
+	 * from these every tick (count now minus baseline) and never booked per move: a
+	 * click the server refuses is corrected back and must not spend the allowance. */
+	private final Map<Item, Integer> goodsBaseline;
+	/** Live: how many of each item this pass may still take because THIS RUN produced
+	 * it. Recomputed from the inventory in {@link #refreshAllowance}. */
+	private final Map<Item, Integer> allowance = new java.util.HashMap<>();
 	/** When true the pass takes only those produced goods: used in grindstone mode,
 	 * where the books are still the recycler's business. */
 	private final boolean goodsOnly;
@@ -94,9 +103,9 @@ public class ChestDepositor implements BookDisposal {
 		this(chests, Map.of(), false);
 	}
 
-	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsAllowance, boolean goodsOnly) {
+	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline, boolean goodsOnly) {
 		this.chests = List.copyOf(chests);
-		this.goodsAllowance = new java.util.HashMap<>(goodsAllowance);
+		this.goodsBaseline = Map.copyOf(goodsBaseline);
 		this.goodsOnly = goodsOnly;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
 	}
@@ -112,6 +121,7 @@ public class ChestDepositor implements BookDisposal {
 			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
 		}
 		this.ticks++;
+		refreshAllowance(player);
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 120) {
 			restoreHotbarSelection(player);
 			return StepResult.failed(Component.translatable("trademaster.error.deposit-timeout"));
@@ -254,6 +264,7 @@ public class ChestDepositor implements BookDisposal {
 					if (swapSlot >= 0) {
 							this.offhandSwapped = true;
 							this.stagedHotbarSlot = swapSlot;
+							this.stagedBook = player.getOffhandItem().copy();
 							this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
 							if (player.getInventory().getSelectedSlot() != swapSlot) {
 								Interactions.selectHotbarSlot(player, swapSlot);
@@ -284,15 +295,11 @@ public class ChestDepositor implements BookDisposal {
 					this.noProgressTicks = 0;
 					this.lastBookCount = scan.count();
 				}
-				// capture the stack BEFORE the click: handleContainerInput applies the
-				// move locally first, so reading the slot afterwards would see it empty
-				// and the allowance would never be spent
-				ItemStack before = scan.firstSlot().getItem().copy();
+				// the allowance is NOT booked from this click: handleContainerInput applies
+				// the move locally first, so a booking would count a click the server may
+				// refuse. It is re-derived from the inventory every tick instead.
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 						scan.firstSlot().index, 0, ContainerInput.QUICK_MOVE, player);
-				// the pass may only take what this run produced: book what actually left
-				ItemStack after = scan.firstSlot().getItem();
-				consumeAllowance(before.getItem(), before.getCount() - after.getCount());
 			}
 			case EVALUATE -> {
 				if (player.containerMenu != player.inventoryMenu) {
@@ -323,28 +330,29 @@ public class ChestDepositor implements BookDisposal {
 				int selected = player.getInventory().getSelectedSlot();
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;
-				// capture what this drop will move: by the time the server confirms it,
-				// the slot is empty and the amount can no longer be read
-				this.dropItem = slot.getItem().getItem();
-				this.dropCount = slot.getItem().getCount();
 				if (slot.index == 36 + selected) {
-					// already the selected hotbar slot: straight to aiming
+					// already the selected hotbar slot: no swap, nothing to confirm
+					this.dropSourceSlot = -1;
 					this.state = State.DROP_AIM;
 					this.dropAimTicks = 0;
 					return StepResult.RUNNING;
 				}
 				// SWAP it into the selected slot (the raw drop packet drops whatever is
 				// selected), then wait for the server sync before aiming
+				this.dropSourceSlot = slot.index;
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId, slot.index,
 						selected, ContainerInput.SWAP, player);
 				this.state = State.DROP_STAGE_WAIT;
 			}
 			case DROP_STAGE_WAIT -> {
-				// the staging SWAP has no client-side prediction of its own: give the
-				// server a round trip to correct a REJECTED click before aiming, or a
-				// refusal would still be dropped against the local prediction
+				// a container SWAP click IS applied locally first, so the destination slot
+				// already shows the book even when the server REJECTS the click: wait for a
+				// round trip and require the SOURCE slot to be empty as well — a rejection
+				// is corrected back there
 				if (++this.dropWaitTicks >= 10) {
-					if (droppable(player.getInventory().getItem(this.dropSlot))) {
+					boolean sourceEmpty = this.dropSourceSlot < 0
+							|| player.containerMenu.slots.get(this.dropSourceSlot).getItem().isEmpty();
+					if (sourceEmpty && droppable(player.getInventory().getItem(this.dropSlot))) {
 						this.state = State.DROP_AIM;
 						this.dropAimTicks = 0;
 					} else if (this.dropWaitTicks > 60) {
@@ -378,8 +386,7 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DROP_WAIT -> {
 				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
-					// the drop landed: book what actually left, then take the next item
-					consumeAllowance(this.dropItem, this.dropCount);
+					// the drop landed: the allowance shrinks on its own next tick
 					this.state = State.DROP_STAGE;
 					return StepResult.RUNNING;
 				}
@@ -446,19 +453,26 @@ public class ChestDepositor implements BookDisposal {
 		restoreHotbarSelection(player);
 	}
 
-	/** Returns the item an offhand staging swap displaced into the offhand. Runs at
-	 * the END of a deposit (or on abort) only when the exact post-swap state is still
-	 * observed: the book is gone from the staged slot AND the offhand holds a
-	 * non-book. Any other state means the world moved on — leave it alone. */
+	/** Returns the item an offhand staging swap displaced into the offhand. Runs at the
+	 * END of a deposit (or on abort) only when the exact post-swap state is still
+	 * observed: the staged slot is empty (the book left) OR still holds exactly the book
+	 * that was staged (all chests refused it — the swap-back restores the original
+	 * state), AND the offhand still holds a non-book. Anything else means the world moved
+	 * on — leave it alone. */
 	private void undoOffhandStage(LocalPlayer player) {
 		int slot = this.stagedHotbarSlot;
 		ItemStack displaced = this.stagedDisplaced;
+		ItemStack book = this.stagedBook;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
+		this.stagedBook = ItemStack.EMPTY;
 		// NOT gated on offhandSwapped: advance() resets that per chest, while the
 		// displacement it describes outlives the chest it was made for
 		if (slot < 0) return;
-		if (!player.getInventory().getItem(slot).isEmpty()) return;
+		ItemStack inSlot = player.getInventory().getItem(slot);
+		// a book still sitting there means the deposit never took it (all chests refused):
+		// swapping it back is exactly the pre-staging state, not theft
+		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return;
 		// the offhand must still carry exactly what the swap displaced: anything else
 		// means the player changed it, and moving it now would be theft
 		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
@@ -525,16 +539,15 @@ public class ChestDepositor implements BookDisposal {
 		return droppable(stack);
 	}
 
-	/** Consumes {@code moved} of {@code item} from the produced-goods allowance. Called
-	 * only for what the server actually moved (never for a refused click), so the
-	 * allowance stays an upper bound on THIS run's output rather than on the player's
-	 * whole stock. */
-	private void consumeAllowance(Item item, int moved) {
-		if (item == null || moved <= 0 || item == Items.ENCHANTED_BOOK) return;
-		Integer left = this.goodsAllowance.get(item);
-		if (left == null) return;
-		if (left <= moved) this.goodsAllowance.remove(item);
-		else this.goodsAllowance.put(item, left - moved);
+	/** Re-derives the produced-goods allowance from the live inventory: count now minus
+	 * the start-of-run baseline. A click the server refuses never changes the count, so
+	 * it can never spend the allowance — the whole reason this is derived, not booked. */
+	private void refreshAllowance(LocalPlayer player) {
+		this.allowance.clear();
+		for (Map.Entry<Item, Integer> entry : this.goodsBaseline.entrySet()) {
+			int excess = Preconditions.countItem(player, entry.getKey()) - entry.getValue();
+			if (excess > 0) this.allowance.put(entry.getKey(), excess);
+		}
 	}
 
 	private int countDisposables(LocalPlayer player) {
@@ -563,12 +576,11 @@ public class ChestDepositor implements BookDisposal {
 			this.state = State.DROP_STAGE;
 			this.look.reset();
 			this.dropSlot = -1;
+			this.dropSourceSlot = -1;
 			this.dropWaitTicks = 0;
 			this.dropAimTicks = 0;
 			this.dropSent = false;
 			this.dropResent = false;
-			this.dropItem = null;
-			this.dropCount = 0;
 			return StepResult.RUNNING;
 		}
 		restoreHotbarSelection(player);
@@ -585,7 +597,7 @@ public class ChestDepositor implements BookDisposal {
 			// DROP_ALL_ITEMS move the whole stack, so a stack merged with the player's
 			// own items would take theirs too. A mixed stack is left alone — nothing of
 			// the player's is ever stored or dropped.
-			return this.goodsAllowance.getOrDefault(stack.getItem(), 0) >= stack.getCount();
+			return this.allowance.getOrDefault(stack.getItem(), 0) >= stack.getCount();
 		}
 		return !this.goodsOnly && GrindstoneRecycler.isCurseBook(stack);
 	}

@@ -3,8 +3,6 @@ package dev.trademaster.detection;
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.TradeMasterConfig;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.world.entity.npc.villager.Villager;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
@@ -46,9 +44,7 @@ public final class DetectionHub {
 	private static volatile int lastSuppressedContainerId = -1;
 
 	private final DetectionMode mode;
-	/** The villager this check is about: the event channel's identity anchor (see
-	 * {@link #eventMenuMatchesTrader()}). */
-	private final @Nullable Villager expectedTrader;
+	private final @Nullable Merchant expectedTrader;
 	private final Consumer<OfferSnapshot> onResult;
 	private final Consumer<String> onFail;
 	/** PACKET mode: merchant screen opens are suppressed for this check. */
@@ -70,7 +66,7 @@ public final class DetectionHub {
 	 * other container are not ours. */
 	private int expectedContainerId = -1;
 
-	private DetectionHub(DetectionMode mode, boolean interceptScreens, @Nullable Villager expectedTrader,
+	private DetectionHub(DetectionMode mode, boolean interceptScreens, @Nullable Merchant expectedTrader,
 			Consumer<OfferSnapshot> onResult, Consumer<String> onFail) {
 		this.mode = mode;
 		this.interceptScreens = interceptScreens;
@@ -79,7 +75,7 @@ public final class DetectionHub {
 		this.onFail = onFail;
 	}
 
-	public static void arm(DetectionMode mode, boolean interceptScreen, @Nullable Villager expectedTrader,
+	public static void arm(DetectionMode mode, boolean interceptScreen, @Nullable Merchant expectedTrader,
 			Consumer<OfferSnapshot> onResult, Consumer<String> onFail) {
 		// single volatile write: the hub and its intercept flag are published together
 		armed = new DetectionHub(mode, interceptScreen, expectedTrader, onResult, onFail);
@@ -222,25 +218,15 @@ public final class DetectionHub {
 	/** The event channel opens for ANY merchant the player trades with, and its
 	 * menu wraps a freshly constructed ClientSideMerchant that carries no
 	 * position or identity — it cannot be compared against the session villager
-	 * entity directly. It is instead tied to this check by requiring the session
-	 * villager to be the NEAREST merchant to the player: a menu the player (or
-	 * another mod) opened at a DIFFERENT, closer villager is refused, so its
-	 * offers cannot be purchased while the tracked villager is named and sent
-	 * away. Cross-villager confusion is further caught by the PACKET channel
-	 * containerId correlation plus {@link #offersMatch} in BOTH mode, and as a
-	 * last line by the LOCK-time fingerprint re-check (slotStillMatches). */
+	 * entity. A proximity guess ("the session villager must be the nearest one")
+	 * was tried and rejected: on a real rig a bystander in the staging pen is
+	 * often nearer, which failed every EVENT/BOTH check. Cross-villager confusion
+	 * is caught instead by the PACKET channel containerId correlation plus
+	 * {@link #offersMatch} in BOTH mode, and as a last line by the LOCK-time
+	 * fingerprint re-check (slotStillMatches), which refuses to purchase any
+	 * offer that no longer matches the matched trade. */
 	private boolean eventMenuMatchesTrader() {
-		if (this.eventMenu == null) return false;
-		if (this.expectedTrader == null) return true;
-		Minecraft mc = Minecraft.getInstance();
-		LocalPlayer player = mc.player;
-		if (player == null || mc.level == null) return true;
-		double mine = player.distanceToSqr(this.expectedTrader);
-		for (Villager other : mc.level.getEntitiesOfClass(Villager.class,
-				player.getBoundingBox().inflate(16.0))) {
-			if (other != this.expectedTrader && player.distanceToSqr(other) < mine) return false;
-		}
-		return true;
+		return this.eventMenu != null;
 	}
 
 	private @Nullable OfferSnapshot eventSnapshot() {

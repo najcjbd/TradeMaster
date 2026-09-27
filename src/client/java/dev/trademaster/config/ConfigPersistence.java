@@ -29,6 +29,15 @@ public final class ConfigPersistence {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static final int CONFIG_VERSION = 1;
 
+	/** The top-level section keys this file uses. A file that predates sections stored
+	 * the same keys at the top level, so a flat root must never be read as data (an
+	 * enchantment id, a chest, ...): without this skip a missing/wrong-typed
+	 * "enchantments" section would parse "mechanism", "naming", ... as bogus targets
+	 * and replace the whole enchantment table. */
+	private static final java.util.Set<String> SECTION_NAMES = java.util.Set.of(
+			"mechanism", "naming", "positions", "grindstone", "offers", "antiCheat",
+			"enchantments", "hotkeys");
+
 	private ConfigPersistence() {}
 
 	public static Path configFile() {
@@ -231,8 +240,12 @@ public final class ConfigPersistence {
 		grindstone.addProperty("enabled", c.grindstoneEnabled);
 		grindstone.add("pos", writePos(c.grindstonePos));
 		grindstone.addProperty("openRetries", c.grindstoneOpenRetries);
+		// the section object is REUSED from disk, so a nulled direction must be REMOVED:
+		// skipping the write would leave the old key in place and re-emit it forever
 		if (c.curseDropYaw != null) grindstone.addProperty("curseDropYaw", c.curseDropYaw);
+		else grindstone.remove("curseDropYaw");
 		if (c.curseDropPitch != null) grindstone.addProperty("curseDropPitch", c.curseDropPitch);
+		else grindstone.remove("curseDropPitch");
 		JsonArray customCurses = new JsonArray();
 		for (String curse : c.customCurseEnchantments) {
 			customCurses.add(curse);
@@ -472,6 +485,8 @@ public final class ConfigPersistence {
 			// choice to the registry defaults and persist that loss
 			Map<Identifier, EnchantmentTarget> parsed = new LinkedHashMap<>();
 			for (Map.Entry<String, JsonElement> entry : enchantments.entrySet()) {
+				// a flat-root fallback must not read its sibling sections as targets
+				if (SECTION_NAMES.contains(entry.getKey())) continue;
 				Identifier id = Identifier.tryParse(entry.getKey());
 				if (id == null || !entry.getValue().isJsonObject()) continue;
 				JsonObject o = entry.getValue().getAsJsonObject();
@@ -645,16 +660,18 @@ public final class ConfigPersistence {
 	/** The object already stored for {@code id} under {@code specs}, so a hand-written
 	 * key this version does not know about survives the save; a fresh object otherwise.
 	 * Matching is by PARSED id: a namespaceless hand-written key ("sharpness") loads as
-	 * minecraft:sharpness, so a raw-string lookup would miss it. */
+	 * minecraft:sharpness, so a raw-string lookup would miss it. When two disk keys parse
+	 * to the same id the LAST wins, exactly as the reader's map put overwrites. */
 	private static JsonObject entryObject(@Nullable JsonObject specs, Identifier id) {
+		JsonObject found = null;
 		if (specs != null) {
 			for (Map.Entry<String, JsonElement> e : specs.entrySet()) {
 				if (!e.getValue().isJsonObject()) continue;
 				Identifier parsed = Identifier.tryParse(e.getKey());
-				if (parsed != null && parsed.equals(id)) return e.getValue().getAsJsonObject();
+				if (parsed != null && parsed.equals(id)) found = e.getValue().getAsJsonObject();
 			}
 		}
-		return new JsonObject();
+		return found != null ? found : new JsonObject();
 	}
 
 	/** The stored goods entry whose result is {@code result}: goods are identified by
