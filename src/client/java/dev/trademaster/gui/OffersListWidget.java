@@ -236,13 +236,12 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		double before = this.scrollAmount();
 		super.setScrollAmount(amount);
 		if (this.scrollAmount() == before) return;
-		// a focused field scrolled off-screen keeps swallowing keystrokes
+		// drop focus WITHOUT committing: an involuntary scroll must not write a
+		// half-typed offer/good draft (it still commits at the documented points:
+		// a deliberate focus change, a save, or screen close)
 		for (Row row : this.children()) {
 			EditBox focused = row.focusedField();
-			if (focused != null) {
-				row.commit();
-				focused.setFocused(false);
-			}
+			if (focused != null) focused.setFocused(false);
 		}
 	}
 

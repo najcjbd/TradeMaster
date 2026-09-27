@@ -334,17 +334,31 @@ public class ChestDepositor implements BookDisposal {
 					return StepResult.DONE;
 				}
 				int selected = player.getInventory().getSelectedSlot();
+				boolean alreadyHeld = slot.index == 36 + selected;
+				if (!alreadyHeld && !player.getInventory().getItem(selected).isEmpty()) {
+					// the drop packet drops the SELECTED slot, and the staging SWAP is applied
+					// LOCALLY before the server can reject it: into an OCCUPIED slot the swap
+					// is a TRUE EXCHANGE, so a stale prediction would DROP the player's own
+					// item. Stage only into an EMPTY slot — then a stale prediction can at
+					// worst drop nothing. Without one, refuse rather than risk the item.
+					int empty = findEmptyHotbarSlot(player);
+					if (empty < 0) {
+						restoreHotbarSelection(player);
+						return StepResult.failedFull(Component.translatable("trademaster.message.drop_no_slot"));
+					}
+					Interactions.selectHotbarSlot(player, empty);
+					selected = empty;
+				}
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;
-				if (slot.index == 36 + selected) {
-					// already the selected hotbar slot: no swap, nothing to confirm
+				if (alreadyHeld) {
+					// no swap, so nothing to confirm
 					this.dropSourceSlot = -1;
 					this.state = State.DROP_AIM;
 					this.dropAimTicks = 0;
 					return StepResult.RUNNING;
 				}
-				// SWAP it into the selected slot (the raw drop packet drops whatever is
-				// selected), then wait for the server sync before aiming
+				// SWAP it into the (empty) selected slot, then wait for the server sync
 				this.dropSourceSlot = slot.index;
 				this.dropStagedBook = slot.getItem().copy();
 				this.dropDisplaced = player.getInventory().getItem(selected).copy();
@@ -645,6 +659,15 @@ public class ChestDepositor implements BookDisposal {
 				return;
 			}
 		}
+	}
+
+	/** First empty hotbar slot, or -1 when all nine are occupied (the drop staging needs
+	 * an empty destination so a stale prediction cannot drop the player's own item). */
+	private static int findEmptyHotbarSlot(LocalPlayer player) {
+		for (int i = 0; i < 9; i++) {
+			if (player.getInventory().getItem(i).isEmpty()) return i;
+		}
+		return -1;
 	}
 
 	/** First hotbar slot not holding a book (the selected one first: no extra

@@ -268,15 +268,16 @@ public final class ConfigPersistence {
 		antiCheat.addProperty("interactDelay", c.interactDelay);
 		root.add("antiCheat", antiCheat);
 
-		// reuse the on-disk section so a key a hand-writer put directly under it (a note,
-		// a newer-version key) survives — but first drop entries the model no longer has:
-		// an id-parseable leftover would be re-read as a bogus target. Non-id keys are
-		// notes and are left alone.
+		// reuse the on-disk section so a key a hand-writer put directly under it survives,
+		// but drop stale TARGET entries (an id-parseable key the model no longer has would
+		// be re-read as a bogus target). A note object (no target keys) is left alone.
 		JsonObject enchantments = sectionForWrite(root, "enchantments");
 		List<String> stale = new ArrayList<>();
-		for (String key : enchantments.keySet()) {
-			Identifier parsed = Identifier.tryParse(key);
-			if (parsed != null && !c.enchantments.containsKey(parsed)) stale.add(key);
+		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
+			Identifier parsed = Identifier.tryParse(e.getKey());
+			if (parsed != null && !c.enchantments.containsKey(parsed) && looksLikeTargetEntry(e.getValue())) {
+				stale.add(e.getKey());
+			}
 		}
 		for (String key : stale) enchantments.remove(key);
 		for (Map.Entry<Identifier, EnchantmentTarget> entry : c.enchantments.entrySet()) {
@@ -288,6 +289,14 @@ public final class ConfigPersistence {
 			o.addProperty("maxPrice", t.maxPrice());
 			enchantments.add(entry.getKey().toString(), o);
 		}
+		// one target, one key: a hand-written namespaceless key ("sharpness") is the same
+		// id as "minecraft:sharpness" and would otherwise stay alongside it forever
+		List<String> aliases = new ArrayList<>();
+		for (String key : enchantments.keySet()) {
+			Identifier parsed = Identifier.tryParse(key);
+			if (parsed != null && !key.equals(parsed.toString())) aliases.add(key);
+		}
+		for (String key : aliases) enchantments.remove(key);
 		root.add("enchantments", enchantments);
 
 		// merge the adapter's keys into the on-disk object: same reason as above
@@ -501,6 +510,9 @@ public final class ConfigPersistence {
 				Identifier id = Identifier.tryParse(entry.getKey());
 				if (id == null || !entry.getValue().isJsonObject()) continue;
 				JsonObject o = entry.getValue().getAsJsonObject();
+				// a note object (none of the target keys) is not an entry: skip it, or it
+				// becomes a bogus target id
+				if (!looksLikeTargetEntry(o)) continue;
 				parsed.put(id, new EnchantmentTarget(
 						id,
 						readBool(o, "enabled", false),
@@ -666,6 +678,14 @@ public final class ConfigPersistence {
 	private static JsonObject sectionForWrite(JsonObject root, String name) {
 		JsonObject existing = getSection(root, name);
 		return existing != null ? existing : new JsonObject();
+	}
+
+	/** Whether a JSON value looks like a target entry (the writer always emits these
+	 * keys), so a non-model key can be told apart from a hand-written note object. */
+	private static boolean looksLikeTargetEntry(JsonElement value) {
+		if (value == null || !value.isJsonObject()) return false;
+		JsonObject o = value.getAsJsonObject();
+		return o.has("enabled") || o.has("level") || o.has("maxPrice");
 	}
 
 	/** The object already stored for {@code id} under {@code specs}, so a hand-written

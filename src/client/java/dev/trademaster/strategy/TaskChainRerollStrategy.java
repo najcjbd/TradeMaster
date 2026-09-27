@@ -83,6 +83,9 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		int ticks = 0;
 		/** slow-mode pacing between repeated break ticks (mirrors the place gate). */
 		int breakDelay = 0;
+		/** Server-confirmation gate for the break (fresh per reroll: the chain is rebuilt
+		 * in begin()). */
+		final LecternRestock.BreakGate breakGate = new LecternRestock.BreakGate();
 
 		@Override
 		public StepResult tick(RunSession session) {
@@ -95,10 +98,11 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 200) return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
 
 			BlockPos lecternPos = session.lecternPos;
-			// server-confirmed only: a client-predicted break is rolled back within a
-			// round trip, and advancing on it would place over a lectern that is about
-			// to come back
-			if (LecternRestock.breakConfirmed(mc.level, lecternPos)) return StepResult.DONE;
+			// update the break gate EVERY tick (a present reading resets it); only a
+			// server-confirmed break may advance, and while it is client-absent but
+			// unconfirmed we must not keep swinging at air
+			if (this.breakGate.observe(mc.level, lecternPos)) return StepResult.DONE;
+			if (!LecternRestock.isLecternAt(mc.level, lecternPos)) return StepResult.RUNNING;
 
 			if (!ensureLook(player, lecternAim(lecternPos))) return StepResult.RUNNING;
 

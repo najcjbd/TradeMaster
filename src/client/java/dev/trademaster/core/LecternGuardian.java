@@ -38,6 +38,11 @@ public class LecternGuardian {
 
 	private final Mode mode;
 	private final LookStep look = new LookStep();
+	/** Server-confirmation gate for the break: a client-predicted break must not let the
+	 * "present && brokenOnce" terminal finish without the qualification claim actually
+	 * dropping. One instance per guardian (created per reroll). */
+	private final dev.trademaster.strategy.LecternRestock.BreakGate breakGate =
+			new dev.trademaster.strategy.LecternRestock.BreakGate();
 	private int ticks = 0;
 	private int delay;
 	/** slow-mode pacing between repeated break ticks (0 = break immediately). */
@@ -81,6 +86,8 @@ public class LecternGuardian {
 		this.session = session;
 		BlockPos lecternPos = session.lecternPos;
 		boolean present = LecternRestock.isLecternAt(mc.level, lecternPos);
+		// update the break gate EVERY tick (a present reading resets it)
+		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
 
 		// Terminal states for each mode.
 		if (present && this.mode == Mode.ENSURE) return StepResult.DONE;
@@ -141,7 +148,10 @@ public class LecternGuardian {
 		}
 
 		// Not present: BREAK_ONLY already returned DONE above, so from here on we
-		// are placing (ENSURE, or the re-place half of REFRESH).
+		// are placing (ENSURE, or the re-place half of REFRESH). Only a SERVER-confirmed
+		// break counts as "we broke it": a rolled-back prediction must not let the
+		// line-87 terminal finish without the claim actually dropping.
+		if (!brokenConfirmed) return StepResult.RUNNING;
 		this.brokenOnce = true;
 		if (lecternPos.getY() >= mc.level.getMaxY()) {
 			return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));

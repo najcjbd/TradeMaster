@@ -47,33 +47,43 @@ public final class LecternRestock {
 		return level.getBlockState(pos).getBlock() instanceof LecternBlock;
 	}
 
-	/** Position the break gate is currently counting, or null. */
-	private static BlockPos absentPos = null;
-	private static int absentTicks = 0;
+	/** How many consecutive absent readings prove a break landed on the server. */
+	private static final int BREAK_CONFIRM_TICKS = 10;
 
-	/** A client-predicted break is NOT proof the server accepted it: a rejected break
-	 * restores the block within a round trip, while {@code continueDestroyBlock} removes
-	 * it locally at once. This reports "gone" only once the lectern has read absent for a
-	 * round trip's worth of ticks, so the next stage cannot place over a lectern that is
-	 * about to come back. */
-	public static boolean breakConfirmed(BlockGetter level, BlockPos pos) {
-		if (isLecternAt(level, pos)) {
-			absentPos = null;
-			absentTicks = 0;
-			return false;
+	/** Per-break-action server-confirmation gate. A client-predicted break is NOT proof
+	 * the server accepted it: {@code continueDestroyBlock} removes the block locally at
+	 * once, and a rejected break restores it within a round trip. The lectern must read
+	 * ABSENT for {@link #BREAK_CONFIRM_TICKS} consecutive ticks before it counts as gone.
+	 * One instance PER BREAKER (so two breakers never share the counter) and {@link #observe}
+	 * must be called EVERY tick for the target position: a present reading resets it — a
+	 * re-appearing lectern must reset, not merely pause, or ten absent ticks spread over
+	 * several rejected breaks would still confirm. */
+	public static final class BreakGate {
+		private BlockPos absentPos = null;
+		private int absentTicks = 0;
+
+		public boolean observe(BlockGetter level, BlockPos pos) {
+			if (LecternRestock.isLecternAt(level, pos)) {
+				this.absentPos = null;
+				this.absentTicks = 0;
+				return false;
+			}
+			if (this.absentPos == null || !this.absentPos.equals(pos)) {
+				this.absentPos = pos.immutable();
+				this.absentTicks = 0;
+			}
+			return ++this.absentTicks >= BREAK_CONFIRM_TICKS;
 		}
-		if (absentPos == null || !absentPos.equals(pos)) {
-			absentPos = pos.immutable();
-			absentTicks = 0;
+
+		public void reset() {
+			this.absentPos = null;
+			this.absentTicks = 0;
 		}
-		return ++absentTicks >= 10;
 	}
 
 	/** Call at session start so a stale gate from a previous run doesn't delay restocking. */
 	public static void resetRestock() {
 		nextRestockTick = 0;
-		absentPos = null;
-		absentTicks = 0;
 	}
 
 	public static boolean offhandHasLectern(LocalPlayer player) {

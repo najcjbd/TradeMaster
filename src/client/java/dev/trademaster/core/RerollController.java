@@ -316,6 +316,8 @@ public final class RerollController {
 		// screen is closed here too: in singleplayer a Screen pauses the integrated
 		// server, so a hotkey/command start would otherwise report "running" while the
 		// pipeline never ticks (the Start button already closes it on the same terms).
+		// NOTE: only these two screens are handled — a chest/anvil screen open at start
+		// still pauses a singleplayer run.
 		if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen
 				|| mc.gui.screen() instanceof dev.trademaster.gui.TradeMasterScreen) {
 			mc.gui.setScreen(null);
@@ -1330,10 +1332,7 @@ public final class RerollController {
 				// DONE one tick later; keep ticking it here or the lock never completes
 				switch (lockExecutor.tick()) {
 					case DONE -> finishLock(s);
-					case FAILED -> {
-						if (lockExecutor.drifted()) freeReroll(client, s);
-						else lockRejected(client, s);
-					}
+					case FAILED -> handleLockFailure(client, s);
 					case RUNNING -> {}
 				}
 				return;
@@ -1443,48 +1442,49 @@ public final class RerollController {
 
 		// closing() = WE closed it, and the stage-3 server confirmation is still
 		// running: only a menu that vanished before that is the server's doing
-		if (lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
-			// the server closed or replaced the menu mid-execution; only a purchase
-			// the SERVER proved counts (the executor's own close is excluded above).
-			// "click sent" is not enough — a refused trade reaches that stage too —
-			// and finishing on an unproven purchase would name and send away a
-			// villager that never locked, deducting the target
-			boolean paid = lockExecutor.purchaseConfirmed();
-			lockExecutor = null;
-			lockInteracted = false;
-			if (paid) {
-				finishLock(s);
-			} else {
+		if (lockExecutor != null && lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
+			// the server closed or replaced the menu mid-execution. A click already sent
+			// must NOT be re-clicked (a librarian offer still has uses, so a retry buys a
+			// SECOND book), and the executor's later stages prove the purchase from the
+			// INVENTORY, not the menu — so keep ticking it to a verdict instead of
+			// discarding it as a rejection.
+			if (!lockExecutor.purchaseSent()) {
+				lockExecutor = null;
+				lockInteracted = false;
 				lockRejected(client, s);
+				return;
 			}
-			return;
+			// purchaseSent(): fall through and let the switch below tick it
 		}
 
 		switch (lockExecutor.tick()) {
 			case DONE -> finishLock(s);
-			case FAILED -> {
-				if (!lockExecutor.drifted() && !lockExecutor.uncertain()) {
-					// nothing was clicked, or the click was cleanly refused: retry
-					lockRejected(client, s);
-				} else if (lockExecutor.purchaseSent()) {
-					// the click was already out, so a book may have been bought even
-					// though we could not confirm it (drift, or the confirmation ran
-					// out). Re-clicking would buy a SECOND one — a librarian offer
-					// still has uses left — so dispatch this villager and move on
-					boolean unconfirmed = lockExecutor.uncertain();
-					debug("lock: click sent, outcome " + (unconfirmed ? "unconfirmed" : "drifted")
-							+ " — dispatching the villager instead of re-buying");
-					notice(Component.translatable(unconfirmed
-							? "trademaster.message.lock_unconfirmed"
-							: "trademaster.message.lock_drift_purchased"));
-					awaitNextVillager(client, s);
-				} else {
-					// a drift detected BEFORE the click: nothing was bought, and the
-					// villager is still rerollable
-					freeReroll(client, s);
-				}
-			}
+			case FAILED -> handleLockFailure(client, s);
 			case RUNNING -> {}
+		}
+	}
+
+	/** Routes a failed lock executor by WHY it failed. Only a failure with NOTHING
+	 * clicked (or a drift detected before the click) may retry: a click is applied
+	 * server-side the moment it is sent, so re-clicking a sent-but-unconfirmed purchase
+	 * buys a SECOND book. Unsent-but-drifted -> free reroll; sent -> dispatch the villager
+	 * without re-buying. */
+	private static void handleLockFailure(Minecraft client, RunSession s) {
+		if (lockExecutor == null) return;
+		if (!lockExecutor.drifted() && !lockExecutor.uncertain()) {
+			// nothing was clicked, or the click was cleanly refused at the cursor check
+			lockRejected(client, s);
+		} else if (lockExecutor.purchaseSent()) {
+			boolean unconfirmed = lockExecutor.uncertain();
+			debug("lock: click sent, outcome " + (unconfirmed ? "unconfirmed" : "drifted")
+					+ " — dispatching the villager instead of re-buying");
+			notice(Component.translatable(unconfirmed
+					? "trademaster.message.lock_unconfirmed"
+					: "trademaster.message.lock_drift_purchased"));
+			awaitNextVillager(client, s);
+		} else {
+			// a drift detected BEFORE the click: nothing was bought, still rerollable
+			freeReroll(client, s);
 		}
 	}
 

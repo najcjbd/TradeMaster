@@ -173,12 +173,12 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		double before = this.scrollAmount();
 		super.setScrollAmount(amount);
 		if (this.scrollAmount() == before || this.suppressFocusClear) return;
-		// a focused field scrolled off-screen would keep swallowing keystrokes
+		// a focused field scrolled off-screen would keep swallowing keystrokes: drop
+		// focus WITHOUT committing — an involuntary scroll must not write a half-typed
+		// alias draft (it still commits at the documented points: a deliberate focus
+		// change, a save, or screen close)
 		for (AliasRow row : this.children()) {
-			if (row.field.isFocused()) {
-				row.applyDraft();
-				row.field.setFocused(false);
-			}
+			row.field.setFocused(false);
 		}
 	}
 

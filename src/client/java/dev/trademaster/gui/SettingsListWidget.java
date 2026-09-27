@@ -308,9 +308,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		super.setScrollAmount(amount);
 		if (this.scrollAmount() == before || this.suppressFocusClear) return;
 		// a focused field scrolled off-screen keeps swallowing keyboard input
-		// invisibly (and its responder silently edits the config): drop focus
-		// whenever the viewport actually moves (wheel noise at the scroll
-		// boundaries must not kill focus mid-typing)
+		// invisibly: drop focus whenever the viewport actually moves (wheel noise at
+		// the scroll boundaries must not kill focus mid-typing). clearFieldFocus() blurs
+		// WITHOUT committing, so an involuntary scroll cannot write a half-typed draft —
+		// it stays pending and commits at a deliberate focus change, a save, or close.
 		for (Row row : this.children()) row.clearFieldFocus();
 	}
 
@@ -678,7 +679,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 
@@ -835,7 +838,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 
@@ -986,7 +991,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 
@@ -1130,7 +1137,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 
@@ -1236,7 +1245,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 
@@ -1403,7 +1414,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		void clearFieldFocus() {
-			this.reconcileOnFocusLoss();
+			// scroll path ONLY: blur WITHOUT committing — an involuntary scroll must not
+			// write a half-typed draft (it stays pending and commits at a deliberate
+			// focus change, a save, or screen close). The name is legacy.
 			this.field.setFocused(false);
 		}
 

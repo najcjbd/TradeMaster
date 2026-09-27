@@ -75,6 +75,9 @@ public final class DetectionHub {
 		this.onFail = onFail;
 	}
 
+	/** Arms the hub for one check. NOTE: {@code expectedTrader} is currently UNUSED — the
+	 * event channel's menu cannot be tied to a villager entity (see
+	 * {@link #eventMenuMatchesTrader()}), so it is kept only for a future identity check. */
 	public static void arm(DetectionMode mode, boolean interceptScreen, @Nullable Merchant expectedTrader,
 			Consumer<OfferSnapshot> onResult, Consumer<String> onFail) {
 		// single volatile write: the hub and its intercept flag are published together

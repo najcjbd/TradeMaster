@@ -498,10 +498,14 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.state = State.DROP_AIM;
 					return StepResult.RUNNING;
 				} else {
-					// storage slot: SWAP-click it into a hotbar slot through the
-					// inventory container, then wait for the sync
+					// storage slot: SWAP-click it into an EMPTY hotbar slot through the
+					// inventory container, then wait for the sync. An OCCUPIED destination
+					// makes the swap a TRUE EXCHANGE, and the click is applied locally, so a
+					// stale prediction would DROP that slot's item: refuse instead.
 					int target = findEmptyHotbarSlot(player);
-					if (target < 0) target = player.getInventory().getSelectedSlot();
+					if (target < 0) {
+						return fail(player, "trademaster.message.drop_no_slot");
+					}
 					if (player.getInventory().getSelectedSlot() != target) {
 						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
 						Interactions.selectHotbarSlot(player, target);

@@ -63,7 +63,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Curse drop yaw/pitch | Direction used to drop cursed books that no chest would take | No | Clearing it disables the direction (the live value is used at drop time) |
 
 **Direction convention**: `yaw` −180 = north, −90 = east, 0 = south, 90 = west; `pitch` positive looks down (max ±90).
-**Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits only on focus loss or when the screen closes, so half-typed values never reach the config.
+**Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits on a deliberate focus change or when the screen closes (an involuntary blur, e.g. a mouse-wheel scroll, only drops focus and leaves the draft pending, so a scroll never writes a half-typed value).
 
 ## Pipeline (12 phases)
 
@@ -99,7 +99,7 @@ Both mechanisms **force the axe into the main hand** before breaking; the `place
 | **EVENT** | Container events (`initializeContents` + restock); delivers only once both packets arrived (mask == 3) |
 | **BOTH** | Requires both channels and **cross-validates** the offer lists; a mismatch is treated as a miss and retried |
 
-All three modes use a **3-second wall clock** and **containerId correlation** to reject offer packets that do not belong to the current interaction (a previous villager's late packet, a merchant screen someone else opened, …).
+All three modes use a **3-second wall clock**; **containerId correlation** (and BOTH's cross-validation) applies only to the PACKET / BOTH channels — a pure **EVENT check has no packet channel**, so it has no defence against a merchant screen someone else opens during the armed window; only the LOCK-time fingerprint re-check covers that.
 
 ## Unusual offers (the Offers tab)
 
@@ -134,8 +134,9 @@ something else into a librarian's trade).
 - **Disposal**: a good is not an enchanted book, so the **grindstone cannot disenchant
   it**. A bought good is only ever stored in the bound chests; when every chest refuses
   it, the "custom good disposal" setting decides — **stop** (the default) or **drop it
-  facing the configured drop direction**. While a good sits in the inventory the
-  chest/drop path takes priority, even in grindstone mode.
+  facing the configured drop direction**. While a good sits in the inventory AND (a chest
+  is bound or the disposal setting is "drop"), the chest/drop path takes priority, even in
+  grindstone mode; with no bound chest and disposal "stop" that path is skipped.
 - Cost slots 3 and beyond are still config-file only (`offers.goods[].costs`); a save
   never shifts or drops them.
 
@@ -173,7 +174,7 @@ something else into a librarian's trade).
 ## Storage
 
 ### Chest mode
-- **Only enchanted books are deposited**, nothing else is ever moved;
+- **Only enchanted books are deposited** (the **ungrindable** things — cursed books and self-chosen goods — follow the "ungrindable disposal" setting, see Storage); nothing else is ever moved;
 - multiple chests are tried **in order**; when every chest is full the run stops;
 - the offhand swap has a **configurable retry** (`offhandSwapRetries`, −1 = forever); when retries are exhausted it stops through the normal flow.
 

@@ -96,6 +96,7 @@
   "trademaster.message.material_short": "Not enough materials, stopping",
   "trademaster.message.inventory_full": "Inventory full and no slot could be freed, stopping",
   "trademaster.message.chests_full": "All bound chests are full, stopping",
+  "trademaster.message.drop_no_slot": "No empty hotbar slot to drop safely, stopping (free one hotbar slot)",
   "trademaster.message.swap_rejected": "The server keeps rejecting the offhand swap while the chest has space, deposit aborted",
   "trademaster.message.grindstone_missing": "No grindstone at the configured position, recycling aborted",
   "trademaster.message.grindstone_open_failed": "Could not open the grindstone, recycling aborted",

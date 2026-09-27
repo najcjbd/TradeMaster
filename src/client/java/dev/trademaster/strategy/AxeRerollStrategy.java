@@ -42,6 +42,9 @@ public class AxeRerollStrategy implements RerollStrategy {
 	private int placeAttempts = 0;
 	private int placeCooldown = 0;
 	private boolean placementBlocked = false;
+	/** Server-confirmation gate for the break: a client-predicted break must not be
+	 * placed over. Per strategy instance, so it cannot leak across rerolls. */
+	private final LecternRestock.BreakGate breakGate = new LecternRestock.BreakGate();
 
 	@Override
 	public void begin(RunSession session) {
@@ -49,6 +52,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		this.phase = Phase.BREAK;
 		this.phaseTicks = 0;
 		this.delayCounter = 0;
+		this.breakDelayCounter = 0;
 		this.look.reset();
 		this.tpReturnPos = null;
 		this.lastPickupTarget = null;
@@ -56,6 +60,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		this.placeAttempts = 0;
 		this.placeCooldown = 0;
 		this.placementBlocked = false;
+		this.breakGate.reset();
 	}
 
 	@Override
@@ -107,6 +112,9 @@ public class AxeRerollStrategy implements RerollStrategy {
 			return StepResult.failed(Component.translatable("trademaster.message.axe_breaking"));
 		}
 
+		// update the break gate EVERY tick so a present reading resets it; only a
+		// server-confirmed break may proceed to placement
+		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
 		if (LecternRestock.isLecternAt(mc.level, lecternPos)) {
 			// slow mode paces the break as well as the place
 			if (config.slowMode) {
@@ -120,9 +128,9 @@ public class AxeRerollStrategy implements RerollStrategy {
 			return StepResult.RUNNING;
 		}
 
-		// the break above is a client prediction: wait until it is server-confirmed, or a
-		// rejected break (rolled back within a round trip) would be placed over
-		if (!LecternRestock.breakConfirmed(mc.level, lecternPos)) return StepResult.RUNNING;
+		// client-side absent: wait for the server to confirm the break before placing, or
+		// a rejected break (rolled back within a round trip) would be placed over
+		if (!brokenConfirmed) return StepResult.RUNNING;
 
 		// Lectern is gone: optional teleport to the villager, then place. Never
 		// tp to a dead or departing villager (falling down the send-away chute),
