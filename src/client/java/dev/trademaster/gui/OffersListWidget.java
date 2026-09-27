@@ -329,6 +329,32 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					: Identifier.tryParse("minecraft:" + value);
 		}
 
+		/** The good's result amount: 1..64 (a stack). Deliberately NOT the cost-count
+		 * range: the model caps resultCount at 64, and a larger value makes the good
+		 * unmatchable (a trade can never yield that many). */
+		protected static @Nullable Integer parseResultAmount(String text) {
+			if (text == null) return null;
+			try {
+				int value = Integer.parseInt(text.trim());
+				if (value < 1 || value > 64) return null;
+				return value;
+			} catch (NumberFormatException e) {
+				return null;
+			}
+		}
+
+		/** The good's price cap: 0..64 (vanilla clamps trade prices at 64). */
+		protected static @Nullable Integer parsePriceCap(String text) {
+			if (text == null) return null;
+			try {
+				int value = Integer.parseInt(text.trim());
+				if (value < 0 || value > 64) return null;
+				return value;
+			} catch (NumberFormatException e) {
+				return null;
+			}
+		}
+
 		/** -1 (no limit), 0 (not required) or 1..{@link TradeOfferSpec#UNLIMITED_CAP}; null
 		 * when the text is not usable. The upper bound matches the model's own cap: a
 		 * modded trade may charge far more than a vanilla stack, and refusing to EDIT a
@@ -515,8 +541,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		@Override
 		void commit() {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-			Integer amount = parseCount(this.resultCountField.getValue());
-			Integer price = parseCount(this.priceField.getValue());
+			Integer amount = parseResultAmount(this.resultCountField.getValue());
+			Integer price = parsePriceCap(this.priceField.getValue());
 			Identifier itemA = parseItem(this.costAField.getValue());
 			Identifier itemB = parseItem(this.costBField.getValue());
 			Integer count = parseCount(this.countField.getValue());
@@ -647,14 +673,20 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		private boolean add() {
 			Identifier result = parseItem(this.resultField.getValue());
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-			if (result == null || result.equals(TradeOfferSpec.AIR)) {
-				this.errorKey = "trademaster.offer.invalid_item";
-				return true;
-			}
-			if (result.equals(TradeOfferSpec.ENCHANTED_BOOK)) {
+			if (result == null || result.equals(TradeOfferSpec.AIR)
+					|| result.equals(TradeOfferSpec.ENCHANTED_BOOK)
+					// an item the user listed as an "air item" is not a good either: the
+					// loader skips such a good and the matcher would never match it
+					|| config.isAirItem(result)) {
 				// enchanted books are the enchantment tab's business: a good with that
 				// result would never match anything
 				this.errorKey = "trademaster.offer.invalid_item";
+				return true;
+			}
+			if (namesEnchantment(result)) {
+				// a good's id keys the spec / price / display name / budget slot, so a
+				// same-id enchantment would be shadowed by it
+				this.errorKey = "trademaster.offer.good_is_enchantment";
 				return true;
 			}
 			if (config.goodFor(result) != null) {
@@ -679,6 +711,18 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		/** Whether the id names no item at all (the registry is up once a screen is open). */
 		private static boolean resultItemMissing(Identifier id) {
 			return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id).isEmpty();
+		}
+
+		/** Whether the id also names an enchantment: a good with the same id would shadow
+		 * it (the spec, price, display name and budget slot are all keyed by the id). */
+		private static boolean namesEnchantment(Identifier id) {
+			Minecraft mc = Minecraft.getInstance();
+			if (mc.level == null) return false;
+			// enchantments are a data-driven registry: only the world's RegistryAccess has
+			// them (BuiltInRegistries does not)
+			return mc.level.registryAccess()
+					.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
+					.get(id).isPresent();
 		}
 
 		@Override

@@ -257,7 +257,15 @@ public class TradeMatcher {
 		return specHasPayableSlot(good.spec());
 	}
 
-	/** Whether a spec declares at least one slot the matcher counts as an allowance —
+	/** Whether an enchantment target's spec declares at least one payable cost slot (see
+	 * {@link #specHasPayableSlot}). A target with none can never be bought ALONE. It is
+	 * deliberately NOT pruned from the needs — it can still qualify as a passenger on a
+	 * combo book — but start() warns about it so the failure is not silent. */
+	public static boolean targetHasPayableCost(EnchantmentTarget target) {
+		return specHasPayableSlot(TradeMasterConfig.INSTANCE.specFor(target.id()));
+	}
+
+	/** Whether at least one spec slot can be charged: the mirror of costsAllowed/capFor —
 	 * the mirror of {@code costsAllowed}/{@code capFor}: slot 1 is payable when its item
 	 * is a real (registry) non-air item, since its amount is the price; a later slot only
 	 * when its count is not 0 (0 = "not required", negative = no limit, positive = cap).

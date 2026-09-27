@@ -101,10 +101,11 @@ public class ChestDepositor implements BookDisposal {
 	/** Live: how many of each item this pass may still take because THIS RUN produced
 	 * it. Recomputed from the inventory in {@link #refreshAllowance}. */
 	private final Map<Item, Integer> allowance = new java.util.HashMap<>();
-	/** The exact stack each locked trade yields, per result item: a good may only be taken
-	 * when the stack IS that output (item AND components), never a component-distinct copy
-	 * the player already carried (the allowance above is a per-item total). */
-	private final Map<Item, ItemStack> expectedResults;
+	/** Every distinct stack a locked trade has yielded, per result item: a good may only be
+	 * taken when the stack IS one of that output (item AND components), never a
+	 * component-distinct copy the player already carried (the allowance above is a
+	 * per-item total). A list because the same good can be locked more than once. */
+	private final Map<Item, List<ItemStack>> expectedResults;
 	/** When true the pass takes only those produced goods: used in grindstone mode,
 	 * where the books are still the recycler's business. */
 	private final boolean goodsOnly;
@@ -114,7 +115,7 @@ public class ChestDepositor implements BookDisposal {
 	}
 
 	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline,
-			Map<Item, ItemStack> expectedResults, boolean goodsOnly) {
+			Map<Item, List<ItemStack>> expectedResults, boolean goodsOnly) {
 		this.chests = List.copyOf(chests);
 		this.goodsBaseline = Map.copyOf(goodsBaseline);
 		this.expectedResults = Map.copyOf(expectedResults);
@@ -564,14 +565,18 @@ public class ChestDepositor implements BookDisposal {
 		return false;
 	}
 
-	/** A menu slot that holds a stack the player carries in the main inventory or the
-	 * hotbar. The menu index must be >= 9: in InventoryMenu 0-4 are the crafting grid
-	 * and 5-8 the WORN ARMOR, whose container is also the player inventory — without
-	 * this bound a worn armor piece would be counted (and, on the drop path, taken off
-	 * the player) as if it were carried. The offhand (45) passes here and is skipped
-	 * separately, only where the drop flow cannot use it. */
+	/** A menu slot holding a stack the player CARRIES (main inventory or hotbar). The menu
+	 * SHAPE matters: InventoryMenu has crafting 0-4, WORN ARMOR 5-8, main 9-35, hotbar
+	 * 36-44 and the offhand at 45, while any container menu lists only the 36 carried
+	 * slots (no armor, no offhand). Filtering by a raw menu index would therefore either
+	 * count worn armor (InventoryMenu) or drop every carried slot (a chest menu puts the
+	 * player's rows at >= 27, past the offhand's index). */
 	private static boolean isMainInventorySlot(LocalPlayer player, Slot slot) {
-		return slot.container == player.getInventory() && slot.index >= 9;
+		if (slot.container != player.getInventory()) return false;
+		if (player.containerMenu instanceof net.minecraft.world.inventory.InventoryMenu) {
+			return slot.index >= 9 && slot.index <= 44;
+		}
+		return true;
 	}
 
 	/** One pass over the open container's player slots: first disposable slot + total. */
@@ -609,9 +614,6 @@ public class ChestDepositor implements BookDisposal {
 	private int countDisposables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
-			// the offhand (menu 45) is not a disposal target either: the drop path cannot
-			// use it, so counting it here would keep EVALUATE from ever reaching DONE
-			if (slot.index >= 45) continue;
 			if (isMainInventorySlot(player, slot) && disposable(slot.getItem())) count++;
 		}
 		return count;
@@ -654,11 +656,20 @@ public class ChestDepositor implements BookDisposal {
 	private boolean droppable(ItemStack stack) {
 		if (stack.isEmpty()) return false;
 		if (!stack.is(Items.ENCHANTED_BOOK)) {
-			// only a stack that IS a locked trade's output may be taken: the allowance is a
-			// per-item TOTAL, so without this component check a component-distinct copy of
-			// the player's own item could satisfy it and be stored/dropped
-			ItemStack expected = this.expectedResults.get(stack.getItem());
-			if (expected != null && !ItemStack.isSameItemSameComponents(stack, expected)) return false;
+			// only a stack that IS one of a locked trade's outputs may be taken: the
+			// allowance is a per-item TOTAL, so without this component check a
+			// component-distinct copy of the player's own item could satisfy it
+			List<ItemStack> expected = this.expectedResults.get(stack.getItem());
+			if (expected != null) {
+				boolean produced = false;
+				for (ItemStack candidate : expected) {
+					if (ItemStack.isSameItemSameComponents(stack, candidate)) {
+						produced = true;
+						break;
+					}
+				}
+				if (!produced) return false;
+			}
 			// only a stack that is ENTIRELY produced may be taken: QUICK_MOVE and
 			// DROP_ALL_ITEMS move the whole stack, so a stack merged with the player's
 			// own items would take theirs too. A mixed stack is left alone — nothing of
@@ -671,7 +682,6 @@ public class ChestDepositor implements BookDisposal {
 	private int countDroppables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
-			if (slot.index >= 45) continue;
 			if (isMainInventorySlot(player, slot) && droppable(slot.getItem())) count++;
 		}
 		return count;

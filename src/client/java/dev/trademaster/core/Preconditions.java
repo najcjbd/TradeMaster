@@ -99,7 +99,10 @@ public final class Preconditions {
 				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
-				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
+				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
+				// the floor entirely and the run stopped late at the lock
+				if (cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
 				perTarget.merge(item, needed, Integer::sum);
 			}
 			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));
@@ -117,7 +120,10 @@ public final class Preconditions {
 				if (needed <= 0) continue;
 				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
 				if (item == null) continue;
-				if (slot == 0 && cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
+				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
+				// the floor entirely and the run stopped late at the lock
+				if (cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
 				perTarget.merge(item, needed, Integer::sum);
 			}
 			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));

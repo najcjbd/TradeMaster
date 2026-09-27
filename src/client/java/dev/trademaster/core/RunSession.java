@@ -30,11 +30,11 @@ public class RunSession {
 	 * that happen to match a good's result are neither stored nor dropped. */
 	public final Map<Item, Integer> goodBaseline = new HashMap<>();
 
-	/** The exact stack (item AND components) a locked trade yields, per result item: the
-	 * disposal takes a good only when the stack IS this run's output, never a
-	 * component-distinct copy the player already carried (the baseline above is a total,
-	 * so on its own it cannot tell the two apart). */
-	public final Map<Item, net.minecraft.world.item.ItemStack> lockedResults = new HashMap<>();
+	/** Every distinct stack (item AND components) a locked trade has yielded, per result
+	 * item: the disposal takes a good only when the stack IS one of this run's outputs,
+	 * never a component-distinct copy the player already carried. A LIST because the same
+	 * good can be locked more than once, and the server may re-roll the components. */
+	public final Map<Item, java.util.List<net.minecraft.world.item.ItemStack>> lockedResults = new HashMap<>();
 
 	public @Nullable Villager villager = null;
 	public int tries = 0;

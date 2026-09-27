@@ -609,7 +609,7 @@ public final class RerollController {
 				// refuses can never spend it. The locked RESULTS go in too, so only a
 				// stack that IS a locked trade's output (item + components) may be taken.
 				RunSession locked = session;
-				Map<Item, net.minecraft.world.item.ItemStack> results =
+				Map<Item, java.util.List<net.minecraft.world.item.ItemStack>> results =
 						locked == null ? Map.of() : Map.copyOf(locked.lockedResults);
 				return new ChestDepositor(config.chestPositions, disposalBaseline(disposerHolder), results, goodsOnly);
 			}
@@ -1499,6 +1499,15 @@ public final class RerollController {
 			notice(Component.translatable(unconfirmed
 					? "trademaster.message.lock_unconfirmed"
 					: "trademaster.message.lock_drift_purchased"));
+			// rebuild the needs FIRST: otherwise awaitNextVillager's restoreBudget puts the
+			// just-attempted target straight back (it is not in lockedIds) and the next
+			// villager buys a SECOND copy. The rebuild also finishes a run whose targets
+			// were all disabled in the meantime, like the edited-out path does.
+			refreshNeeds(client, s);
+			if (s.matcher.isEmpty()) {
+				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				return;
+			}
 			awaitNextVillager(client, s);
 		} else {
 			// a drift detected BEFORE the click: nothing was bought, still rerollable
@@ -1643,11 +1652,20 @@ public final class RerollController {
 		// LOCK, which is entered once with a non-null match. Guard kept against NPE.
 		if (s.matchedTrade != null) {
 			s.lockedIds.addAll(s.matchedTrade.matchedIds());
-			// remember the exact stack this trade yields (item AND components), so the
-			// disposal only ever takes a stack that IS this run's output
+			// remember every distinct stack this trade yields (item AND components), so the
+			// disposal only ever takes a stack that IS one of this run's outputs
 			net.minecraft.world.item.ItemStack produced = s.matchedTrade.purchase().result();
 			if (produced != null && !produced.isEmpty()) {
-				s.lockedResults.put(produced.getItem(), produced.copy());
+				java.util.List<net.minecraft.world.item.ItemStack> known =
+						s.lockedResults.computeIfAbsent(produced.getItem(), k -> new java.util.ArrayList<>());
+				boolean seen = false;
+				for (net.minecraft.world.item.ItemStack prev : known) {
+					if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(prev, produced)) {
+						seen = true;
+						break;
+					}
+				}
+				if (!seen) known.add(produced.copy());
 			}
 			// hunt-cheaper: the locked enchantment stays live; mark its price so
 			// future matches only accept a strictly cheaper copy. Only a purchase
@@ -2096,10 +2114,17 @@ public final class RerollController {
 	private static void warnUnmatchableDemands(Minecraft mc) {
 		List<String> dead = new ArrayList<>();
 		List<String> unavailable = new ArrayList<>();
+		List<String> uncosted = new ArrayList<>();
 		List<String> goods = new ArrayList<>();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			if (!TradeMatcher.registryTradeable(target.id())) {
 				unavailable.add(target.id().toString());
+				continue;
+			}
+			// a spec with no payable slot declares "pays nothing": no offer can satisfy it
+			// ALONE (it may still ride a combo), so warn instead of spinning silently
+			if (!TradeMatcher.targetHasPayableCost(target)) {
+				uncosted.add(target.id().toString());
 				continue;
 			}
 			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) {
@@ -2123,6 +2148,10 @@ public final class RerollController {
 		}
 		if (!goods.isEmpty()) {
 			chat(Component.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+		if (!uncosted.isEmpty()) {
+			chat(Component.translatable("trademaster.message.uncosted_targets", String.join(", ", uncosted))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 	}

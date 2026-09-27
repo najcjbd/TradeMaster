@@ -140,6 +140,7 @@
   "trademaster.message.unmatchable_targets": "Enabled enchantments that can never match (vanilla minimum price above the price cap): %s",
   "trademaster.message.unavailable_targets": "Enabled enchantments that can never match (missing from the registry or not tradeable): %s",
   "trademaster.message.unmatchable_goods": "Enabled goods that can never match (result item missing or air, price cap 0, or no payable cost): %s",
+  "trademaster.message.uncosted_targets": "Enabled enchantments whose spec declares no payable cost slot never match on their own (they can still ride a combo book): %s",
   "commands.trademaster.already_running": "Trade Master is already running",
   "commands.trademaster.not_running": "Trade Master is not running",
   "trademaster.settings.placeDelay": "Place delay (slow mode)",
@@ -226,5 +227,6 @@
   "trademaster.offers.goods_header": "Goods (the result item is the identity; remove and re-add to change it) · left to right: cost A · cost B · amount · price · B amount · enable ▣ · remove ✕",
   "trademaster.offers.add_good": "Add a good (enter the result item id)",
   "trademaster.offer.good_exists": "That result item is already a good (one good per result item)",
+  "trademaster.offer.good_is_enchantment": "That id is also an enchantment; a good cannot share an enchantment's id (they would shadow each other)",
   "trademaster.offer.unknown_item": "No such item id"
 }

@@ -46,8 +46,14 @@ public final class LecternRestock {
 	/** Container slot the in-flight batch took the lectern FROM (to observe the move
 	 * landing), or -1 for the hotbar-swap / close-container batches. */
 	private static int restockFromSlot = -1;
-	/** Bound on the wait, so a REJECTED batch is retried instead of stalling forever. */
-	private static final int RESTOCK_INFLIGHT_MAX_TICKS = 60;
+	/** Bound on the wait, so a REJECTED batch is retried instead of stalling forever.
+	 * Kept well under the callers' phase budgets (strategies 200, guardian 400 ticks):
+	 * one rejected batch must not eat a large part of a phase. */
+	private static final int RESTOCK_INFLIGHT_MAX_TICKS = 30;
+	/** Ticks a dirty cursor has blocked the raw-PICKUP batch, and its bound: past it we
+	 * report "no lectern" so the caller stops cleanly instead of waiting forever. */
+	private static int restockCarriedWaitTicks = 0;
+	private static final int RESTOCK_CARRIED_MAX_TICKS = 40;
 
 	/** Marks a batch as in flight from {@code fromContainerSlot} (-1 when the effect is
 	 * only visible on the offhand / in the menu state). */
@@ -98,6 +104,7 @@ public final class LecternRestock {
 	public static void resetRestock() {
 		restockInFlightTicks = -1;
 		restockFromSlot = -1;
+		restockCarriedWaitTicks = 0;
 	}
 
 	public static boolean offhandHasLectern(LocalPlayer player) {
@@ -126,14 +133,19 @@ public final class LecternRestock {
 
 	/** Moves the whole lectern stack into the offhand via packets. Returns false when none is available. */
 	public static boolean restock(LocalPlayer player) {
-		if (offhandHasLectern(player)) return true;
+		if (offhandHasLectern(player)) {
+			// the batch landed: retire the in-flight state HERE, or the stale slot would
+			// make the NEXT restock wait out the whole bound before sending anything
+			restockInFlightTicks = -1;
+			restockFromSlot = -1;
+			return true;
+		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.gameMode == null) return false;
 		// a batch is in flight: wait until its effect is visible (the server broadcast),
 		// bounded so a REJECTED batch is retried instead of stalling forever
 		if (restockInFlightTicks >= 0) {
-			boolean landed = player.getOffhandItem().getItem() == Items.LECTERN
-					|| (restockFromSlot == RESTOCK_FROM_CLOSE
+			boolean landed = (restockFromSlot == RESTOCK_FROM_CLOSE
 							&& player.containerMenu == player.inventoryMenu)
 					|| (restockFromSlot >= 0
 							&& player.getInventory().getItem(restockFromSlot).getItem() != Items.LECTERN);
@@ -141,11 +153,18 @@ public final class LecternRestock {
 			restockInFlightTicks = -1;
 			restockFromSlot = -1;
 		}
-		// never batch while the cursor is dirty: our raw clicks would interleave with
-		// whatever is on it, and a leftover cursor is a state we do not understand
-		if (!player.containerMenu.getCarried().isEmpty()) return true;
 
 		if (player.inventoryMenu == player.containerMenu) {
+			// the raw PICKUP batch must not run with a dirty cursor: our clicks would
+			// interleave with whatever is on it, and a leftover cursor is a state we do not
+			// understand. Bounded — if it stays dirty, report "no lectern" so the caller
+			// stops cleanly instead of waiting forever.
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				if (++restockCarriedWaitTicks < RESTOCK_CARRIED_MAX_TICKS) return true;
+				restockCarriedWaitTicks = 0;
+				return false;
+			}
+			restockCarriedWaitTicks = 0;
 			for (int i = 9; i < 45; i++) {
 				if (player.getInventory().getItem(i >= 36 ? i - 36 : i).getItem() != Items.LECTERN) continue;
 				boolean itemInOffhand = !player.getOffhandItem().isEmpty();
@@ -182,7 +201,10 @@ public final class LecternRestock {
 				player.connection.send(new ServerboundPlayerActionPacket(
 						ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 						BlockPos.ZERO, Direction.DOWN));
-				markRestockInFlight(-1);
+				// watch the HOTBAR slot: with a foreign menu open the offhand is not among
+				// its slots, so the client never sees the offhand change — the swapped slot
+				// does update, and its lectern leaving is the observable landing signal
+				markRestockInFlight(i);
 				return true;
 			}
 			// a lectern deep in the main inventory is unreachable while a foreign
@@ -238,7 +260,14 @@ public final class LecternRestock {
 			// sees the result instead of resending a raw toggle packet. A broken
 			// offhand axe is swapped in only as last resort, so the caller's
 			// durability guard reports axe_breaking rather than axe_required.
-			if (mc.gameMode == null || player.containerMenu != player.inventoryMenu) return AxeState.WORKING;
+			if (mc.gameMode == null) return AxeState.WORKING;
+			if (player.containerMenu != player.inventoryMenu) {
+				// the swap below needs the inventory menu: with a foreign menu open it never
+				// runs and the caller loops until its phase timeout. Close it (like
+				// restock's close branch) so the next tick takes the normal path.
+				player.closeContainer();
+				return AxeState.WORKING;
+			}
 			rememberSelection(player);
 			mc.gameMode.handleContainerInput(0, 45, inventory.getSelectedSlot(),
 					ContainerInput.SWAP, player);

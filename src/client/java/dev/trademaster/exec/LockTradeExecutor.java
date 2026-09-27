@@ -64,6 +64,14 @@ public class LockTradeExecutor {
 
 	private int matchingCount(ItemStack stack) {
 		if (this.expected == null) return stack.is(Items.ENCHANTED_BOOK) ? stack.getCount() : 0;
+		// a GOOD (a non-book result): count the item regardless of the good's minimum
+		// amount. The stage-3 proof compares TOTALS, and resultMatches' gate ("the stack
+		// holds at least the good's amount") would under-report when the delivered amount
+		// spills across a stack boundary, so the proof could never fire and a legitimate
+		// purchase would be dispatched unnamed with its budget restored (re-bought later).
+		if (!this.expected.purchase().result().is(Items.ENCHANTED_BOOK)) {
+			return stack.is(this.expected.purchase().result().getItem()) ? stack.getCount() : 0;
+		}
 		return resultMatches(this.expected, stack) ? stack.getCount() : 0;
 	}
 
@@ -176,10 +184,15 @@ public class LockTradeExecutor {
 					this.verified = true;
 					return Result.DONE;
 				}
-				// with no free slot the server DROPS the book instead, which is not
-				// observable here: trust the prediction rather than mis-report a
-				// purchase that did go through
+				// With no free slot the server DROPS the book instead, which is not
+				// observable here: trust the prediction rather than mis-report a purchase
+				// that did go through (an unproven outcome would dispatch the villager
+				// unnamed and let the same target be re-demanded). The LOCK entry already
+				// requires a free slot and the cost slots free up, so this is a defensive
+				// net — logged so that, if it ever fires, it is visible.
 				if (client.player != null && !Preconditions.hasFreeSlot(client.player)) {
+					dev.trademaster.core.RerollController.debug(
+							"lock: purchase unprovable (no free slot), trusting the prediction");
 					this.verified = true;
 					return Result.DONE;
 				}
