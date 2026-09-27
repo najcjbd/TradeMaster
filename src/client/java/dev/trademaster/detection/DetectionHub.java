@@ -215,16 +215,18 @@ public final class DetectionHub {
 		deliver(event);
 	}
 
-	/** The event channel opens for ANY merchant the player trades with, and its
-	 * menu wraps a freshly constructed ClientSideMerchant that carries no
-	 * position or identity — it cannot be compared against the session villager
-	 * entity. A proximity guess ("the session villager must be the nearest one")
-	 * was tried and rejected: on a real rig a bystander in the staging pen is
-	 * often nearer, which failed every EVENT/BOTH check. Cross-villager confusion
-	 * is caught instead by the PACKET channel containerId correlation plus
-	 * {@link #offersMatch} in BOTH mode, and as a last line by the LOCK-time
-	 * fingerprint re-check (slotStillMatches), which refuses to purchase any
-	 * offer that no longer matches the matched trade. */
+	/** The event channel opens for ANY merchant the player trades with, and its menu
+	 * wraps a freshly constructed ClientSideMerchant that carries no position or
+	 * identity — it cannot be compared against the session villager entity, so this
+	 * accepts whatever menu the event channel produced. A proximity guess ("the
+	 * session villager must be the nearest one") was tried and rejected: on a real rig
+	 * a bystander in the staging pen is often nearer, which failed EVERY EVENT/BOTH
+	 * check. Consequences per mode: PACKET correlates the containerId and never takes
+	 * a menu; BOTH additionally cross-checks {@link #offersMatch}; a pure EVENT check
+	 * has NEITHER, so a merchant screen the player (or another mod) opens while a check
+	 * is armed would be delivered as this check's result. The last line in every mode
+	 * is the LOCK-time fingerprint re-check (slotStillMatches), which refuses to buy
+	 * any offer that no longer matches the matched trade. */
 	private boolean eventMenuMatchesTrader() {
 		return this.eventMenu != null;
 	}

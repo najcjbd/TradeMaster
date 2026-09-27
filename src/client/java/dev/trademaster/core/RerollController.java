@@ -312,8 +312,12 @@ public final class RerollController {
 
 		// An open trade GUI would block lectern breaking/interacting; close it only
 		// now that the start survived every rejection (a refused start must keep
-		// the player's own merchant screen and picker alive)
-		if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
+		// the player's own merchant screen and picker alive). The mod's OWN settings
+		// screen is closed here too: in singleplayer a Screen pauses the integrated
+		// server, so a hotkey/command start would otherwise report "running" while the
+		// pipeline never ticks (the Start button already closes it on the same terms).
+		if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen
+				|| mc.gui.screen() instanceof dev.trademaster.gui.TradeMasterScreen) {
 			mc.gui.setScreen(null);
 		}
 		closeMerchantMenuIfOpen(mc);

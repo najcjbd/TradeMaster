@@ -246,17 +246,33 @@ public class TradeMatcher {
 
 	/** Whether a custom good can ever be offered: its result item must still exist and
 	 * not be an air item, its price cap must allow at least one emerald, and its spec
-	 * must declare at least one payable item. The matcher is an item-SET check (slot
-	 * position only fixes the price cap), so requiring slot 1 specifically would refuse
-	 * a good that declares its payable items in another slot. */
+	 * must declare at least one PAYABLE slot. "Payable" is the matcher's own notion
+	 * (see {@link #specHasPayableSlot}); a good whose slots are all air / unknown / a
+	 * count of 0 declares "pays nothing" and can never match, so enqueuing it would
+	 * spin the run forever. */
 	public static boolean goodMatchable(GoodSpec good) {
 		if (good.maxPrice() < 1) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
 		if (good.resultItem() == null) return false;
-		for (TradeOfferSpec.TradeCost cost : good.spec().costs()) {
+		return specHasPayableSlot(good.spec());
+	}
+
+	/** Whether a spec declares at least one slot the matcher counts as an allowance —
+	 * the mirror of {@code costsAllowed}/{@code capFor}: slot 1 is payable when its item
+	 * is a real (registry) non-air item, since its amount is the price; a later slot only
+	 * when its count is not 0 (0 = "not required", negative = no limit, positive = cap).
+	 * A spec with no such slot can never be matched by any offer. */
+	private static boolean specHasPayableSlot(TradeOfferSpec spec) {
+		List<TradeOfferSpec.TradeCost> costs = spec.costs();
+		for (int slot = 0; slot < costs.size(); slot++) {
+			TradeOfferSpec.TradeCost cost = costs.get(slot);
 			if (cost == null || cost.item() == null) continue;
 			if (TradeMasterConfig.INSTANCE.isAirItem(cost.item())) continue;
-			if (BuiltInRegistries.ITEM.get(cost.item()).isPresent()) return true;
+			if (BuiltInRegistries.ITEM.get(cost.item()).isEmpty()) continue;
+			// slot 1's count is ignored (capFor returns the price); a later slot with
+			// count 0 is "not required" and contributes no allowance
+			if (slot >= 1 && cost.count() == 0) continue;
+			return true;
 		}
 		return false;
 	}

@@ -47,9 +47,33 @@ public final class LecternRestock {
 		return level.getBlockState(pos).getBlock() instanceof LecternBlock;
 	}
 
+	/** Position the break gate is currently counting, or null. */
+	private static BlockPos absentPos = null;
+	private static int absentTicks = 0;
+
+	/** A client-predicted break is NOT proof the server accepted it: a rejected break
+	 * restores the block within a round trip, while {@code continueDestroyBlock} removes
+	 * it locally at once. This reports "gone" only once the lectern has read absent for a
+	 * round trip's worth of ticks, so the next stage cannot place over a lectern that is
+	 * about to come back. */
+	public static boolean breakConfirmed(BlockGetter level, BlockPos pos) {
+		if (isLecternAt(level, pos)) {
+			absentPos = null;
+			absentTicks = 0;
+			return false;
+		}
+		if (absentPos == null || !absentPos.equals(pos)) {
+			absentPos = pos.immutable();
+			absentTicks = 0;
+		}
+		return ++absentTicks >= 10;
+	}
+
 	/** Call at session start so a stale gate from a previous run doesn't delay restocking. */
 	public static void resetRestock() {
 		nextRestockTick = 0;
+		absentPos = null;
+		absentTicks = 0;
 	}
 
 	public static boolean offhandHasLectern(LocalPlayer player) {

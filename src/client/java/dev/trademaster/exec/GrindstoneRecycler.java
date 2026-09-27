@@ -524,14 +524,20 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 			case DROP_STAGE_WAIT -> {
 				// an inventory SWAP click IS applied locally first, so the target slot
-				// already shows the book even when the server REJECTS the click: require
-				// the SOURCE slot to no longer hold it too — a rejection is corrected back
-				// there. The offhand branch (source -1) uses the raw swap, which has no
-				// prediction, so its destination check already waits for the server.
+				// already shows the book even when the server REJECTS the click: wait a
+				// round trip (waitTicks >= 10) and confirm the WHOLE exchange — the target
+				// holds the book AND the source holds exactly the displaced stack (EMPTY
+				// when the target was empty; into an OCCUPIED destination the swap is a
+				// true exchange, so "source no longer cursed" alone is satisfied by the
+				// prediction). The offhand branch (source -1) uses the raw swap, which has
+				// no prediction, so its destination check already waits for the server.
 				boolean staged = isCursed(player.getInventory().getItem(this.dropSlot))
 						&& (this.dropStageSource < 0
-								|| !isCursed(player.getInventory().getItem(this.dropStageSource)));
-				if (staged) {
+								|| (player.containerMenu == player.inventoryMenu
+										&& ItemStack.isSameItemSameComponents(
+												player.getInventory().getItem(this.dropStageSource),
+												this.storageDisplaced)));
+				if (this.waitTicks >= 10 && staged) {
 					this.waitTicks = 0;
 					this.state = State.DROP_AIM;
 				} else if (++this.waitTicks > 60) {

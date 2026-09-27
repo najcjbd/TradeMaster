@@ -120,6 +120,10 @@ public class AxeRerollStrategy implements RerollStrategy {
 			return StepResult.RUNNING;
 		}
 
+		// the break above is a client prediction: wait until it is server-confirmed, or a
+		// rejected break (rolled back within a round trip) would be placed over
+		if (!LecternRestock.breakConfirmed(mc.level, lecternPos)) return StepResult.RUNNING;
+
 		// Lectern is gone: optional teleport to the villager, then place. Never
 		// tp to a dead or departing villager (falling down the send-away chute),
 		// otherwise the player ends up displaced mid-void.

@@ -95,7 +95,10 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 200) return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
 
 			BlockPos lecternPos = session.lecternPos;
-			if (!LecternRestock.isLecternAt(mc.level, lecternPos)) return StepResult.DONE;
+			// server-confirmed only: a client-predicted break is rolled back within a
+			// round trip, and advancing on it would place over a lectern that is about
+			// to come back
+			if (LecternRestock.breakConfirmed(mc.level, lecternPos)) return StepResult.DONE;
 
 			if (!ensureLook(player, lecternAim(lecternPos))) return StepResult.RUNNING;
 

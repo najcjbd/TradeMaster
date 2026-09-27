@@ -83,10 +83,16 @@ public class ChestDepositor implements BookDisposal {
 	private boolean dropSent = false;
 	private boolean dropResent = false;
 	/** Menu slot the book was SWAPped out of when the drop was staged, or -1 when the
-	 * droppable item already sat in the selected hotbar slot. A container SWAP click is
-	 * applied LOCALLY first, so the drop may only proceed once this source slot is EMPTY
-	 * again — under a rejected click the server restores the book there. */
+	 * droppable item already sat in the selected hotbar slot. */
 	private int dropSourceSlot = -1;
+	/** At staging time: the stack being staged (a copy) and the item the swap will push
+	 * into the source slot (the destination's occupant, EMPTY when it was empty). A
+	 * container SWAP click is applied LOCALLY first, so the drop may only proceed once
+	 * the whole exchange is observed after a round trip — a rejected click restores both
+	 * slots. "Source slot empty" alone is wrong: into an OCCUPIED destination the swap
+	 * is a true exchange and the source ends up holding the occupant. */
+	private ItemStack dropStagedBook = ItemStack.EMPTY;
+	private ItemStack dropDisplaced = ItemStack.EMPTY;
 
 	/** The start-of-run counts of every good's result item. The allowance is DERIVED
 	 * from these every tick (count now minus baseline) and never booked per move: a
@@ -340,19 +346,27 @@ public class ChestDepositor implements BookDisposal {
 				// SWAP it into the selected slot (the raw drop packet drops whatever is
 				// selected), then wait for the server sync before aiming
 				this.dropSourceSlot = slot.index;
+				this.dropStagedBook = slot.getItem().copy();
+				this.dropDisplaced = player.getInventory().getItem(selected).copy();
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId, slot.index,
 						selected, ContainerInput.SWAP, player);
 				this.state = State.DROP_STAGE_WAIT;
 			}
 			case DROP_STAGE_WAIT -> {
-				// a container SWAP click IS applied locally first, so the destination slot
-				// already shows the book even when the server REJECTS the click: wait for a
-				// round trip and require the SOURCE slot to be empty as well — a rejection
-				// is corrected back there
+				// a container SWAP click IS applied locally first, so both slots already
+				// show the result even when the server REJECTS the click: wait a round
+				// trip and confirm the whole exchange — the target holds the staged book
+				// AND the source holds exactly the displaced stack (EMPTY when the target
+				// was empty). A rejection restores both, so the prediction cannot pass.
 				if (++this.dropWaitTicks >= 10) {
-					boolean sourceEmpty = this.dropSourceSlot < 0
-							|| player.containerMenu.slots.get(this.dropSourceSlot).getItem().isEmpty();
-					if (sourceEmpty && droppable(player.getInventory().getItem(this.dropSlot))) {
+					boolean landed = this.dropSourceSlot < 0
+							|| (player.containerMenu == player.inventoryMenu
+									&& ItemStack.isSameItemSameComponents(
+											player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+									&& ItemStack.isSameItemSameComponents(
+											player.containerMenu.slots.get(this.dropSourceSlot).getItem(),
+											this.dropDisplaced));
+					if (landed) {
 						this.state = State.DROP_AIM;
 						this.dropAimTicks = 0;
 					} else if (this.dropWaitTicks > 60) {
@@ -577,6 +591,8 @@ public class ChestDepositor implements BookDisposal {
 			this.look.reset();
 			this.dropSlot = -1;
 			this.dropSourceSlot = -1;
+			this.dropStagedBook = ItemStack.EMPTY;
+			this.dropDisplaced = ItemStack.EMPTY;
 			this.dropWaitTicks = 0;
 			this.dropAimTicks = 0;
 			this.dropSent = false;

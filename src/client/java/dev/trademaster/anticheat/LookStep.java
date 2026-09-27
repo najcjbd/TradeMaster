@@ -42,6 +42,10 @@ public final class LookStep {
 		return true;
 	}
 
+	/** Note: {@code finished} is deliberately sticky — the caller MUST call this when it
+	 * changes the target, or the new aim is skipped. Comparing targets here instead was
+	 * tried and rejected: a target that drifts (a wandering villager's eye position) would
+	 * restart the smooth rotation every tick and stall the calling phase. */
 	public void reset() {
 		this.started = false;
 		this.finished = false;

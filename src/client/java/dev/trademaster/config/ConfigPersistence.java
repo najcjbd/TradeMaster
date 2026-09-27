@@ -36,7 +36,9 @@ public final class ConfigPersistence {
 	 * and replace the whole enchantment table. */
 	private static final java.util.Set<String> SECTION_NAMES = java.util.Set.of(
 			"mechanism", "naming", "positions", "grindstone", "offers", "antiCheat",
-			"enchantments", "hotkeys");
+			"enchantments", "hotkeys",
+			// sub-keys an early flat layout stored at the root
+			"specs", "customNames", "nameHistory", "airItems");
 
 	private ConfigPersistence() {}
 
@@ -266,12 +268,21 @@ public final class ConfigPersistence {
 		antiCheat.addProperty("interactDelay", c.interactDelay);
 		root.add("antiCheat", antiCheat);
 
-		JsonObject oldEnchantments = getSection(root, "enchantments");
-		JsonObject enchantments = new JsonObject();
+		// reuse the on-disk section so a key a hand-writer put directly under it (a note,
+		// a newer-version key) survives — but first drop entries the model no longer has:
+		// an id-parseable leftover would be re-read as a bogus target. Non-id keys are
+		// notes and are left alone.
+		JsonObject enchantments = sectionForWrite(root, "enchantments");
+		List<String> stale = new ArrayList<>();
+		for (String key : enchantments.keySet()) {
+			Identifier parsed = Identifier.tryParse(key);
+			if (parsed != null && !c.enchantments.containsKey(parsed)) stale.add(key);
+		}
+		for (String key : stale) enchantments.remove(key);
 		for (Map.Entry<Identifier, EnchantmentTarget> entry : c.enchantments.entrySet()) {
 			EnchantmentTarget t = entry.getValue();
 			// seed from the entry on disk so a hand-written key inside it survives
-			JsonObject o = entryObject(oldEnchantments, entry.getKey());
+			JsonObject o = entryObject(enchantments, entry.getKey());
 			o.addProperty("enabled", t.enabled());
 			o.addProperty("level", t.level());
 			o.addProperty("maxPrice", t.maxPrice());

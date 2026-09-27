@@ -71,12 +71,17 @@ public class ButtonPresser {
 
 		if (this.pressed) {
 			this.confirmTicks++;
-			// POWERED means the press actually landed on the server (residual
-			// power is waited out before the first press, so it cannot be
-			// mistaken for our own)
+			// POWERED right after our own use packet is a CLIENT PREDICTION (useItemOn
+			// applies locally before sending); a press the server rejects is rolled back
+			// a round trip later. Require the state to persist ~0.5s so a prediction
+			// cannot pass as confirmation, or SUMMON reports DONE and the next phase
+			// (AWAIT_VILLAGER, watchdog-exempt) hangs forever.
 			if (state.getValue(ButtonBlock.POWERED)) {
-				restoreSlot(player);
-				return StepResult.DONE;
+				if (this.confirmTicks >= 10) {
+					restoreSlot(player);
+					return StepResult.DONE;
+				}
+				return StepResult.RUNNING;
 			}
 			if (this.confirmTicks > 40) {
 				restoreSlot(player);
