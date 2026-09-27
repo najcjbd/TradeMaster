@@ -1252,6 +1252,15 @@ public final class RerollController {
 								notice(Component.translatable(unconfirmed
 										? "trademaster.message.lock_unconfirmed"
 										: "trademaster.message.lock_drift_purchased"));
+								// the edit may have emptied the matcher, and the tick-top check
+								// is a one-shot on the fingerprint (suppressed while
+								// finalizing): finish the run here instead of parking in
+								// AWAIT_VILLAGER with nothing left to roll for
+								refreshNeeds(client, s);
+								if (s.matcher.isEmpty()) {
+									stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+									return;
+								}
 								awaitNextVillager(client, s);
 							} else {
 								// nothing was bought (the cursor check refused the click): the

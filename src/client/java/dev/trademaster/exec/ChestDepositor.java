@@ -351,9 +351,10 @@ public class ChestDepositor implements BookDisposal {
 					// slot — then a stale prediction can at worst drop nothing.
 					int empty = findEmptyHotbarSlot(player);
 					if (empty < 0) {
-						// nothing safe to stage into: stop rather than risk the item (the
-						// stop path's abortCleanly restores the hotbar selection)
-						return StepResult.failed(Component.translatable("trademaster.message.drop_no_slot"));
+						// nothing safe to stage into. FAILED_FULL, not FAILED: a full HOTBAR
+						// says nothing about the main inventory, so let the caller decide
+						// (it re-checks a free slot) instead of hard-stopping the run
+						return StepResult.failedFull(Component.translatable("trademaster.message.drop_no_slot"));
 					}
 					if (this.originalSlot < 0) this.originalSlot = selected;
 					Interactions.selectHotbarSlot(player, empty);
@@ -362,8 +363,10 @@ public class ChestDepositor implements BookDisposal {
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;
 				if (alreadyHeld) {
-					// no swap, so nothing to confirm
+					// no swap, so nothing to confirm — but record the stack, since the drop
+					// packet only names the SELECTED slot and DROP_WAIT re-verifies it
 					this.dropSourceSlot = -1;
+					this.dropStagedBook = slot.getItem().copy();
 					this.state = State.DROP_AIM;
 					this.dropAimTicks = 0;
 					return StepResult.RUNNING;
@@ -429,6 +432,15 @@ public class ChestDepositor implements BookDisposal {
 					return StepResult.RUNNING;
 				}
 				if (!this.dropSent) {
+					// the packet names no slot: the server drops the SELECTED one. Re-verify
+					// it right before sending — a 1-9/wheel hotbar change since the staging
+					// would otherwise drop whatever else is selected (the player's item)
+					if (player.getInventory().getSelectedSlot() != this.dropSlot
+							|| !ItemStack.isSameItemSameComponents(
+									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+						this.state = State.DROP_STAGE;
+						return StepResult.RUNNING;
+					}
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS,
 							BlockPos.ZERO, Direction.DOWN));
@@ -591,6 +603,9 @@ public class ChestDepositor implements BookDisposal {
 	private int countDisposables(LocalPlayer player) {
 		int count = 0;
 		for (Slot slot : player.containerMenu.slots) {
+			// the offhand (menu 45) is not a disposal target either: the drop path cannot
+			// use it, so counting it here would keep EVALUATE from ever reaching DONE
+			if (slot.index >= 45) continue;
 			if (isMainInventorySlot(player, slot) && disposable(slot.getItem())) count++;
 		}
 		return count;
@@ -651,13 +666,18 @@ public class ChestDepositor implements BookDisposal {
 		return count;
 	}
 
-	/** First inventory (not offhand) slot holding something this pass may drop. The
-	 * offhand has no selected slot to drop from, and the inventory menu's offhand slot
-	 * is the one past the hotbar, so it is skipped here and simply left alone. */
+	/** First inventory (not offhand) slot holding something this pass may drop, preferring
+	 * a HOTBAR slot: the drop packet drops the SELECTED slot, and a droppable that already
+	 * sits in the hotbar needs no staging swap at all (so there is no prediction to get
+	 * wrong). The offhand (menu 45) is skipped: it has no selected slot to drop from. */
 	private @Nullable Slot findDroppableSlot(LocalPlayer player) {
+		// hotbar first (menu 36-44), then the main inventory (menu 9-35)
 		for (Slot slot : player.containerMenu.slots) {
-			if (slot.index >= 45) continue;
-			if (isMainInventorySlot(player, slot) && droppable(slot.getItem())) return slot;
+			if (slot.index >= 36 && slot.index <= 44
+					&& isMainInventorySlot(player, slot) && droppable(slot.getItem())) return slot;
+		}
+		for (Slot slot : player.containerMenu.slots) {
+			if (slot.index < 36 && isMainInventorySlot(player, slot) && droppable(slot.getItem())) return slot;
 		}
 		return null;
 	}

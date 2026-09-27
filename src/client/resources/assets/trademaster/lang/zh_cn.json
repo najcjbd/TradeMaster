@@ -96,7 +96,7 @@
   "trademaster.message.material_short": "材料不足，停止运行",
   "trademaster.message.inventory_full": "背包已满且无法腾出空间，停止运行",
   "trademaster.message.chests_full": "所有绑定的箱子已满，停止运行",
-  "trademaster.message.drop_no_slot": "没有空的快捷栏槽位可安全丢弃物品，已停止（请空出一格快捷栏）",
+  "trademaster.message.drop_no_slot": "没有空的快捷栏槽位可安全丢弃物品，本次跳过丢弃（请空出一格快捷栏）",
   "trademaster.message.swap_rejected": "箱子有空位但副手交换被服务器反复拒绝，存书中止",
   "trademaster.message.grindstone_missing": "配置的坐标处没有砂轮，回收中止",
   "trademaster.message.grindstone_open_failed": "无法打开砂轮，回收中止",

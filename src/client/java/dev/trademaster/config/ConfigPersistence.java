@@ -270,7 +270,8 @@ public final class ConfigPersistence {
 
 		// reuse the on-disk section so a key a hand-writer put directly under it survives,
 		// but drop stale TARGET entries (an id-parseable key the model no longer has would
-		// be re-read as a bogus target). A note object (no target keys) is left alone.
+		// be re-read as a bogus target). "Target entry" = the value carries one of the
+		// entry keys; a note object WITHOUT them is left alone.
 		JsonObject enchantments = sectionForWrite(root, "enchantments");
 		List<String> stale = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
@@ -291,8 +292,8 @@ public final class ConfigPersistence {
 		}
 		// one target, one key: a hand-written namespaceless key ("sharpness") that
 		// duplicates a REAL target is the same id as "minecraft:sharpness" and would
-		// otherwise stay alongside it forever. Only target-shaped entries are dropped —
-		// a note key ("notes", "_v") is left alone (the reader skips it too).
+		// otherwise stay alongside it forever. Only target-shaped entries are dropped — a
+		// note object carrying none of the entry keys is left alone.
 		List<String> aliases = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
 			Identifier parsed = Identifier.tryParse(e.getKey());

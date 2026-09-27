@@ -380,9 +380,19 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			// a focused field is mid-input: scrolling would silently clobber the
 			// value being typed (let the list scroll instead)
 			if (this.maxPriceField.isFocused()) return false;
-			int price = Mth.clamp((int) (target.maxPrice() + verticalAmount), Math.min(minPrice(target.level()), 64), 64);
+			// the field may hold a draft blurred by a scroll: adjust FROM it, not from the
+			// stored value, or the wheel would discard what was typed
+			int base = target.maxPrice();
+			if (this.priceDirty) {
+				Integer typed = parseIntSafe(this.maxPriceField.getValue());
+				if (typed != null) base = typed;
+			}
+			int price = Mth.clamp((int) (base + verticalAmount), Math.min(minPrice(target.level()), 64), 64);
 			TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withMaxPrice(price));
 			this.maxPriceField.setValue(String.valueOf(price));
+			// the wheel wrote the value itself: the draft is settled, not pending
+			this.priceDirty = false;
+			this.deferCommit = false;
 			TradeMasterConfig.INSTANCE.save();
 			return true;
 		} else if (this.levelField.isMouseOver(mouseX, mouseY)) {
@@ -390,14 +400,22 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			// no registry entry: the level cannot be bounded — let the list scroll
 			// instead of swallowing the event with no visible effect
 			if (this.enchantment == null) return false;
-			int level = Mth.clamp((int) (target.level() + verticalAmount), 1, editableMaxLevel());
+			int baseLevel = target.level();
+			if (this.levelDirty) {
+				Integer typed = parseIntSafe(this.levelField.getValue());
+				if (typed != null) baseLevel = typed;
+			}
+			int level = Mth.clamp((int) (baseLevel + verticalAmount), 1, editableMaxLevel());
 			int price = Math.min(64, Math.max(target.maxPrice(), minPrice(level)));
 			TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withLevel(level).withMaxPrice(price));
 			this.levelField.setValue(String.valueOf(level));
 			// never clobber partial input: the price field may be focused mid-typing
 			if (price != target.maxPrice() && !this.maxPriceField.isFocused()) {
 				this.maxPriceField.setValue(String.valueOf(price));
+				this.priceDirty = false;
 			}
+			this.levelDirty = false;
+			this.deferCommit = false;
 			TradeMasterConfig.INSTANCE.save();
 			return true;
 		}

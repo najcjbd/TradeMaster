@@ -218,18 +218,25 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 		// the air field lives in the fixed header, outside the rows, so this list owns
-		// its clicks (an EditBox does not take focus on its own)
-		// blur + commit the rows first, whoever the click belongs to: returning early
-		// for the air field used to leave a row field focused as well (two focuses)
-		for (Row row : this.children()) {
-			for (EditBox field : row.fields()) {
-				if (!field.isMouseOver(click.x(), click.y())) field.setFocused(false);
-			}
-			if (!row.clickedIn(click)) row.commit();
-		}
+		// its clicks (an EditBox does not take focus on its own). Handle the air field
+		// FIRST: its band can overlap a stale row rect (rows are drawn by last-frame
+		// geometry), which used to leave that row's field focused as well (two focuses).
 		if (this.airField.isMouseOver(click.x(), click.y())) {
+			for (Row row : this.children()) {
+				for (EditBox field : row.fields()) field.setFocused(false);
+			}
 			this.airField.setFocused(true);
 			return this.airField.mouseClicked(click, doubled);
+		}
+		// a field the pointer is NOT on commits its draft — judged by the FIELD rect, not
+		// the row rect, or a click on a row's empty area would blur without committing
+		for (Row row : this.children()) {
+			boolean onField = false;
+			for (EditBox field : row.fields()) {
+				if (field.isMouseOver(click.x(), click.y())) onField = true;
+				else field.setFocused(false);
+			}
+			if (!onField) row.commit();
 		}
 		this.airField.setFocused(false);
 		this.suppressFocusClear = true;

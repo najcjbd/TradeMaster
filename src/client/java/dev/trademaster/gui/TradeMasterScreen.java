@@ -278,6 +278,9 @@ public class TradeMasterScreen extends Screen {
 		if (this.enchantmentsList != null) {
 			EnchantmentEntry hit = this.enchantmentsList.entryAt(click.x(), click.y());
 			for (var entry : this.enchantmentsList.children()) {
+				// any click ends a scroll-deferral, so the draft a wheel only blurred
+				// commits on the next render (a background/Reset/Select-All click too)
+				entry.clearDeferCommit();
 				if (entry == hit) {
 					boolean price = entry.maxPriceField.mouseClicked(click, doubled);
 					boolean level = entry.levelField.mouseClicked(click, doubled);

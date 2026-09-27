@@ -152,7 +152,12 @@ public class LockTradeExecutor {
 					this.drifted = true;
 					return Result.FAILED;
 				}
-				client.player.closeContainer();
+				// only close OUR menu: by now the server may already have closed or replaced
+				// it, and closeContainer() closes whatever is open (the server ignores the
+				// id), which would tear down an unrelated container the player opened
+				if (client.player.containerMenu == this.menu) {
+					client.player.closeContainer();
+				}
 				this.confirmTicks = 0;
 				this.stage = 3;
 			}
