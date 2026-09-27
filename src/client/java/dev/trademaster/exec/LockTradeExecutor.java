@@ -164,11 +164,15 @@ public class LockTradeExecutor {
 			case 3 -> {
 				// Server-authoritative confirmation: closing the container makes the
 				// SERVER put the held book into the inventory (dropOrPlaceInInventory);
-				// the client's own prediction never does. The book count rising is
-				// therefore proof the trade really happened, and its absence means the
-				// server refused the click — a rejection the cursor check cannot see
+				// the client's own prediction never does. The matching-book count must rise
+				// by at least the trade's result AMOUNT — a stricter bar than "rose at all",
+				// so an unrelated identical book picked up during the wait cannot pass as
+				// our purchase. Residual: an identical book acquired in the window and the
+				// server refusing the click would still read as verified.
+				int need = this.expected == null ? 1
+						: Math.max(1, this.expected.purchase().result().getCount());
 				if (client.player != null
-						&& matchingBookCount(client.player) > this.preBookCount) {
+						&& matchingBookCount(client.player) - this.preBookCount >= need) {
 					this.verified = true;
 					return Result.DONE;
 				}

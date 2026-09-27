@@ -339,6 +339,7 @@ public final class RerollController {
 		xpNamingPaused = false;
 		LecternRestock.resetRestock();
 		s.goodBaseline.clear();
+		s.lockedResults.clear();
 		if (Minecraft.getInstance().player != null) {
 			for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
 				Item item = good.resultItem();
@@ -605,8 +606,12 @@ public final class RerollController {
 						&& config.curseDropYaw != null && config.curseDropPitch != null;
 				// the BASELINE goes in, not the produced snapshot: the depositor derives
 				// the allowance from the live inventory every tick, so a click the server
-				// refuses can never spend it
-				return new ChestDepositor(config.chestPositions, disposalBaseline(disposerHolder), goodsOnly);
+				// refuses can never spend it. The locked RESULTS go in too, so only a
+				// stack that IS a locked trade's output (item + components) may be taken.
+				RunSession locked = session;
+				Map<Item, net.minecraft.world.item.ItemStack> results =
+						locked == null ? Map.of() : Map.copyOf(locked.lockedResults);
+				return new ChestDepositor(config.chestPositions, disposalBaseline(disposerHolder), results, goodsOnly);
 			}
 			// no chest and no drop option: the produced goods cannot leave the inventory
 			// here, but the ordinary path may still free space (grinding books), so fall
@@ -1638,6 +1643,12 @@ public final class RerollController {
 		// LOCK, which is entered once with a non-null match. Guard kept against NPE.
 		if (s.matchedTrade != null) {
 			s.lockedIds.addAll(s.matchedTrade.matchedIds());
+			// remember the exact stack this trade yields (item AND components), so the
+			// disposal only ever takes a stack that IS this run's output
+			net.minecraft.world.item.ItemStack produced = s.matchedTrade.purchase().result();
+			if (produced != null && !produced.isEmpty()) {
+				s.lockedResults.put(produced.getItem(), produced.copy());
+			}
 			// hunt-cheaper: the locked enchantment stays live; mark its price so
 			// future matches only accept a strictly cheaper copy. Only a purchase
 			// with exactly one matched part has a price attributable to one target —

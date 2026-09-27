@@ -329,12 +329,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					: Identifier.tryParse("minecraft:" + value);
 		}
 
-		/** -1 (no limit), 0 (not required) or 1..64; null when the text is not usable. */
+		/** -1 (no limit), 0 (not required) or 1..{@link TradeOfferSpec#UNLIMITED_CAP}; null
+		 * when the text is not usable. The upper bound matches the model's own cap: a
+		 * modded trade may charge far more than a vanilla stack, and refusing to EDIT a
+		 * hand-written large count would block every commit of that row. */
 		protected static @Nullable Integer parseCount(String text) {
 			if (text == null || text.isBlank()) return TradeOfferSpec.UNLIMITED;
 			try {
 				int value = Integer.parseInt(text.trim());
-				if (value < TradeOfferSpec.UNLIMITED || value > 64) return null;
+				if (value < TradeOfferSpec.UNLIMITED || value > TradeOfferSpec.UNLIMITED_CAP) return null;
 				return value;
 			} catch (NumberFormatException e) {
 				return null;

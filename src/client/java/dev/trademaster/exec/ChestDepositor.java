@@ -101,17 +101,23 @@ public class ChestDepositor implements BookDisposal {
 	/** Live: how many of each item this pass may still take because THIS RUN produced
 	 * it. Recomputed from the inventory in {@link #refreshAllowance}. */
 	private final Map<Item, Integer> allowance = new java.util.HashMap<>();
+	/** The exact stack each locked trade yields, per result item: a good may only be taken
+	 * when the stack IS that output (item AND components), never a component-distinct copy
+	 * the player already carried (the allowance above is a per-item total). */
+	private final Map<Item, ItemStack> expectedResults;
 	/** When true the pass takes only those produced goods: used in grindstone mode,
 	 * where the books are still the recycler's business. */
 	private final boolean goodsOnly;
 
 	public ChestDepositor(List<BlockPos> chests) {
-		this(chests, Map.of(), false);
+		this(chests, Map.of(), Map.of(), false);
 	}
 
-	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline, boolean goodsOnly) {
+	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline,
+			Map<Item, ItemStack> expectedResults, boolean goodsOnly) {
 		this.chests = List.copyOf(chests);
 		this.goodsBaseline = Map.copyOf(goodsBaseline);
+		this.expectedResults = Map.copyOf(expectedResults);
 		this.goodsOnly = goodsOnly;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
 	}
@@ -648,6 +654,11 @@ public class ChestDepositor implements BookDisposal {
 	private boolean droppable(ItemStack stack) {
 		if (stack.isEmpty()) return false;
 		if (!stack.is(Items.ENCHANTED_BOOK)) {
+			// only a stack that IS a locked trade's output may be taken: the allowance is a
+			// per-item TOTAL, so without this component check a component-distinct copy of
+			// the player's own item could satisfy it and be stored/dropped
+			ItemStack expected = this.expectedResults.get(stack.getItem());
+			if (expected != null && !ItemStack.isSameItemSameComponents(stack, expected)) return false;
 			// only a stack that is ENTIRELY produced may be taken: QUICK_MOVE and
 			// DROP_ALL_ITEMS move the whole stack, so a stack merged with the player's
 			// own items would take theirs too. A mixed stack is left alone — nothing of
