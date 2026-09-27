@@ -669,7 +669,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		/** Losing focus with unparsable or out-of-range text restores the stored
 		 * value, so the field never keeps showing a value that was never applied. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyDraft();
 			int parsed = DurationParser.parse(this.field.getValue());
 			if (parsed < this.minTicks || parsed > this.maxTicks) {
@@ -824,7 +828,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		 * field never keeps showing a value that was never applied. An emptied
 		 * required position is restored the same way. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyPendingClear();
 			String text = this.field.getValue();
 			BlockPos pos = this.getter.get();
@@ -978,7 +986,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		/** Losing focus with unparsable or out-of-range text restores the stored
 		 * delta, so the field never keeps showing a value that was never applied. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyPendingClear();
 			String text = this.field.getValue();
 			if (text.trim().isEmpty()) return;
@@ -1125,7 +1137,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		/** Losing focus with unparsable text restores the stored direction, so the
 		 * field never keeps showing a value that was never applied. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyPendingClear();
 			String text = this.field.getValue();
 			if (text.trim().isEmpty()) return;
@@ -1237,7 +1253,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		/** Normalize on focus loss: invalid tokens and forbidden vanilla ids
 		 * vanish from the field, matching what is actually stored. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyDraft();
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			this.field.setValue(String.join(", ", c.customCurseEnchantments));
@@ -1404,7 +1424,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		/** Losing focus with unparsable text restores the stored coordinates, so
 		 * the field never keeps showing a value that was never applied. */
 		void reconcileOnFocusLoss() {
-			if (!this.field.isFocused()) return;
+			// deliberately NOT gated on isFocused(): the scroll path blurs WITHOUT
+			// committing (so a wheel scroll cannot write a half-typed value), and this
+			// reconcile is the click path's "commit the drafts the pointer left behind".
+			// Gating on focus made a scroll-blurred draft commit only at close, which
+			// also let a row removal drop it.
 			this.applyDraft();
 			BlockPos pos = this.currentPos();
 			if (pos != null && parsePos(this.field.getValue(), Minecraft.getInstance().player) == null) {

@@ -63,7 +63,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Curse drop yaw/pitch | Direction used to drop cursed books that no chest would take | No | Clearing it disables the direction (the live value is used at drop time) |
 
 **Direction convention**: `yaw` −180 = north, −90 = east, 0 = south, 90 = west; `pitch` positive looks down (max ±90).
-**Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits on a deliberate focus change or when the screen closes (an involuntary blur, e.g. a mouse-wheel scroll, only drops focus and leaves the draft pending, so a scroll never writes a half-typed value).
+**Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits when you click elsewhere or when the screen closes (an involuntary blur — a mouse-wheel scroll — only drops focus without committing, so a scroll never writes a half-typed value).
 
 ## Pipeline (12 phases)
 
@@ -174,7 +174,7 @@ something else into a librarian's trade).
 ## Storage
 
 ### Chest mode
-- **Only enchanted books are deposited** (the **ungrindable** things — cursed books and self-chosen goods — follow the "ungrindable disposal" setting, see Storage); nothing else is ever moved;
+- **Only enchanted books are deposited** (cursed books are enchanted books and are stored too; once a chest has taken what it can, the **ungrindable** ones and self-chosen goods follow the "ungrindable disposal" setting, see Storage); nothing else is ever moved;
 - multiple chests are tried **in order**; when every chest is full the run stops;
 - the offhand swap has a **configurable retry** (`offhandSwapRetries`, −1 = forever); when retries are exhausted it stops through the normal flow.
 

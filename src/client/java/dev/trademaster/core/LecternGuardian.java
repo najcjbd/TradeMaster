@@ -103,6 +103,10 @@ public class LecternGuardian {
 			if (tickPickupDrops(mc, session, player, lecternPos)) {
 				return StepResult.RUNNING;
 			}
+			// only a SERVER-confirmed break may release the claim: a rejected break is
+			// rolled back within a round trip, and finishing now would leave the villager
+			// claimed (a later ENSURE sees the lectern present and reports DONE)
+			if (!brokenConfirmed) return StepResult.RUNNING;
 			return finishWithReturn(mc, session);
 		}
 
@@ -150,8 +154,10 @@ public class LecternGuardian {
 		// Not present: BREAK_ONLY already returned DONE above, so from here on we
 		// are placing (ENSURE, or the re-place half of REFRESH). Only a SERVER-confirmed
 		// break counts as "we broke it": a rolled-back prediction must not let the
-		// line-87 terminal finish without the claim actually dropping.
-		if (!brokenConfirmed) return StepResult.RUNNING;
+		// line-87 terminal finish without the claim actually dropping. ENSURE never
+		// breaks the lectern, so the gate is meaningless there (and would just add 10
+		// ticks to a legitimate placement).
+		if (this.mode != Mode.ENSURE && !brokenConfirmed) return StepResult.RUNNING;
 		this.brokenOnce = true;
 		if (lecternPos.getY() >= mc.level.getMaxY()) {
 			return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));

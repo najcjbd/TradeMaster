@@ -289,12 +289,17 @@ public final class ConfigPersistence {
 			o.addProperty("maxPrice", t.maxPrice());
 			enchantments.add(entry.getKey().toString(), o);
 		}
-		// one target, one key: a hand-written namespaceless key ("sharpness") is the same
-		// id as "minecraft:sharpness" and would otherwise stay alongside it forever
+		// one target, one key: a hand-written namespaceless key ("sharpness") that
+		// duplicates a REAL target is the same id as "minecraft:sharpness" and would
+		// otherwise stay alongside it forever. Only target-shaped entries are dropped —
+		// a note key ("notes", "_v") is left alone (the reader skips it too).
 		List<String> aliases = new ArrayList<>();
-		for (String key : enchantments.keySet()) {
-			Identifier parsed = Identifier.tryParse(key);
-			if (parsed != null && !key.equals(parsed.toString())) aliases.add(key);
+		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
+			Identifier parsed = Identifier.tryParse(e.getKey());
+			if (parsed != null && c.enchantments.containsKey(parsed)
+					&& !e.getKey().equals(parsed.toString()) && looksLikeTargetEntry(e.getValue())) {
+				aliases.add(e.getKey());
+			}
 		}
 		for (String key : aliases) enchantments.remove(key);
 		root.add("enchantments", enchantments);

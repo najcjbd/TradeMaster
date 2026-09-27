@@ -91,6 +91,10 @@ public class AxeRerollStrategy implements RerollStrategy {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		LocalPlayer player = mc.player;
 		BlockPos lecternPos = session.lecternPos;
+		// update the break gate EVERY tick (a present reading resets it), BEFORE the
+		// look/axe guards below can return early: "10 consecutive absent reads" must mean
+		// 10 consecutive TICKS, not 10 calls
+		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
 		// aim at the lectern itself: a lectern block covers the block below it, so
 		// in normal play the crosshair rests on the lectern — servers that validate
 		// the look direction refuse a break aimed anywhere else
@@ -114,7 +118,6 @@ public class AxeRerollStrategy implements RerollStrategy {
 
 		// update the break gate EVERY tick so a present reading resets it; only a
 		// server-confirmed break may proceed to placement
-		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
 		if (LecternRestock.isLecternAt(mc.level, lecternPos)) {
 			// slow mode paces the break as well as the place
 			if (config.slowMode) {

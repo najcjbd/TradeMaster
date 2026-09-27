@@ -334,18 +334,28 @@ public class ChestDepositor implements BookDisposal {
 					return StepResult.DONE;
 				}
 				int selected = player.getInventory().getSelectedSlot();
+				// the drop packet drops the SELECTED slot. If the droppable already sits in
+				// a hotbar slot, select THAT one: no swap is needed, so there is no staging
+				// prediction to get wrong (this is also the full-inventory case, where no
+				// hotbar slot is free)
+				if (slot.index >= 36 && slot.index <= 44 && slot.index - 36 != selected) {
+					if (this.originalSlot < 0) this.originalSlot = selected;
+					Interactions.selectHotbarSlot(player, slot.index - 36);
+					selected = slot.index - 36;
+				}
 				boolean alreadyHeld = slot.index == 36 + selected;
 				if (!alreadyHeld && !player.getInventory().getItem(selected).isEmpty()) {
-					// the drop packet drops the SELECTED slot, and the staging SWAP is applied
-					// LOCALLY before the server can reject it: into an OCCUPIED slot the swap
-					// is a TRUE EXCHANGE, so a stale prediction would DROP the player's own
-					// item. Stage only into an EMPTY slot — then a stale prediction can at
-					// worst drop nothing. Without one, refuse rather than risk the item.
+					// the staging SWAP is applied LOCALLY before the server can reject it:
+					// into an OCCUPIED slot the swap is a TRUE EXCHANGE, so a stale
+					// prediction would DROP the player's own item. Stage only into an EMPTY
+					// slot — then a stale prediction can at worst drop nothing.
 					int empty = findEmptyHotbarSlot(player);
 					if (empty < 0) {
-						restoreHotbarSelection(player);
-						return StepResult.failedFull(Component.translatable("trademaster.message.drop_no_slot"));
+						// nothing safe to stage into: stop rather than risk the item (the
+						// stop path's abortCleanly restores the hotbar selection)
+						return StepResult.failed(Component.translatable("trademaster.message.drop_no_slot"));
 					}
+					if (this.originalSlot < 0) this.originalSlot = selected;
 					Interactions.selectHotbarSlot(player, empty);
 					selected = empty;
 				}

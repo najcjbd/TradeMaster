@@ -50,6 +50,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	private final EditBox airField;
 	/** Asked for a rebuild after a good is added/removed/toggled (the row list changed). */
 	private final Runnable rebuild;
+	/** A click on a partially clipped row makes the list auto-scroll it into view
+	 * (setSelected -> scrollToEntry); that scroll must not blur the field the click just
+	 * focused. Mirrors the Settings/Alias widgets. */
+	private boolean suppressFocusClear = false;
 
 	public OffersListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
 		super(client, width, height, top, itemHeight);
@@ -228,14 +232,19 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return this.airField.mouseClicked(click, doubled);
 		}
 		this.airField.setFocused(false);
-		return super.mouseClicked(click, doubled);
+		this.suppressFocusClear = true;
+		try {
+			return super.mouseClicked(click, doubled);
+		} finally {
+			this.suppressFocusClear = false;
+		}
 	}
 
 	@Override
 	public void setScrollAmount(double amount) {
 		double before = this.scrollAmount();
 		super.setScrollAmount(amount);
-		if (this.scrollAmount() == before) return;
+		if (this.scrollAmount() == before || this.suppressFocusClear) return;
 		// drop focus WITHOUT committing: an involuntary scroll must not write a
 		// half-typed offer/good draft (it still commits at the documented points:
 		// a deliberate focus change, a save, or screen close)

@@ -1231,30 +1231,34 @@ public final class RerollController {
 					|| priceOutOfAdmissionBudget(s.matchedTrade);
 			if (editedOut) {
 				if (lockPurchaseInitiated && lockExecutor != null && lockExecutor.purchaseSent()) {
-					// !closing(): a menu mismatch we caused ourselves (stage 3, the
-					// server confirmation still running) must not read as "the server
-					// closed it" and revert a purchase that is about to be proven
-					if (lockExecutor.menu() != player.containerMenu && !lockExecutor.closing()) {
-						// menu already closed/replaced: same judgement as the
-						// menu-replaced branch — only a confirmed purchase counts
-						if (lockExecutor.purchaseConfirmed()) {
-							debug("lock: matched target was disabled mid-run, but the purchase was confirmed; finishing it");
-							finishLock(s);
-						} else {
-							revertDisabledMatch(client, s);
-						}
-						return;
-					}
-					// the click was SENT but stage 2 is still confirming the purchase:
-					// a trade the server refuses (e.g. exhausted offer) also reaches
-					// stage 2 and would end FAILED. Finishing now could celebrate a
-					// lock that never happened — let the executor's own verdict decide
+					// the click is already out, so the villager may be locked even though we
+					// cannot see it yet. The executor's remaining stages decide the outcome
+					// from the INVENTORY (not the menu), so tick it to a verdict: a menu the
+					// server closed is NOT a rejection, and reverting here would re-demand
+					// the target and then reroll a villager that can no longer reroll.
 					switch (lockExecutor.tick()) {
 						case DONE -> {
 							debug("lock: matched target was disabled mid-run, but the purchase succeeded; finishing it");
 							finishLock(s);
 						}
-						case FAILED -> revertDisabledMatch(client, s);
+						case FAILED -> {
+							if (lockExecutor.uncertain() || lockExecutor.drifted()) {
+								// a book may exist even though we could not prove it: do not
+								// undo the match (that would re-demand the target) — dispatch
+								// this villager instead, like the main failure path
+								boolean unconfirmed = lockExecutor.uncertain();
+								debug("lock: matched target disabled mid-run, click sent, outcome "
+										+ (unconfirmed ? "unconfirmed" : "drifted") + " — dispatching");
+								notice(Component.translatable(unconfirmed
+										? "trademaster.message.lock_unconfirmed"
+										: "trademaster.message.lock_drift_purchased"));
+								awaitNextVillager(client, s);
+							} else {
+								// nothing was bought (the cursor check refused the click): the
+								// config edit stands — give the budget back and reroll
+								revertDisabledMatch(client, s);
+							}
+						}
 						case RUNNING -> {}
 					}
 					return;

@@ -175,6 +175,9 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 		this.suppressFocusClear = true;
 		try {
+			// a deliberate click ends the scroll-deferral: the render commit may now
+			// apply the drafts a wheel scroll only blurred
+			for (EnchantmentEntry e : this.children()) e.clearDeferCommit();
 			return super.mouseClicked(click, doubled);
 		} finally {
 			this.suppressFocusClear = false;

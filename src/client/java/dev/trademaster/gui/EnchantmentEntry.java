@@ -29,6 +29,11 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	/** Keystroke flags for B4: parsed, clamped and persisted once on focus loss. */
 	private boolean priceDirty = false;
 	private boolean levelDirty = false;
+	/** Set by the scroll path: the fields were blurred INVOLUNTARILY, so the render
+	 * commit must hold off until a deliberate interaction (or flushEdits at close).
+	 * The draft is kept (levelDirty/priceDirty stay true), so a scroll cannot write a
+	 * half-typed value and cannot lose it either. */
+	private boolean deferCommit = false;
 	private int x, y, entryWidth, entryHeight;
 	/** Redraw cache: extractContent runs for every visible row on every frame, so the
 	 * marked-name literal and its width are rebuilt only when the enable flag flips. */
@@ -153,11 +158,20 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	}
 
 	/** Drops both fields' focus when the entry scrolls off-screen: an invisible
-	 * focused field would keep swallowing keyboard input. In-flight text is not
-	 * lost — flushEdits still commits it at close. */
+	 * focused field would keep swallowing keyboard input. The draft is neither
+	 * committed (a scroll must not write a half-typed value) nor discarded (it still
+	 * lands at a deliberate interaction or flushEdits at close) — the render commit
+	 * holds off while {@link #deferCommit} is set. */
 	void clearFieldFocus() {
 		this.levelField.setFocused(false);
 		this.maxPriceField.setFocused(false);
+		this.deferCommit = true;
+	}
+
+	/** A deliberate interaction (a click in the list) ends the scroll-deferral, so the
+	 * render commit may apply the draft again. */
+	void clearDeferCommit() {
+		this.deferCommit = false;
 	}
 
 	private EnchantmentTarget commitLevel(EnchantmentTarget target) {
@@ -221,14 +235,15 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		// Commit once on focus loss (B4): while focused, keystrokes only edit the
 		// text. Not dirty means no keystroke since the last pass, so the config is
 		// authoritative (e.g. a mouse scroll changed it under a focused field).
-		if (!this.levelField.isFocused()) {
+		// deferCommit holds it off after an INVOLUNTARY (scroll) blur.
+		if (!this.levelField.isFocused() && !this.deferCommit) {
 			if (this.levelDirty) target = commitLevel(target);
 			if (!this.levelField.getValue().equals(String.valueOf(target.level()))) {
 				this.levelField.setValue(String.valueOf(target.level()));
 			}
 			this.levelDirty = false;
 		}
-		if (!this.maxPriceField.isFocused()) {
+		if (!this.maxPriceField.isFocused() && !this.deferCommit) {
 			// reassign: the commit may clamp the price, and the stale target
 			// would make the field reset to the pre-clamp value for one frame
 			if (this.priceDirty) target = commitPrice(target);
