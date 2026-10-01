@@ -430,6 +430,11 @@ public final class ConfigPersistence {
 				c.nonTradeableProfessions.clear();
 				for (JsonElement e : nonTradeable.getAsJsonArray()) {
 					if (!e.isJsonPrimitive()) continue;
+					if (c.nonTradeableProfessions.size() >= TradeMasterConfig.MAX_NON_TRADEABLE) {
+						TradeMaster.LOGGER.warn("Ignoring profession ids beyond the first {} in trade-master.json",
+								TradeMasterConfig.MAX_NON_TRADEABLE);
+						break;
+					}
 					// the same normalisation readIdString applies: a namespaceless entry means
 					// minecraft:, a hand-written "NITWIT" would otherwise never match
 					Identifier id = TradeMasterConfig.parseId(e.getAsString());

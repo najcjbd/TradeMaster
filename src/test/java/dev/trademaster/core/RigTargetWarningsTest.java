@@ -169,6 +169,25 @@ class RigTargetWarningsTest {
 	}
 
 	@Test
+	void anUnemployedTargetIsReported() {
+		c().workBlockId = "minecraft:lectern";
+		c().professionId = "minecraft:none";
+		c().enchantments.clear();
+		List<Component> warnings = RerollController.rigTargetWarnings();
+		assertTrue(has(warnings, "trademaster.message.profession_unemployed"), "got " + warnings);
+	}
+
+	@Test
+	void aBlankProfessionIdIsSilent() {
+		c().workBlockId = "minecraft:lectern";
+		c().professionId = "   ";
+		c().enchantments.clear();
+		// blank means "use the librarian" (the documented default): nothing to warn about
+		assertTrue(RerollController.rigTargetWarnings().isEmpty(),
+				"got " + RerollController.rigTargetWarnings());
+	}
+
+	@Test
 	void aNonTradeableTargetIsReportedAndDegradesToTheLibrarian() {
 		c().workBlockId = "minecraft:lectern";
 		c().nonTradeableProfessions.clear();

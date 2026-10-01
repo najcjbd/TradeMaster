@@ -8,7 +8,9 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Villagers tab's inline id validation. Headless, because the decision is what the
@@ -99,6 +101,56 @@ class VillagerIdValidationTest {
 			c.professionId = savedProfession;
 			c.nonTradeableProfessions.clear();
 		}
+	}
+
+	@Test
+	void theUnemployedProfessionCannotBeTheTarget() {
+		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		c.nonTradeableProfessions.clear();
+		try {
+			// it sells no trade, so as a target the run could never be satisfied
+			assertEquals("trademaster.villagers.profession_unemployed",
+					VillagersListWidget.professionError("minecraft:none"));
+			assertNull(VillagersListWidget.professionError("minecraft:librarian"));
+		} finally {
+			c.nonTradeableProfessions.clear();
+		}
+	}
+
+	@Test
+	void theListComparesTheEffectiveTarget() {
+		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		String savedProfession = c.professionId;
+		List<String> savedList = List.copyOf(c.nonTradeableProfessions);
+		try {
+			c.nonTradeableProfessions.clear();
+			// the RAW target may not be listed, even when it degrades to something else
+			c.professionId = "minecraft:nitwit";
+			assertEquals("trademaster.villagers.list_target",
+					VillagersListWidget.nonTradeableEntryError("minecraft:nitwit"));
+			// and neither may the EFFECTIVE target the degrade lands on
+			assertEquals("trademaster.villagers.list_target",
+					VillagersListWidget.nonTradeableEntryError("minecraft:librarian"));
+			// a profession that is neither the raw nor the effective target is fine
+			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:cleric"));
+		} finally {
+			c.professionId = savedProfession;
+			c.nonTradeableProfessions.clear();
+			c.nonTradeableProfessions.addAll(savedList);
+		}
+	}
+
+	@Test
+	void anOverlongListIsRefused() {
+		StringBuilder text = new StringBuilder();
+		for (int i = 0; i <= TradeMasterConfig.MAX_NON_TRADEABLE; i++) {
+			if (i > 0) text.append(',');
+			text.append('a').append(i);
+		}
+		// the reader truncates at the cap, so the GUI must not write past it
+		assertNull(VillagersListWidget.parseList(text.toString()));
+		assertTrue(VillagersListWidget.isOverlong(text.toString()));
+		assertFalse(VillagersListWidget.isOverlong("a,b,c"));
 	}
 
 	@Test

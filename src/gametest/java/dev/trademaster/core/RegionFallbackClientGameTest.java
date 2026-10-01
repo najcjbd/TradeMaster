@@ -38,7 +38,7 @@ public class RegionFallbackClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

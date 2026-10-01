@@ -75,9 +75,9 @@ public final class DetectionHub {
 		this.onFail = onFail;
 	}
 
-	/** Arms the hub for one check. NOTE: {@code expectedTrader} is currently UNUSED — the
-	 * event channel's menu cannot be tied to a villager entity (see
-	 * {@link #eventMenuMatchesTrader()}), so it is kept only for a future identity check. */
+	/** Arms the hub for one check. {@code expectedTrader} is the villager the check is meant
+	 * for: the event channel's menu must belong to it (see
+	 * {@link #eventMenuMatchesTrader()}), so a menu another villager opened is not accepted. */
 	public static void arm(DetectionMode mode, boolean interceptScreen, @Nullable Merchant expectedTrader,
 			Consumer<OfferSnapshot> onResult, Consumer<String> onFail) {
 		// single volatile write: the hub and its intercept flag are published together
@@ -90,6 +90,9 @@ public final class DetectionHub {
 			suppressMerchantScreensUntilNanos = System.nanoTime() + POST_DISARM_SUPPRESS_NANOS;
 		}
 		armed = null;
+		// a reconnecting server restarts its container-id counter: a stale id could otherwise
+		// swallow the next session's first offers packet
+		lastSuppressedContainerId = -1;
 	}
 
 	/** Drops the residual suppression window left by {@link #disarm}. The LOCK
@@ -97,6 +100,7 @@ public final class DetectionHub {
 	 * stopped pipeline must not swallow the player's own merchant screens. */
 	public static void clearPostDisarmSuppression() {
 		suppressMerchantScreensUntilNanos = 0L;
+		lastSuppressedContainerId = -1;
 	}
 
 	public static boolean shouldInterceptMerchantScreen() {
@@ -230,8 +234,15 @@ public final class DetectionHub {
 	 * is armed would be delivered as this check's result. The last line in every mode
 	 * is the LOCK-time fingerprint re-check (slotStillMatches), which refuses to buy
 	 * any offer that no longer matches the matched trade. */
+	/** Whether the observed menu belongs to the villager THIS check armed for. The event
+	 * channel only exposes the menu, but the menu carries its own trader, so another villager's
+	 * screen can no longer be read as this check's answer. A hub armed without an expectation
+	 * (expectedTrader == null) accepts any menu, as before. */
 	private boolean eventMenuMatchesTrader() {
-		return this.eventMenu != null;
+		if (this.eventMenu == null) return false;
+		if (this.expectedTrader == null) return true;
+		return ((dev.trademaster.mixin.MerchantMenuAccessor) this.eventMenu).getTrader()
+				== this.expectedTrader;
 	}
 
 	private @Nullable OfferSnapshot eventSnapshot() {

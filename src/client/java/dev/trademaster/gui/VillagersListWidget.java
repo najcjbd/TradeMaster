@@ -16,7 +16,6 @@ import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.world.entity.npc.villager.VillagerProfession;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -395,7 +394,11 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		@Override
 		@Nullable String hintFor(String raw) {
 			List<String> ids = parseList(raw);
-			if (ids == null) return "trademaster.villagers.unknown_profession";
+			if (ids == null) {
+				// parseList refuses both an unparsable id and an over-long list: tell them apart
+				return isOverlong(raw) ? "trademaster.villagers.list_too_many"
+						: "trademaster.villagers.unknown_profession";
+			}
 			for (String id : ids) {
 				String error = nonTradeableEntryError(id);
 				if (error != null) return error;
@@ -413,8 +416,21 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			Identifier id = TradeMasterConfig.parseId(part);
 			if (id == null) return null;
 			if (!ids.contains(id.toString())) ids.add(id.toString());
+			// the same bound the reader enforces: without it the GUI could write a list the
+			// next load silently truncates
+			if (ids.size() > TradeMasterConfig.MAX_NON_TRADEABLE) return null;
 		}
 		return ids;
+	}
+
+	/** Whether the text holds more entries than the config list may hold. */
+	static boolean isOverlong(String text) {
+		if (text == null) return false;
+		int count = 0;
+		for (String part : text.trim().split("[,\\s]+")) {
+			if (!part.isEmpty()) count++;
+		}
+		return count > TradeMasterConfig.MAX_NON_TRADEABLE;
 	}
 
 	/** The red hint key for one entry of the non-tradeable list, or null when it is fine.
@@ -429,9 +445,13 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		if (parsed.equals(Identifier.withDefaultNamespace("none"))) {
 			return "trademaster.villagers.list_none";
 		}
-		// the selected target may not be listed as a profession that cannot trade
-		Identifier target = TradeMasterConfig.INSTANCE.professionIdentifier();
-		if (target != null && parsed.equals(target)) {
+		// the selected target may not be listed as a profession that cannot trade. BOTH ids are
+		// checked: the RAW configured one (what the user picked) and the EFFECTIVE key (which
+		// professionKey() can degrade to when the raw id itself is non-tradeable) — either one
+		// appearing here would break the rig.
+		Identifier raw = TradeMasterConfig.INSTANCE.professionIdentifier();
+		if (raw != null && parsed.equals(raw)) return "trademaster.villagers.list_target";
+		if (parsed.equals(RigTarget.professionKey().identifier())) {
 			return "trademaster.villagers.list_target";
 		}
 		return null;
@@ -458,6 +478,11 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		// report every typo as known
 		if (parsed == null || BuiltInRegistries.VILLAGER_PROFESSION.getOptional(parsed).isEmpty()) {
 			return "trademaster.villagers.unknown_profession";
+		}
+		// unemployed sells no trade: as a TARGET it could never be satisfied (the villager
+		// has to take a job, and then it is no longer unemployed)
+		if (parsed.equals(Identifier.withDefaultNamespace("none"))) {
+			return "trademaster.villagers.profession_unemployed";
 		}
 		if (RigTarget.isNonTradeable(ResourceKey.create(Registries.VILLAGER_PROFESSION, parsed))) {
 			return "trademaster.villagers.not_tradeable";

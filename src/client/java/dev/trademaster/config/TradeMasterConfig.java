@@ -144,6 +144,10 @@ public final class TradeMasterConfig {
 	 * would otherwise be read, kept and rewritten in full on every save. */
 	public static final int MAX_CHESTS = 64;
 
+	/** Upper bound for the non-tradeable profession list: {@code isNonTradeable} scans it on
+	 * hot paths, so a hand-edited file with thousands of entries must not be read in full. */
+	public static final int MAX_NON_TRADEABLE = 64;
+
 	/** Adds a chest unless it is already bound or the list is full. */
 	public boolean addChest(BlockPos pos) {
 		if (pos == null || this.chestPositions.size() >= MAX_CHESTS) return false;

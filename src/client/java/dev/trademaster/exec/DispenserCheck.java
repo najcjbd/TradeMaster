@@ -1,6 +1,5 @@
 package dev.trademaster.exec;
 
-import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.anticheat.LookStep;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -12,6 +11,7 @@ import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Opens the configured dispenser and reports whether it holds a minecart.
@@ -27,11 +27,22 @@ public final class DispenserCheck {
 
 	private enum State { LOOK, USE, WAIT_MENU, SCAN }
 
+	/** Whole-cycle safety net (a wedged rotation, a menu that never opens). */
+	private static final int MAX_TICKS = 200;
+	/** Per-state budget for waiting for the menu the use packet should open (2s),
+	 * measured from entering WAIT_MENU — the whole-cycle counter also counts the rotation,
+	 * so using it here could declare a refusal before the packet had a chance to land. */
+	private static final int MAX_MENU_WAIT_TICKS = 40;
+
 	private final BlockPos pos;
 	private final LookStep look = new LookStep();
 	private State state = State.LOOK;
 	private boolean found = false;
 	private int ticks = 0;
+	private int stateTicks = 0;
+	/** The container id of the dispenser menu THIS check opened, or -1 before it opened one.
+	 * Closing is keyed on it so the player's own dispenser/chest is never touched. */
+	private int openedContainerId = -1;
 
 	public DispenserCheck(BlockPos pos) {
 		this.pos = pos.immutable();
@@ -41,21 +52,25 @@ public final class DispenserCheck {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (player == null || mc.level == null || mc.gameMode == null) return Result.FAILED;
-		if (++this.ticks > 80) {
-			close(player);
+		// a wedged rotation or a menu that never opens must not hang the caller: this is a
+		// safety net only, the per-state budgets below do the real bounding
+		if (++this.ticks > MAX_TICKS) {
+			closeOwnMenu(player);
 			return Result.FAILED;
 		}
+		this.stateTicks++;
 		switch (this.state) {
 			case LOOK -> {
 				// a distinct result: this position holds no dispenser, so waiting out a
 				// "missing cart" cycle could never help (wrong coordinate / replaced block)
 				if (!mc.level.getBlockState(this.pos).is(Blocks.DISPENSER)) return Result.NO_DISPENSER;
 				if (!this.look.tick(player, Vec3.atCenterOf(this.pos))) return Result.RUNNING;
-				this.state = State.USE;
+				enter(State.USE);
 			}
 			case USE -> {
-				if (player.containerMenu instanceof DispenserMenu) {
-					this.state = State.SCAN;
+				if (player.containerMenu instanceof DispenserMenu menu) {
+					rememberMenu(menu);
+					enter(State.SCAN);
 					return Result.RUNNING;
 				}
 				// a leftover menu of unknown origin would swallow the click
@@ -66,12 +81,13 @@ public final class DispenserCheck {
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.pos), Direction.UP, this.pos, false);
 				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
 				player.swing(InteractionHand.MAIN_HAND, true);
-				this.state = State.WAIT_MENU;
+				enter(State.WAIT_MENU);
 			}
 			case WAIT_MENU -> {
-				if (player.containerMenu instanceof DispenserMenu) {
-					this.state = State.SCAN;
-				} else if (this.ticks > 40) {
+				if (player.containerMenu instanceof DispenserMenu menu) {
+					rememberMenu(menu);
+					enter(State.SCAN);
+				} else if (this.stateTicks > MAX_MENU_WAIT_TICKS) {
 					// the server refused the open (out of reach / desync): let the caller
 					// wait and retry rather than jamming here
 					return Result.FAILED;
@@ -85,21 +101,35 @@ public final class DispenserCheck {
 						break;
 					}
 				}
-				close(player);
+				closeOwnMenu(player);
 				return this.found ? Result.HAS_CART : Result.NO_CART;
 			}
 		}
 		return Result.RUNNING;
 	}
 
-	private static void close(LocalPlayer player) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+	private void enter(State next) {
+		this.state = next;
+		this.stateTicks = 0;
 	}
 
-	/** Releases an abandoned check (the gate was disabled mid-flight): closes a container
-	 * THIS check opened, so it cannot swallow the next summon's button press. Safe to call
-	 * when nothing was opened — LOOK has not interacted yet. */
-	public void abort(LocalPlayer player) {
-		if (this.state != State.LOOK) close(player);
+	private void rememberMenu(DispenserMenu menu) {
+		if (this.openedContainerId < 0) this.openedContainerId = menu.containerId;
+	}
+
+	/** Closes the container THIS check opened, and nothing else: the player may have opened
+	 * their own dispenser or chest around the same time. Safe with a null player (a
+	 * disconnect mid-check) and before anything was opened. */
+	private void closeOwnMenu(@Nullable LocalPlayer player) {
+		if (player == null) return;
+		if (!(player.containerMenu instanceof DispenserMenu menu)) return;
+		if (menu.containerId != this.openedContainerId) return;
+		player.closeContainer();
+	}
+
+	/** Releases an abandoned check (the gate was disabled mid-flight): closes the container
+	 * THIS check opened, so it cannot swallow the next summon's button press. */
+	public void abort(@Nullable LocalPlayer player) {
+		closeOwnMenu(player);
 	}
 }

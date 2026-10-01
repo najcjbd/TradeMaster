@@ -39,7 +39,7 @@ public class RerollClientGameTest implements FabricClientGameTest {
 			// NoAI pins the villager so it cannot claim the lectern and self-generate trades
 			world.getServer().runCommand("summon minecraft:villager 6.5 100 2.5");
 			world.getServer().runCommand("data merge entity @e[type=minecraft:villager,limit=1] "
-					+ "{NoAI:1b,Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:10},"
+					+ "{NoAI:1b,VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:1},Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:10},"
 					+ "sell:{id:\"minecraft:composter\",count:1},"
 					+ "uses:0,maxUses:12,rewardExp:true,specialPrice:0,demand:0,priceMultiplier:0.05,xp:0}]}}");
 			context.waitFor((Minecraft mc) -> !mc.level.getEntitiesOfClass(
@@ -70,7 +70,7 @@ public class RerollClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

@@ -86,10 +86,10 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 | Mechanism | How |
 |---|---|
-| **AXE** (default) | Repeatedly breaks the lectern with the main-hand axe and re-places it from the offhand; `preventAxeBreaking` refuses to keep breaking on low durability |
+| **AXE** (default) | Repeatedly breaks the work block with the **derived tool** and re-places it from the offhand; `preventAxeBreaking` refuses to keep breaking on low durability |
 | **TASK_CHAIN** | Break lectern → wait until the villager is unemployed → place lectern → wait for it to become a librarian (strictly waits for the profession state changes) |
 
-Both mechanisms **force the axe into the main hand** before breaking; the `placeDelay` / `interactDelay` delays **only apply while `slowMode` is on** (otherwise a fixed cadence is used). With `slowMode` on, the outward contacts — **breaking the lectern, opening the anvil, applying the name tag** — are paced by `interactDelay` too, not just placement.
+Both mechanisms put the block's **derived tool** into the main hand before breaking; the `placeDelay` / `interactDelay` delays **only apply while `slowMode` is on** (otherwise a fixed cadence is used). With `slowMode` on, the outward contacts — **breaking the lectern, opening the anvil, applying the name tag** — are paced by `interactDelay` too, not just placement.
 
 ## Trade detection
 
@@ -208,10 +208,12 @@ something else into a librarian's trade).
 
 The **Villagers** tab turns the whole rig from "lectern + librarian" into any **work block + profession** pair:
 
-- **Work block**: the block the mod breaks / re-places / restocks from chests (default `minecraft:lectern`). Its position stays on the Settings tab.
+- **Work block**: the block the mod breaks / re-places / restocks from the **player's own inventory** (default `minecraft:lectern`). Its position stays on the Settings tab.
 - **Profession**: the profession the villager should take (default `minecraft:librarian`). **If it sells enchanted books** → use the Enchantments tab and the offer shapes; **if it sells other items** → list those items in the Offers tab's **goods** table (a good's result may be any item), and do NOT enable enchantment targets (they only match enchanted-book results, so they would never match and the run would spin).
-- **The breaking tool is derived**: the block's best tool among the player's items (slots 0-35 plus the offhand, highest destroy speed). If nothing beats the bare hand, the legacy behaviour is kept (an axe is required). Ties are broken by: **Unbreaking present → higher Unbreaking level → higher remaining durability → random**, and the pick is then **locked** (no tool flip-flopping).
-- Start-time validation: a work block that is not a job site for any profession, or an unknown profession id, logs a yellow warning (it does not block the start).
+- **The breaking tool is derived**: the block's best tool among the player's items (slots 0-35 plus the offhand, highest destroy speed, and only one that would actually **drop** the block — a pickaxe-only block is never broken with an axe). If nothing beats the bare hand the legacy behaviour is kept (an axe is required); if the block only drops for a tool the player does NOT carry, the start is refused instead of destroying the block for nothing. Ties are broken by: **higher remaining durability → Unbreaking present → higher Unbreaking level → random**, and the pick is then **locked** (no tool flip-flopping).
+- **Non-tradeable professions**: list the profession ids that can never sell a trade (the built-in nitwit always counts). **A villager with one is handled like a nitwit** (dispatched as a blocker), and the **selected target profession may not be in this list**, nor be a built-in non-tradeable one.
+- **Dispenser minecart check**: with the Settings tab's "Dispenser position" set, the mod opens the dispenser **before each summon** to look for a minecart. Unset → the check is skipped with one warning per run; out of reach → treated as unset (warned); a position that holds **no dispenser** → the run stops; **3 consecutive failed opens** → the run stops; **no cart → re-checked every minute** (the rig refills it, so that is a normal wait).
+- Start-time validation (yellow, does **not** block the start): the work block is not a job site for any profession, or not for THE configured profession, or the profession id is unknown, or the target profession is non-tradeable (it then degrades to the librarian), or the target is the unemployed profession (it never sells a trade), or a non-librarian profession is set with enchantment targets enabled (they only match enchanted-book results).
 
 ## Anti-stall and self-healing
 
@@ -221,7 +223,7 @@ The **Villagers** tab turns the whole rig from "lectern + librarian" into any **
 - **Full inventory**: storage is attempted first; an ORDINARY enchanted book is never dropped, so with no chest (or all full) the run stops. Exception: **cursed books** (which cannot be ground) and the **goods this run produced** follow the "disposal of what cannot be ground" setting — with it set to *stop* the behaviour is as above, with it set to *drop* they are dropped facing the configured drop direction once every chest refuses them.
 - **Idle wait**: with no villager in the staging area the run simply waits; that is **not** a stop, and it resumes as soon as someone shows up.
 - **Timeouts**: `timeoutEnabled` (default **off**) is the global watchdog; `phaseTimeoutsEnabled` (default **on**) bounds a single phase; the wait-for-villager phase is exempt. Turning it OFF disables **every** phase limit (deliberately: off means off, even if something can then hang).
-- **Stops the run on its own**: player moved (`stopOnPlayerMove`, the mod's own teleports are exempt), player died, **dimension change** (portal / server teleport; compared by dimension, so a same-dimension reconnect is fine), out of materials (emeralds / books / lectern / name tags / axe), or an invalid mid-run config edit.
+- **Stops the run on its own**: player moved (`stopOnPlayerMove`, the mod's own teleports are exempt), player died, **dimension change** (portal / server teleport; compared by dimension, so a same-dimension reconnect is fine), out of materials (emeralds / books / work block / name tags / derived tool or axe), a dispenser position that holds no dispenser or repeatedly refuses to open, a mid-run edit of the **work block / target profession / non-tradeable list**, or an invalid mid-run config edit.
 - **Starting while a config screen is open is refused**: maLiLib's config screen only writes its edits back when it **closes**, so a start then is refused with a red message (our own screen is unaffected: it commits drafts immediately).
 
 ## Anti-cheat / legit mode
@@ -275,14 +277,14 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | `/trademaster` (alias `/tm`) | bare command = toggle start/stop |
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
-| Hotkey `V` | Opens the main menu (five tabs: enchantments / settings / keybinds / **aliases** / **offers**) |
+| Hotkey `V` | Opens the main menu (six tabs: enchantments / settings / keybinds / **aliases** / **offers** / **villagers**) |
 | maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
 
 ## Config entry points
 
 All three share the **same** `config/trade-master.json`:
 
-1. the in-game main menu (hotkey `V`, touch-screen friendly) — five tabs: **enchantments / settings / keybinds / aliases / offers**;
+1. the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**;
 2. **Mod Menu** (provides the config-screen entry);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 

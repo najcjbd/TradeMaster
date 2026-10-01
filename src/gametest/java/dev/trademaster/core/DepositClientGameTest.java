@@ -46,7 +46,7 @@ public class DepositClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;
@@ -55,8 +55,8 @@ public class DepositClientGameTest implements FabricClientGameTest {
 				c.dispenserPos = null;
 				c.namingEnabled = false;
 				c.goods.clear();
-				// neutralise the grindstone explicitly: otherwise this test would depend on a
-				// LATER game test having restored grindstonePos, i.e. on the entrypoint order
+				// neutralise the grindstone explicitly rather than relying on whatever the
+				// previous entrypoint happened to leave in the shared config singleton
 				c.grindstoneEnabled = false;
 				c.grindstonePos = null;
 				c.curseDropYaw = null;

@@ -21,8 +21,8 @@ import net.minecraft.world.phys.Vec3;
  * <p>The offered trade is written straight onto the villager so the test is deterministic (a
  * real novice librarian's random trades might never include the wanted book). It sells a plain
  * item — a {@code composter} — so the offer needs no component NBT, and the mod watches for it
- * as a custom GOOD. The target profession is the unemployed id, so the villager needs no AI
- * job-site claim: the run can reach the trade check immediately.
+ * as a custom GOOD. The villager is spawned as a librarian by NBT and pinned with {@code NoAI},
+ * so the target profession already matches and no AI job-site claim has to happen.
  *
  * <p>A match must carry the run into LOCK; a run with no match only ever oscillates
  * CHECK_TRADE &lt;-&gt; REROLL and never reaches LOCK. That exercises the demand table, the offer
@@ -52,7 +52,7 @@ public class TradeMatchClientGameTest implements FabricClientGameTest {
 			// villager so it cannot claim the placed lectern and regenerate its own trades,
 			// which would wipe the crafted offer.
 			world.getServer().runCommand("data merge entity @e[type=minecraft:villager,limit=1] "
-					+ "{NoAI:1b,"
+					+ "{NoAI:1b,VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:1},"
 					+ "Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:" + OFFER_PRICE + "},"
 					+ "sell:{id:\"minecraft:composter\",count:1},"
 					+ "uses:0,maxUses:12,rewardExp:true,specialPrice:0,demand:0,priceMultiplier:0.05,xp:0}]}}");
@@ -81,8 +81,8 @@ public class TradeMatchClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				// the villager is unemployed; targeting that id needs no job-site claim
-				c.professionId = "minecraft:none";
+				// the villager is a pinned librarian, so no job-site claim is needed
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

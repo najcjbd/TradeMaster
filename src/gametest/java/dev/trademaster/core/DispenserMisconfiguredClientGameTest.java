@@ -45,14 +45,14 @@ public class DispenserMisconfiguredClientGameTest implements FabricClientGameTes
 
 			// in the staging region (so it is dispatched) but off the detection ray (so the
 			// precheck does not pick it up directly) — the only way into SUMMON
-			world.getServer().runCommand("summon minecraft:villager 10.5 100 2.5 {NoAI:1b}");
+			world.getServer().runCommand("summon minecraft:villager 10.5 100 2.5 {NoAI:1b,VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:1}}");
 			context.waitFor((Minecraft mc) -> !mc.level.getEntitiesOfClass(Villager.class,
 					AABB.ofSize(VILLAGER_AT, 6, 6, 6)).isEmpty());
 
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

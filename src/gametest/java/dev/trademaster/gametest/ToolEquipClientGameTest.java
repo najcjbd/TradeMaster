@@ -10,7 +10,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.block.Blocks;
 
 /**
  * Cross-feature: the DERIVED tool policy against a live client inventory. Uses real vanilla

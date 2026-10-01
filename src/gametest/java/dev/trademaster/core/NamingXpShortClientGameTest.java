@@ -43,7 +43,7 @@ public class NamingXpShortClientGameTest implements FabricClientGameTest {
 			world.getServer().runCommand("summon minecraft:villager 6.5 100 2.5");
 			// a matching book, but the trade rewards no experience (the level must stay 0)
 			world.getServer().runCommand("data merge entity @e[type=minecraft:villager,limit=1] "
-					+ "{NoAI:1b,Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:10},"
+					+ "{NoAI:1b,VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:1},Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:10},"
 					+ "sell:{id:\"minecraft:enchanted_book\",count:1,components:{"
 					+ "\"minecraft:stored_enchantments\":{\"minecraft:mending\":1}}},"
 					+ "uses:0,maxUses:12,rewardExp:false,specialPrice:0,demand:0,priceMultiplier:0.05,xp:0}]}}");
@@ -54,7 +54,7 @@ public class NamingXpShortClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

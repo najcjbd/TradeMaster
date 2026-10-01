@@ -133,9 +133,15 @@ public final class PositionPicker {
 
 	private static @Nullable Slot nextSlotWithNullPosition() {
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		// the three required positions come first: the hotkey must never leave a required one
+		// unreachable. The OPTIONAL ones follow, last, so every Slot applyTo knows is reachable
+		// (otherwise their cases could never run).
 		if (c.lecternPos == null) return Slot.LECTERN;
 		if (c.summonButtonPos == null) return Slot.SUMMON_BUTTON;
 		if (c.sendAwayButtonPos == null) return Slot.SEND_AWAY_BUTTON;
+		if (c.dispenserPos == null) return Slot.DISPENSER;
+		if (c.grindstonePos == null) return Slot.GRINDSTONE;
+		if (c.chestPositions.isEmpty()) return Slot.CHEST;
 		return null;
 	}
 

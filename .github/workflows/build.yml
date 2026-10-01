@@ -51,14 +51,11 @@ jobs:
           if-no-files-found: error
 
   # The Fabric client game tests (src/gametest) need a REAL client: an X display and the
-  # game assets Loom downloads on first use. They are a separate job because they boot
-  # Minecraft twice (slow) and cannot run in the plain `build` job.
+  # game assets Loom downloads on first use. They are a separate job because `build` does
+  # not compile or run the gametest source set at all, and booting Minecraft is slow.
   client-gametest:
     name: Client game tests (JDK 25, headless)
     runs-on: ubuntu-latest
-    # authored but not yet observed on a GitHub runner: the harness also needs a working
-    # OpenAL for the client to start. Flip this to blocking once a run here is green.
-    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -76,7 +73,30 @@ jobs:
           java-version: '25'
           cache: gradle
 
+      # the client needs an X display (xvfb) AND the audio library the override below points
+      # at: a bare runner has neither guaranteed, and a missing library would crash the client
+      # at boot for a reason unrelated to the code
+      - name: Install the client test dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libopenal1
+
       - name: Run the client game tests headlessly
         env:
           CI: true
+          # a headless runner has no audio device, and the LWJGL OpenAL bundled with the game
+          # can crash on teardown in some environments: use the system OpenAL Soft with the
+          # null backend. Harmless where audio works.
+          JAVA_TOOL_OPTIONS: "-Dorg.lwjgl.openal.libname=libopenal.so.1"
+          ALSOFT_DRIVERS: "null"
         run: xvfb-run -a --server-args="-screen 0 1280x720x24" ./gradlew runClientGameTest --console=plain --stacktrace
+
+      # a failing client test is hard to diagnose without the client log
+      - name: Upload the client test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: client-gametest-logs
+          if-no-files-found: ignore
+          path: |
+            build/run/clientGameTest/logs/
+            build/run/clientGameTest/crash-reports/
+            build/reports/tests/

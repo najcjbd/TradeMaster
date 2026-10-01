@@ -1,6 +1,5 @@
 package dev.trademaster.exec;
 
-import dev.trademaster.core.Preconditions;
 import dev.trademaster.matching.OfferCosts;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
@@ -10,7 +9,6 @@ import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -77,14 +75,14 @@ public class LockTradeExecutor {
 		return resultMatches(this.expected, stack) ? stack.getCount() : 0;
 	}
 
-	/** Copies of the purchase lying on the ground near the player: with a full inventory the
-	 * server drops the bought item at the player's feet, which is the only server-authoritative
-	 * evidence available in that case (a full inventory cannot pick the drop up).
+	/** Copies of the purchase lying on the ground near the player: when the trade's slots do
+	 * not take the whole delivery the server drops the rest at the player's feet, which is
+	 * server-authoritative evidence (a full inventory cannot pick it up).
 	 *
-	 * <p>A ground drop is a WHOLE stack, so the strict {@code resultMatches} predicate applies
-	 * (item + components + the purchase's amount). {@code matchingCount} relaxes a good to bare
-	 * item identity for the inventory count, which would let an unrelated drop of the same item
-	 * pass as our purchase here. */
+	 * <p>Strict: apart from {@code resultMatches} (which checks the full enchantment set for a
+	 * book and item + amount for a good) the stack must be component-identical to the purchase.
+	 * A good's {@code resultMatches} alone is item identity, which would let an unrelated —
+	 * or component-distinct — drop of the same item pass as our purchase. */
 	private int droppedMatches(Minecraft client) {
 		if (client.level == null || client.player == null) return 0;
 		int count = 0;
@@ -94,7 +92,8 @@ public class LockTradeExecutor {
 			ItemStack stack = drop.getItem();
 			if (this.expected == null) {
 				if (stack.is(Items.ENCHANTED_BOOK)) count += stack.getCount();
-			} else if (resultMatches(this.expected, stack)) {
+			} else if (resultMatches(this.expected, stack)
+					&& ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())) {
 				count += stack.getCount();
 			}
 		}
@@ -208,23 +207,20 @@ public class LockTradeExecutor {
 				// server refusing the click would still read as verified.
 				int need = this.expected == null ? 1
 						: Math.max(1, this.expected.purchase().result().getCount());
-				if (client.player != null
-						&& matchingBookCount(client.player) - this.preBookCount >= need) {
+				// the delivery can be SPLIT: the slots the trade freed take what fits and the
+				// server DROPS the rest at the player's feet. Both deltas count, together.
+				int gained = client.player == null ? 0
+						: matchingBookCount(client.player) - this.preBookCount;
+				int dropped = Math.max(0, droppedMatches(client) - this.droppedBaseline);
+				if (gained + dropped >= need) {
 					this.verified = true;
 					return Result.DONE;
 				}
-				// With no free slot the server has nowhere to put the book, so it DROPS it at
-				// the player: the inventory count cannot rise and the prediction must not be
-				// trusted either (it would report an unbought target as locked). The drop IS
-				// observable — and a full inventory cannot pick it up, so it stays put — so a
-				// rising count of nearby matching drops is the server-authoritative proof.
-				// Still nothing observed means the outcome stays UNKNOWN (the timeout below).
-				if (client.player != null && !Preconditions.hasFreeSlot(client.player)) {
-					if (droppedMatches(client) > this.droppedBaseline) {
-						this.verified = true;
-						return Result.DONE;
-					}
-				}
+				// A ground drop is what the server produced when a slot was missing, so it is
+				// server-authoritative evidence — unlike the client's own prediction. The
+				// leftover stays on the ground until a slot frees (a full inventory cannot
+				// pick it up) and the player then collects it on their own.
+				// Nothing observed yet means the outcome stays UNKNOWN (the timeout below).
 				// 60 ticks (about 3s at 20 tps; longer if the client itself stalls,
 				// since this counter rides the client tick), in line with the other
 				// slot-sync waits. Timing out means the outcome is UNKNOWN, not that

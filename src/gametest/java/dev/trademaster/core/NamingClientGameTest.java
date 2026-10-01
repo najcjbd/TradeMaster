@@ -22,7 +22,8 @@ import net.minecraft.world.phys.Vec3;
  *
  * <p>The offer is written onto the villager directly (a real novice's random trades are not
  * deterministic): pay emeralds, receive an enchanted book carrying {@code mending 1}. The
- * villager's target profession is the unemployed id, so no job-site claim is needed.
+ * villager is spawned as a librarian by NBT and pinned with {@code NoAI}, so the target
+ * profession already matches and no job-site claim has to happen.
  */
 @SuppressWarnings("UnstableApiUsage")
 public class NamingClientGameTest implements FabricClientGameTest {
@@ -48,7 +49,7 @@ public class NamingClientGameTest implements FabricClientGameTest {
 			// NoAI pins the villager: without it it would claim the placed lectern, become a
 			// librarian and REGENERATE its trades, wiping the crafted offer below
 			world.getServer().runCommand("data merge entity @e[type=minecraft:villager,limit=1] "
-					+ "{NoAI:1b,"
+					+ "{NoAI:1b,VillagerData:{type:\"minecraft:plains\",profession:\"minecraft:librarian\",level:1},"
 					+ "Offers:{Recipes:[{buy:{id:\"minecraft:emerald\",count:" + OFFER_PRICE + "},"
 					+ "sell:{id:\"minecraft:enchanted_book\",count:1,components:{"
 					+ "\"minecraft:stored_enchantments\":{\"minecraft:mending\":1}}},"
@@ -80,7 +81,7 @@ public class NamingClientGameTest implements FabricClientGameTest {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
-				c.professionId = "minecraft:none";
+				c.professionId = "minecraft:librarian";
 				c.lecternPos = LECTERN;
 				c.summonButtonPos = SUMMON_BUTTON;
 				c.sendAwayButtonPos = SEND_AWAY_BUTTON;

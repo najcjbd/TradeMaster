@@ -29,12 +29,14 @@ import java.util.List;
  * re-places and restocks, the profession the villager should take, and the tool DERIVED
  * from the block.
  *
- * <p>Only the block id and the profession id are configured (the "Villagers" tab). The
- * breaking tool is derived: the block's best tool among the player's items (slots 0..35
- * plus the offhand), with ties broken by Unbreaking, its level, then remaining
- * durability, and finally a RANDOM pick that is then LOCKED so the mod never flip-flops
- * between equal tools. A block with no better-than-hand tool keeps the legacy behaviour
- * (an axe is required). An unknown block id falls back to the lectern, so a bad config
+ * <p>Only the block id, the profession id and the non-tradeable profession list are
+ * configured (the "Villagers" tab). The breaking tool is derived: the block's best tool among
+ * the player's items (slots 0..35 plus the offhand, and only one that would actually DROP the
+ * block). Ties are broken by remaining durability, then Unbreaking, then its level, and
+ * finally a RANDOM pick that is then LOCKED so the mod never flip-flops between equal tools.
+ * A block with no better-than-hand tool keeps the legacy behaviour (an axe is required); a
+ * block that only drops for a tool the player does not carry is refused instead of being
+ * destroyed for nothing. An unknown block id falls back to the lectern, so a bad config
  * cannot wedge the break/place loop.
  *
  * <p>NOTE: the matching / naming / deduction still assume the profession SELLS ENCHANTED

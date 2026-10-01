@@ -121,6 +121,11 @@ public final class RerollController {
 	 * position, so the pipeline stops instead of flailing at empty coordinates. */
 	private static @Nullable Identifier sessionDimension = null;
 	private static boolean snapRegionConfigured = false;
+	/** The rig target (work block + target profession + non-tradeable list) the RUN started
+	 * with. The rig breaks/re-places the work block and judges villagers by the profession, so
+	 * a mid-run edit is a rig-definition change: stop the run rather than silently switching
+	 * what the pipeline is working on (the grindstone guard mirrors this). */
+	private static @Nullable String snapRigTarget = null;
 	/** The lectern-sphere fallback was confirmed with /trademaster goon. Persists
 	 * across runs, but only for the world it was granted in — RE-ENTERING a world
 	 * asks again (decided 2026-09-25): a confirmation from elsewhere must never
@@ -304,6 +309,7 @@ public final class RerollController {
 		s.movementGuard.start(player.position());
 		// sand-wheel mode definition snapshot: a mid-run change to the enable flag
 		// or the grindstone position stops the run (see grindstoneConfigChanged)
+		snapRigTarget = rigTargetDefinition(config);
 		snapGrindstoneEnabled = config.grindstoneEnabled;
 		snapGrindstonePos = config.grindstonePos;
 		grindstoneSnapshotValid = true;
@@ -509,6 +515,14 @@ public final class RerollController {
 		}
 		// the staging area is part of the running rig too: losing the region coords
 		// mid-run would silently move the staging wait to the lectern sphere
+		if (snapRigTarget != null && !snapRigTarget.equals(rigTargetDefinition(config))) {
+			// the rig definition (work block / target profession / non-tradeable list) belongs
+			// to the running rig: switching any of them mid-run makes the pipeline work the old
+			// spot with the new rules (or break/place a block that is not there). Stop the
+			// normal way instead of switching under the pipeline.
+			stop(Component.translatable("trademaster.message.rig_target_config_changed"), ChatFormatting.RED);
+			return;
+		}
 		if (snapRegionConfigured && !regionConfigured()) {
 			stop(Component.translatable("trademaster.message.region_broken"), ChatFormatting.RED);
 			return;
@@ -805,6 +819,8 @@ public final class RerollController {
 	 * wait: the gate is being turned off, and neither may linger into a later check. */
 	private static void releaseCheck() {
 		if (dispenserCheck != null) {
+			// the player can already be gone here (stop() runs from the disconnect hook), and
+			// abort() is null-safe: a half-stopped pipeline would otherwise NPE on every stop
 			dispenserCheck.abort(Minecraft.getInstance().player);
 			dispenserCheck = null;
 		}
@@ -1385,6 +1401,10 @@ public final class RerollController {
 								notice(Component.translatable(unconfirmed
 										? "trademaster.message.lock_unconfirmed"
 										: "trademaster.message.lock_drift_purchased"));
+								// voucher the attempted target first: the rebuild re-enqueues
+								// every enabled target, and re-demanding this one would buy a
+								// SECOND copy (see handleLockFailure)
+								if (s.matchedTrade != null) s.lockedIds.addAll(s.matchedTrade.matchedIds());
 								// the edit may have emptied the matcher, and the tick-top check
 								// is a one-shot on the fingerprint (suppressed while
 								// finalizing): finish the run here instead of parking in
@@ -1464,7 +1484,15 @@ public final class RerollController {
 			if (lockExecutor != null && lockExecutor.purchaseSent()) {
 				switch (lockExecutor.tick()) {
 					case DONE -> finishLock(s);
-					case FAILED -> awaitNextVillager(client, s);
+					case FAILED -> {
+						// the click is out and the outcome is unknown: voucher the attempted
+						// target, or awaitNextVillager's restoreBudget puts it straight back and
+						// the next villager buys a SECOND copy (same rule as handleLockFailure)
+						if ((lockExecutor.uncertain() || lockExecutor.drifted()) && s.matchedTrade != null) {
+							s.lockedIds.addAll(s.matchedTrade.matchedIds());
+						}
+						awaitNextVillager(client, s);
+					}
 					case RUNNING -> {}
 				}
 			} else {
@@ -1627,10 +1655,14 @@ public final class RerollController {
 			notice(Component.translatable(unconfirmed
 					? "trademaster.message.lock_unconfirmed"
 					: "trademaster.message.lock_drift_purchased"));
-			// rebuild the needs FIRST: otherwise awaitNextVillager's restoreBudget puts the
-			// just-attempted target straight back (it is not in lockedIds) and the next
-			// villager buys a SECOND copy. The rebuild also finishes a run whose targets
-			// were all disabled in the meantime, like the edited-out path does.
+			// the click is out and the outcome is unknown: the target must not be re-demanded,
+			// or the next villager buys a SECOND copy. The needs rebuild re-enqueues every
+			// still-enabled target, so voucher the attempted ones as obtained for this run
+			// first — exactly the bookkeeping a proven purchase would have written.
+			// (No lockedResults/hunt/auto-disable: the purchase is not proven.)
+			if (s.matchedTrade != null) s.lockedIds.addAll(s.matchedTrade.matchedIds());
+			// the rebuild also finishes a run whose targets were all disabled in the meantime,
+			// like the edited-out path does
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty()) {
 				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
@@ -2273,11 +2305,23 @@ public final class RerollController {
 			warnings.add(Component.translatable("trademaster.message.workblock_not_for_profession",
 					resolved.getName()));
 		}
-		if (!RigTarget.professionKnown()) {
+		if (config.professionIdentifier() == null) {
+			// blank or unparsable. A BLANK id is the documented default (the runtime uses the
+			// librarian), so only a real typo is worth a warning.
+			if (config.professionId != null && !config.professionId.isBlank()) {
+				warnings.add(Component.translatable("trademaster.message.profession_invalid",
+						config.professionId));
+			}
+		} else if (!RigTarget.professionKnown()) {
 			warnings.add(Component.translatable("trademaster.message.profession_invalid", config.professionId));
 		} else if (RigTarget.professionConfiguredNonTradeable()) {
 			// the target degrades to the librarian: say which id was ignored
 			warnings.add(Component.translatable("trademaster.message.profession_not_tradeable",
+					config.professionId));
+		} else if (RigTarget.professionKey().equals(VillagerProfession.NONE)) {
+			// unemployed sells no trade: as a target the run can never lock, so say so even
+			// though the pairing check above deliberately skips it
+			warnings.add(Component.translatable("trademaster.message.profession_unemployed",
 					config.professionId));
 		}
 		// a non-librarian profession may sell GOODS instead of books: an enchantment
@@ -2714,6 +2758,12 @@ public final class RerollController {
 	 * deposit factory only re-reads them at deposit time — switching mid-run would
 	 * silently change how books are disposed of. The drop DIRECTION is deliberately
 	 * not checked: editing it mid-run is allowed, DROP_AIM re-reads it live. */
+	/** The rig-target definition as one string: the mid-run change guard compares this. */
+	private static String rigTargetDefinition(TradeMasterConfig config) {
+		return config.workBlockId + "\u0000" + config.professionId + "\u0000"
+				+ String.join(",", config.nonTradeableProfessions);
+	}
+
 	private static boolean grindstoneConfigChanged(TradeMasterConfig config) {
 		if (config.grindstoneEnabled != snapGrindstoneEnabled) return true;
 		if (config.grindstonePos == null) return snapGrindstonePos != null;
@@ -2737,6 +2787,7 @@ public final class RerollController {
 		DetectionHub.disarm();
 		grindstoneSnapshotValid = false;
 		snapRegionConfigured = false;
+		snapRigTarget = null;
 		sessionDimension = null;
 		regionFallbackPending = false;
 		// a stopped pipeline sends no more interacts: the residual suppression

@@ -41,18 +41,19 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		this.pickupStep = new PickupLecternStep();
 		// the CONFIGURED profession (RigTarget defaults a blank/garbage id to the librarian)
 		ResourceKey<VillagerProfession> wanted = RigTarget.professionKey();
-		StepRunner runner = new StepRunner()
+		// NOTE: an unemployed ("none") target is refused by the Villagers tab and warned about
+		// at start, so it is only reachable by hand-editing. The final wait is kept for it: an
+		// unemployed villager claims the work block the moment it is placed, so waiting for
+		// "none" here can never end and the 400t timeout stops the run with a clear reason —
+		// better than skipping the wait and looping through the WAIT_PROFESSION self-heal.
+		this.runner = new StepRunner()
 				.add(new BreakLecternStep())
 				.add(this.pickupStep)
 				.add(new WaitProfessionStep(VillagerProfession.NONE, "trademaster.error.wait-none-timeout"))
-				.add(new PlaceLecternStep());
-		// an unemployed target needs no profession change: waiting for NONE after the work
-		// block is placed could never end (the villager claims it and becomes employed), so
-		// that final wait is skipped rather than timing out
-		if (!wanted.equals(VillagerProfession.NONE)) {
-			runner.add(new WaitProfessionStep(wanted, "trademaster.error.wait-librarian-timeout"));
-		}
-		this.runner = runner;
+				.add(new PlaceLecternStep())
+				.add(new WaitProfessionStep(wanted, wanted.equals(VillagerProfession.NONE)
+						? "trademaster.error.wait-none-timeout"
+						: "trademaster.error.wait-librarian-timeout"));
 	}
 
 	@Override
