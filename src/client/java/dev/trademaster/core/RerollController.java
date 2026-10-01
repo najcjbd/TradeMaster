@@ -80,8 +80,6 @@ public final class RerollController {
 	private static boolean dispenserUnsetWarned = false;
 	/** Whether the once-per-run "dispenser out of reach" warning was shown. */
 	private static boolean dispenserOutOfReachWarned = false;
-	/** Whether the once-per-run "no dispenser at that position" warning was shown. */
-	private static boolean dispenserNotADispenserWarned = false;
 	/** Consecutive dispenser OPEN failures: a missing cart may be waited out forever, a
 	 * dispenser that cannot be opened must not be. */
 	private static int dispenserFailedAttempts = 0;
@@ -365,7 +363,6 @@ public final class RerollController {
 		dispenserWaitTicks = 0;
 		dispenserUnsetWarned = false;
 		dispenserOutOfReachWarned = false;
-		dispenserNotADispenserWarned = false;
 		dispenserFailedAttempts = 0;
 		s.goodBaseline.clear();
 		s.lockedResults.clear();
@@ -804,9 +801,22 @@ public final class RerollController {
 	 *
 	 * <p>Package-private so a client game test in this package can drive the gate against a
 	 * real dispenser. */
+	/** Drops an in-flight dispenser check (closing any container it opened) and its pending
+	 * wait: the gate is being turned off, and neither may linger into a later check. */
+	private static void releaseCheck() {
+		if (dispenserCheck != null) {
+			dispenserCheck.abort(Minecraft.getInstance().player);
+			dispenserCheck = null;
+		}
+		dispenserWaitTicks = 0;
+	}
+
 	static boolean dispenserReady() {
 		var pos = TradeMasterConfig.INSTANCE.dispenserPos;
 		if (pos == null) {
+			// the gate is off: drop any in-flight check (its open container would swallow the
+			// button press) and the pending wait, so neither lingers into a later check
+			releaseCheck();
 			if (!dispenserUnsetWarned) {
 				dispenserUnsetWarned = true;
 				notice(Component.translatable("trademaster.message.dispenser_unset"));
@@ -817,6 +827,8 @@ public final class RerollController {
 		// a coordinate the player cannot REACH is as good as unset: the open would just
 		// fail and we would wait a minute for nothing, so treat it like a parse failure
 		if (dispenserPlayer == null || !dispenserPlayer.isWithinBlockInteractionRange(pos, 1.0)) {
+			// as above: an unreachable position must not leave a wait (or an open menu) behind
+			releaseCheck();
 			if (!dispenserOutOfReachWarned) {
 				dispenserOutOfReachWarned = true;
 				chat(Component.translatable("trademaster.message.dispenser_out_of_reach")
@@ -839,8 +851,10 @@ public final class RerollController {
 				return true;
 			}
 			case NO_CART -> {
-				// transient by design: the clone command refills the dispenser
+				// transient by design: the clone command refills the dispenser. The open
+				// itself worked, so the consecutive-failure counter starts over.
 				dispenserCheck = null;
+				dispenserFailedAttempts = 0;
 				dispenserWaitTicks = 20 * 60;
 				debug("summon: dispenser has no minecart yet, retrying in a minute");
 				return false;
@@ -876,7 +890,10 @@ public final class RerollController {
 		// a cart (the villager could not be sent away afterwards and the rig jams). The
 		// check opens the dispenser — the only client-side way to see its slots — and a
 		// missing cart is WAITED OUT (the rig recycles carts; the return path is long).
-		if (!dispenserReady()) return;
+		// the gate is consulted ONCE per summon attempt: re-opening the dispenser on every
+		// press tick would starve the button presser (its confirm window is counted in press
+		// ticks) and open/close the container while the button is being pressed
+		if (summonPresser == null && !dispenserReady()) return;
 		if (summonPresser == null) summonPresser = new ButtonPresser(s.summonButtonPos);
 		RerollStrategy.StepResult result = summonPresser.tick();
 		if (result.step() == RerollStrategy.Step.DONE) {
@@ -2267,9 +2284,11 @@ public final class RerollController {
 		// target only matches an enchanted-book result, so an enabled one would never
 		// match and the run would spin. Point at the goods table instead. Only for a KNOWN,
 		// tradeable profession — an unknown one already has its own warning.
+		// the EFFECTIVE key: a non-tradeable target degrades to the librarian, and warning
+		// about the (ignored) raw id would be wrong
 		Identifier profession = config.professionIdentifier();
 		if (RigTarget.professionKnown() && profession != null
-				&& !profession.equals(Identifier.withDefaultNamespace("librarian"))
+				&& !RigTarget.professionKey().equals(VillagerProfession.LIBRARIAN)
 				&& !config.enabledTargets().isEmpty()) {
 			warnings.add(Component.translatable("trademaster.message.profession_not_book"));
 		}
@@ -2711,6 +2730,10 @@ public final class RerollController {
 	}
 
 	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
+		releaseCheck();
+		dispenserUnsetWarned = false;
+		dispenserOutOfReachWarned = false;
+		dispenserFailedAttempts = 0;
 		DetectionHub.disarm();
 		grindstoneSnapshotValid = false;
 		snapRegionConfigured = false;

@@ -236,6 +236,8 @@
   "trademaster.villagers.unknown_block": "Unknown block id",
   "trademaster.villagers.unknown_profession": "Unknown profession id",
   "trademaster.villagers.not_tradeable": "This profession can never trade (it cannot be the target)",
+  "trademaster.villagers.list_none": "The unemployed profession must stay usable: it is what lets a villager take the job",
+  "trademaster.villagers.list_target": "That is the configured target profession; it cannot be listed as one that never trades",
   "trademaster.villagers.id_empty": "Enter an id",
   "trademaster.column.nonTradeable": "Non-tradeable professions",
   "trademaster.column.air_items": "Air items",

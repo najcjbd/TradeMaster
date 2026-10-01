@@ -69,8 +69,16 @@ public class GrindstoneClientGameTest implements FabricClientGameTest {
 			boolean[] sawDeposit = { false };
 			context.waitFor((Minecraft mc) -> {
 				if (RerollController.currentPhase() == Phase.DEPOSIT) sawDeposit[0] = true;
-				return Preconditions.countItem(mc.player, Items.ENCHANTED_BOOK) == 0
-						&& Preconditions.countItem(mc.player, Items.BOOK) >= 2;
+				// count the RAW inventory: the recycler verifies with the very same
+				// Preconditions.countItem, so using that as the oracle too would hide a bug in it
+				int enchanted = 0;
+				int plain = 0;
+				for (int i = 0; i < 36; i++) {
+					var stack = mc.player.getInventory().getItem(i);
+					if (stack.is(Items.ENCHANTED_BOOK)) enchanted += stack.getCount();
+					else if (stack.is(Items.BOOK)) plain += stack.getCount();
+				}
+				return enchanted == 0 && plain >= 2;
 			}, 900);
 			if (!sawDeposit[0]) throw new AssertionError("the run never entered DEPOSIT");
 			System.out.println("[TM-GAMETEST] grindstone recycled the book ok");

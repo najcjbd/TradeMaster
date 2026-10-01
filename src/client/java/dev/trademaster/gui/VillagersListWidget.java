@@ -37,7 +37,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	private static final int FIELD_WIDTH = 150;
 	private static final int FIELD_GAP = 6;
 	private static final int ID_MAX_LENGTH = 128;
-	private static final int LIST_MAX_LENGTH = 256;
+	private static final int LIST_MAX_LENGTH = 1024;
 
 	/** Set while the list dispatches a click: vanilla focuses the clicked entry AFTER the
 	 * entry handled the click, and that focus move can scroll the viewport and thus run the
@@ -47,10 +47,10 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	public VillagersListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
 		super(client, width, height, top, itemHeight);
 		this.addEntry(new IdRow("trademaster.column.workBlock", TradeMasterConfig.INSTANCE.workBlockId,
-				ID_MAX_LENGTH, VillagersListWidget::workBlockError,
+				ID_MAX_LENGTH, "trademaster.villagers.unknown_block", VillagersListWidget::workBlockError,
 				() -> TradeMasterConfig.INSTANCE.workBlockId, VillagersListWidget::commitWorkBlock));
 		this.addEntry(new IdRow("trademaster.column.profession", TradeMasterConfig.INSTANCE.professionId,
-				ID_MAX_LENGTH, VillagersListWidget::professionError,
+				ID_MAX_LENGTH, "trademaster.villagers.unknown_profession", VillagersListWidget::professionError,
 				() -> TradeMasterConfig.INSTANCE.professionId, VillagersListWidget::commitProfession));
 		this.addEntry(new ListRow("trademaster.column.nonTradeable", LIST_MAX_LENGTH,
 				VillagersListWidget::commitNonTradeable));
@@ -90,8 +90,12 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		// the tab's one constraint, shown once under the rows: only the profession id is
 		// configurable, the trade shape is not
 		Font font = Minecraft.getInstance().font;
-		int y = this.getY() + this.getHeight() - 11;
-		if (y <= this.getY()) return;
+		int rows = this.children().size();
+		if (rows == 0) return;
+		// just under the last row: the vanilla background pass runs BEFORE the rows, so a
+		// hint at the widget's bottom could be painted over by a row on a short screen
+		int y = this.getRowTop(rows - 1) + this.defaultEntryHeight + 2;
+		if (y + 9 > this.getY() + this.getHeight()) return;
 		String hint = Component.translatable("trademaster.villagers.hint").getString();
 		context.text(font, Component.literal(fit(font, hint, this.getWidth() - 6)),
 				this.getX() + 3, y, 0xFF9A9A9A);
@@ -274,6 +278,18 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			return super.mouseClicked(click, doubled);
 		}
 
+		/** The drag lands on the row (the list's focused child), not the nested field:
+		 * forward it so EditBox's onDrag text selection works, as the sibling rows do. */
+		@Override
+		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
+			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
+		}
+
+		@Override
+		public boolean mouseReleased(MouseButtonEvent click) {
+			return this.field.mouseReleased(click);
+		}
+
 		@Override
 		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			this.x = this.getX();
@@ -283,7 +299,13 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			Font font = Minecraft.getInstance().font;
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
 			context.text(font, Component.translatable(this.labelKey()), this.x + 4, this.y + 6, 0xFFE0E000);
-			int fieldX = this.x + this.entryWidth - FIELD_WIDTH - 10;
+			// clamp the field to what the row can actually hold: a fixed 150px wide field
+			// would overflow a narrow (Android/FCL) screen and collide with the label
+			int labelWidth = font.width(Component.translatable(this.labelKey()));
+			int available = this.entryWidth - 4 - labelWidth - FIELD_GAP - 10;
+			int fieldWidth = Math.max(40, Math.min(FIELD_WIDTH, available));
+			this.field.setWidth(fieldWidth);
+			int fieldX = this.x + this.entryWidth - fieldWidth - 10;
 			this.field.setX(Math.max(this.x + 4, fieldX));
 			this.field.setY(this.y + 2);
 			context.pose().pushMatrix();
@@ -306,14 +328,16 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	/** One single-id row. */
 	static final class IdRow extends Row {
 		private final String labelKey;
+		private final String unknownKey;
 		private final java.util.function.Function<String, @Nullable String> check;
 		private final java.util.function.Supplier<String> stored;
 
-		IdRow(String labelKey, String value, int maxLength,
+		IdRow(String labelKey, String value, int maxLength, String unknownKey,
 				java.util.function.Function<String, @Nullable String> check,
 				java.util.function.Supplier<String> stored, Consumer<String> setter) {
 			super(value, maxLength, setter);
 			this.labelKey = labelKey;
+			this.unknownKey = unknownKey;
 			this.check = check;
 			this.stored = stored;
 		}
@@ -338,7 +362,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		@Nullable String hintFor(String raw) {
 			if (raw == null || raw.isBlank()) return "trademaster.villagers.id_empty";
 			Identifier id = TradeMasterConfig.parseId(raw);
-			if (id == null) return "trademaster.villagers.unknown_profession";
+			if (id == null) return this.unknownKey;
 			return this.check.apply(id.toString());
 		}
 	}
@@ -373,10 +397,8 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			List<String> ids = parseList(raw);
 			if (ids == null) return "trademaster.villagers.unknown_profession";
 			for (String id : ids) {
-				Identifier parsed = Identifier.tryParse(id);
-				if (parsed == null || BuiltInRegistries.VILLAGER_PROFESSION.getOptional(parsed).isEmpty()) {
-					return "trademaster.villagers.unknown_profession";
-				}
+				String error = nonTradeableEntryError(id);
+				if (error != null) return error;
 			}
 			return null;
 		}
@@ -393,6 +415,26 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			if (!ids.contains(id.toString())) ids.add(id.toString());
 		}
 		return ids;
+	}
+
+	/** The red hint key for one entry of the non-tradeable list, or null when it is fine.
+	 * Package-private so a test can exercise the decision without building a widget. */
+	static @Nullable String nonTradeableEntryError(String id) {
+		Identifier parsed = Identifier.tryParse(id);
+		if (parsed == null || BuiltInRegistries.VILLAGER_PROFESSION.getOptional(parsed).isEmpty()) {
+			return "trademaster.villagers.unknown_profession";
+		}
+		// unemployment is the state that lets a villager TAKE the job: listing it would leave
+		// the rig with no candidate it can employ
+		if (parsed.equals(Identifier.withDefaultNamespace("none"))) {
+			return "trademaster.villagers.list_none";
+		}
+		// the selected target may not be listed as a profession that cannot trade
+		Identifier target = TradeMasterConfig.INSTANCE.professionIdentifier();
+		if (target != null && parsed.equals(target)) {
+			return "trademaster.villagers.list_target";
+		}
+		return null;
 	}
 
 	/** The red hint key for a work block id, or null when it is usable. Package-private so a

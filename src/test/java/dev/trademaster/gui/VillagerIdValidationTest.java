@@ -73,6 +73,35 @@ class VillagerIdValidationTest {
 	}
 
 	@Test
+	void listEntriesRejectTheTargetAndTheUnemployedId() {
+		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		String savedProfession = c.professionId;
+		c.nonTradeableProfessions.clear();
+		try {
+			c.professionId = "minecraft:librarian";
+			// a normal other profession is fine to list
+			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:cleric"));
+			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:nitwit"));
+			// unemployment must stay usable, and the target may not be listed
+			assertEquals("trademaster.villagers.list_none",
+					VillagersListWidget.nonTradeableEntryError("minecraft:none"));
+			assertEquals("trademaster.villagers.list_target",
+					VillagersListWidget.nonTradeableEntryError("minecraft:librarian"));
+			// an unknown id is still just unknown
+			assertEquals("trademaster.villagers.unknown_profession",
+					VillagersListWidget.nonTradeableEntryError("unknownmod:job"));
+			// and the "target" follows the config
+			c.professionId = "minecraft:cleric";
+			assertEquals("trademaster.villagers.list_target",
+					VillagersListWidget.nonTradeableEntryError("minecraft:cleric"));
+			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:librarian"));
+		} finally {
+			c.professionId = savedProfession;
+			c.nonTradeableProfessions.clear();
+		}
+	}
+
+	@Test
 	void listParsingNormalisesAndDeduplicates() {
 		assertEquals(List.of("minecraft:a", "minecraft:b", "minecraft:c"),
 				VillagersListWidget.parseList("a, b   C"));

@@ -55,6 +55,12 @@ public class DepositClientGameTest implements FabricClientGameTest {
 				c.dispenserPos = null;
 				c.namingEnabled = false;
 				c.goods.clear();
+				// neutralise the grindstone explicitly: otherwise this test would depend on a
+				// LATER game test having restored grindstonePos, i.e. on the entrypoint order
+				c.grindstoneEnabled = false;
+				c.grindstonePos = null;
+				c.curseDropYaw = null;
+				c.curseDropPitch = null;
 				c.chestPositions.clear();
 				c.addChest(CHEST);
 				c.enchantments.clear();

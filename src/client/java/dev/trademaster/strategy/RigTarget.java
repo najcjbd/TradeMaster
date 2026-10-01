@@ -146,8 +146,11 @@ public final class RigTarget {
 
 	/** A profession that can never sell the target trade: the built-in NITWIT plus every id
 	 * listed in the Villagers tab. Such a villager is handled like a nitwit (dispatched as a
-	 * blocker), and the list may not name the configured target itself. */
+	 * blocker), and the list may not name the configured target itself. UNEMPLOYMENT is never
+	 * non-tradeable: it is the very state that lets a villager TAKE the configured job, so
+	 * listing it must not make the candidate unusable. */
 	public static boolean isNonTradeable(ResourceKey<VillagerProfession> key) {
+		if (key.equals(VillagerProfession.NONE)) return false;
 		if (key.equals(VillagerProfession.NITWIT)) return true;
 		for (String raw : TradeMasterConfig.INSTANCE.nonTradeableProfessions) {
 			Identifier id = TradeMasterConfig.parseId(raw);
@@ -170,11 +173,15 @@ public final class RigTarget {
 
 	/** NITWIT, a configured non-tradeable profession, or employed in a profession other than
 	 * the configured one. UNEMPLOYED is usable: it can still take the configured job at the
-	 * work block. */
+	 * work block. The EFFECTIVE target is always usable — even when its raw id was listed as
+	 * non-tradeable and {@link #professionKey()} therefore degraded to the librarian —
+	 * otherwise the very villager the rig wants would be dispatched as a blocker and nothing
+	 * could ever lock. */
 	public static boolean isUnusable(Holder<VillagerProfession> profession) {
+		if (isTarget(profession)) return false;
 		if (isNonTradeable(profession)) return true;
 		if (profession.is(VillagerProfession.NONE)) return false;
-		return !profession.is(professionKey());
+		return true;
 	}
 
 	// ---- tool ---------------------------------------------------------------

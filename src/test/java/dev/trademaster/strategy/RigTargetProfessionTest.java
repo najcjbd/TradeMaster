@@ -134,6 +134,29 @@ class RigTargetProfessionTest {
 	}
 
 	@Test
+	void unemploymentIsNeverNonTradeable() {
+		c().nonTradeableProfessions.clear();
+		// listing "none" must not make the candidate the rig needs unusable
+		c().nonTradeableProfessions.add("minecraft:none");
+		assertFalse(RigTarget.isNonTradeable(VillagerProfession.NONE));
+		assertFalse(RigTarget.isUnusable(McTest.profession(VillagerProfession.NONE)));
+	}
+
+	@Test
+	void theEffectiveTargetStaysUsableEvenWhenItsIdIsListed() {
+		c().professionId = "minecraft:librarian";
+		c().nonTradeableProfessions.clear();
+		c().nonTradeableProfessions.add("minecraft:librarian");
+		// professionKey() degrades the listed target to the librarian, so the villager the rig
+		// wants must not be treated as a blocker (that contradiction could never lock)
+		assertEquals(VillagerProfession.LIBRARIAN, RigTarget.professionKey());
+		assertFalse(RigTarget.isUnusable(McTest.profession(VillagerProfession.LIBRARIAN)));
+		// another listed profession is still unusable
+		c().nonTradeableProfessions.add("minecraft:cleric");
+		assertTrue(RigTarget.isUnusable(McTest.profession(VillagerProfession.CLERIC)));
+	}
+
+	@Test
 	void aNonTradeableTargetDegradesToTheLibrarian() {
 		c().nonTradeableProfessions.clear();
 		// a nitwit can never take a job, so targeting it would make every villager unusable

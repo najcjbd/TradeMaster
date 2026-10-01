@@ -120,8 +120,9 @@ public class NamingClientGameTest implements FabricClientGameTest {
 			});
 			// the exact composed name is the mod's contract with its own deduction parser
 			// (display name + roman level + price): assert it, not just that a name exists
-			String expected = net.minecraft.locale.Language.getInstance()
-					.getOrDefault("enchantment.minecraft.mending") + " I " + OFFER_PRICE;
+			// the client runs en_us: pin the LITERAL so the assertion does not duplicate the
+			// production language lookup (and a missing en_us key surfaces as a failure)
+			String expected = "Mending I " + OFFER_PRICE;
 			if (!expected.equals(name)) {
 				throw new AssertionError("expected the villager to be named \"" + expected + "\", got \"" + name + "\"");
 			}

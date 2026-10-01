@@ -43,8 +43,13 @@ public class VillagersTabClientGameTest implements FabricClientGameTest {
 
 			context.runOnClient((Minecraft mc) -> {
 				for (String key : TAB_KEYS) {
-					if (!hasButton(mc.gui.screen(), key)) {
-						throw new AssertionError("missing tab button: " + key);
+					String label = Component.translatable(key).getString();
+					// an unresolvable key renders as the key itself: catch a missing lang entry
+					if (label.equals(key)) {
+						throw new AssertionError("the tab label is not translated: " + key);
+					}
+					if (!hasButton(mc.gui.screen(), label)) {
+						throw new AssertionError("missing tab button: " + label);
 					}
 				}
 			});
@@ -69,9 +74,8 @@ public class VillagersTabClientGameTest implements FabricClientGameTest {
 		}
 	}
 
-	private static boolean hasButton(Screen screen, String translationKey) {
+	private static boolean hasButton(Screen screen, String label) {
 		if (screen == null) return false;
-		String label = Component.translatable(translationKey).getString();
 		for (GuiEventListener child : screen.children()) {
 			if (child instanceof AbstractButton button && button.getMessage().getString().equals(label)) {
 				return true;

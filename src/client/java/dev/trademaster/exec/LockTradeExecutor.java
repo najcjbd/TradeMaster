@@ -79,14 +79,24 @@ public class LockTradeExecutor {
 
 	/** Copies of the purchase lying on the ground near the player: with a full inventory the
 	 * server drops the bought item at the player's feet, which is the only server-authoritative
-	 * evidence available in that case (a full inventory cannot pick the drop up). */
+	 * evidence available in that case (a full inventory cannot pick the drop up).
+	 *
+	 * <p>A ground drop is a WHOLE stack, so the strict {@code resultMatches} predicate applies
+	 * (item + components + the purchase's amount). {@code matchingCount} relaxes a good to bare
+	 * item identity for the inventory count, which would let an unrelated drop of the same item
+	 * pass as our purchase here. */
 	private int droppedMatches(Minecraft client) {
 		if (client.level == null || client.player == null) return 0;
 		int count = 0;
 		for (net.minecraft.world.entity.item.ItemEntity drop
 				: client.level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
 						net.minecraft.world.phys.AABB.ofSize(client.player.position(), 10, 10, 10))) {
-			count += matchingCount(drop.getItem());
+			ItemStack stack = drop.getItem();
+			if (this.expected == null) {
+				if (stack.is(Items.ENCHANTED_BOOK)) count += stack.getCount();
+			} else if (resultMatches(this.expected, stack)) {
+				count += stack.getCount();
+			}
 		}
 		return count;
 	}

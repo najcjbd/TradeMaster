@@ -33,7 +33,7 @@ jobs:
           java-version: '25'
           cache: gradle
 
-      # ./gradlew build also runs the JUnit tests (DurationParserTest).
+      # ./gradlew build runs the whole headless JUnit suite (src/test).
       # Loom downloads Minecraft 26.2 and the mappings on the first run; the
       # Gradle cache above keeps later runs fast.
       - name: Build and test
@@ -49,3 +49,34 @@ jobs:
             build/libs/*.jar
             !build/libs/*-sources.jar
           if-no-files-found: error
+
+  # The Fabric client game tests (src/gametest) need a REAL client: an X display and the
+  # game assets Loom downloads on first use. They are a separate job because they boot
+  # Minecraft twice (slow) and cannot run in the plain `build` job.
+  client-gametest:
+    name: Client game tests (JDK 25, headless)
+    runs-on: ubuntu-latest
+    # authored but not yet observed on a GitHub runner: the harness also needs a working
+    # OpenAL for the client to start. Flip this to blocking once a run here is green.
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Use the official Gradle distribution for CI
+        run: |
+          sed -i 's|https://mirrors.cloud.tencent.com/gradle/|https://services.gradle.org/distributions/|' \
+            gradle/wrapper/gradle-wrapper.properties
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - name: Run the client game tests headlessly
+        env:
+          CI: true
+        run: xvfb-run -a --server-args="-screen 0 1280x720x24" ./gradlew runClientGameTest --console=plain --stacktrace

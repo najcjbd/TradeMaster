@@ -19,7 +19,8 @@
 			"dev.trademaster.core.RegionFallbackClientGameTest",
 			"dev.trademaster.core.RerollClientGameTest",
 			"dev.trademaster.core.NamingXpShortClientGameTest",
-			"dev.trademaster.core.DispenserMisconfiguredClientGameTest"
+			"dev.trademaster.core.DispenserMisconfiguredClientGameTest",
+			"dev.trademaster.core.SummonGateClientGameTest"
 		]
 	},
 	"depends": {

@@ -43,6 +43,10 @@ public final class McTest {
 	 * Binds a {@code MAX_DAMAGE}/{@code DAMAGE}/{@code TOOL} component set and returns a
 	 * stack. The Tool has no block rules, so {@code getDestroySpeed} returns {@code speed}
 	 * for every block — the algorithm only compares speeds, so this is faithful.
+	 *
+	 * <p>NOTE: this mutates the shared {@code Item} holder for the whole JVM. That is safe
+	 * only because JUnit runs these tests sequentially and each one rebinds before it builds
+	 * a stack; it would break under parallel execution.
 	 */
 	public static ItemStack tool(Item item, float speed, int maxDamage, int damage, int unbreaking) {
 		DataComponentMap.Builder builder = DataComponentMap.builder()

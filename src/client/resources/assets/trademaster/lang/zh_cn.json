@@ -236,6 +236,8 @@
   "trademaster.villagers.unknown_block": "未知方块 id",
   "trademaster.villagers.unknown_profession": "未知职业 id",
   "trademaster.villagers.not_tradeable": "该职业永远无法交易（不能作为目标）",
+  "trademaster.villagers.list_none": "「失业」必须保持可用：村民正是靠它才能就职",
+  "trademaster.villagers.list_target": "这是当前选定的职业，不能列进「不交易」名单",
   "trademaster.villagers.id_empty": "请填写 id",
   "trademaster.column.nonTradeable": "不能交易的职业",
   "trademaster.column.air_items": "空气物品",

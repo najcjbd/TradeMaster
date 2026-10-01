@@ -95,4 +95,11 @@ public final class DispenserCheck {
 	private static void close(LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 	}
+
+	/** Releases an abandoned check (the gate was disabled mid-flight): closes a container
+	 * THIS check opened, so it cannot swallow the next summon's button press. Safe to call
+	 * when nothing was opened — LOOK has not interacted yet. */
+	public void abort(LocalPlayer player) {
+		if (this.state != State.LOOK) close(player);
+	}
 }
