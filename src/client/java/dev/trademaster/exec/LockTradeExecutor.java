@@ -42,6 +42,8 @@ public class LockTradeExecutor {
 	private boolean drifted = false;
 	private boolean verified = false;
 	private boolean uncertain = false;
+	/** Nearby matching drops before the clicks (see {@link #droppedMatches}). */
+	private int droppedBaseline = -1;
 
 	public LockTradeExecutor(MerchantMenu menu, int slot, TradeMatcher.@Nullable MatchedTrade expected) {
 		this.menu = menu;
@@ -73,6 +75,20 @@ public class LockTradeExecutor {
 			return stack.is(this.expected.purchase().result().getItem()) ? stack.getCount() : 0;
 		}
 		return resultMatches(this.expected, stack) ? stack.getCount() : 0;
+	}
+
+	/** Copies of the purchase lying on the ground near the player: with a full inventory the
+	 * server drops the bought item at the player's feet, which is the only server-authoritative
+	 * evidence available in that case (a full inventory cannot pick the drop up). */
+	private int droppedMatches(Minecraft client) {
+		if (client.level == null || client.player == null) return 0;
+		int count = 0;
+		for (net.minecraft.world.entity.item.ItemEntity drop
+				: client.level.getEntitiesOfClass(net.minecraft.world.entity.item.ItemEntity.class,
+						net.minecraft.world.phys.AABB.ofSize(client.player.position(), 10, 10, 10))) {
+			count += matchingCount(drop.getItem());
+		}
+		return count;
 	}
 
 	public MerchantMenu menu() {
@@ -117,6 +133,9 @@ public class LockTradeExecutor {
 	public Result tick() {
 		Minecraft client = Minecraft.getInstance();
 		if (client.player == null || client.gameMode == null) return Result.FAILED;
+		// snapshot the nearby drops BEFORE any click: with a full inventory the purchase is
+		// delivered as a ground drop, and that count rising is the proof it happened
+		if (this.droppedBaseline < 0) this.droppedBaseline = droppedMatches(client);
 		switch (this.stage) {
 			case 0 -> {
 				if (!slotStillMatches()) {
@@ -184,17 +203,17 @@ public class LockTradeExecutor {
 					this.verified = true;
 					return Result.DONE;
 				}
-				// With no free slot the server DROPS the book instead, which is not
-				// observable here: trust the prediction rather than mis-report a purchase
-				// that did go through (an unproven outcome would dispatch the villager
-				// unnamed and let the same target be re-demanded). The LOCK entry already
-				// requires a free slot and the cost slots free up, so this is a defensive
-				// net — logged so that, if it ever fires, it is visible.
+				// With no free slot the server has nowhere to put the book, so it DROPS it at
+				// the player: the inventory count cannot rise and the prediction must not be
+				// trusted either (it would report an unbought target as locked). The drop IS
+				// observable — and a full inventory cannot pick it up, so it stays put — so a
+				// rising count of nearby matching drops is the server-authoritative proof.
+				// Still nothing observed means the outcome stays UNKNOWN (the timeout below).
 				if (client.player != null && !Preconditions.hasFreeSlot(client.player)) {
-					dev.trademaster.core.RerollController.debug(
-							"lock: purchase unprovable (no free slot), trusting the prediction");
-					this.verified = true;
-					return Result.DONE;
+					if (droppedMatches(client) > this.droppedBaseline) {
+						this.verified = true;
+						return Result.DONE;
+					}
 				}
 				// 60 ticks (about 3s at 20 tps; longer if the client itself stalls,
 				// since this counter rides the client tick), in line with the other

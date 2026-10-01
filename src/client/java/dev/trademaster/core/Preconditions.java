@@ -6,6 +6,7 @@ import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.matching.TradeMatcher;
 import dev.trademaster.strategy.LecternRestock;
+import dev.trademaster.strategy.RigTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -17,6 +18,7 @@ import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
@@ -136,12 +138,20 @@ public final class Preconditions {
 
 		// one inventory pass for every item requirement
 		Map<Item, Integer> carried = new LinkedHashMap<>();
-		int lecterns = 0;
-		boolean axeCarried = false;
-		boolean axeNearlyBroken = false;
-		// every mechanism breaks the lectern at some point (task chain's break step,
-		// guardian heal/break paths) — check the axe up front for all of them
-		boolean needAxe = true;
+		int workBlocks = 0;
+		boolean toolCarried = false;
+		boolean toolNearlyBroken = false;
+		// every mechanism breaks the WORK BLOCK at some point (task chain's break step,
+		// guardian heal/break paths) — check its tool up front for all of them. The tool is
+		// DERIVED from the block's state with the same function the runtime uses (no RNG),
+		// falling back to an axe when the block has no better-than-hand tool.
+		BlockState workState = RigTarget.stateAt(client.level, lectern);
+		// a block that only drops for a tool the player does not carry must be refused up
+		// front: breaking it would destroy the work block without a replacement
+		boolean cannotHarvest = RigTarget.cannotHarvest(workState, player);
+		Item needItem = cannotHarvest ? null : RigTarget.bestToolItem(workState, player);
+		boolean needAxe = !cannotHarvest && needItem == null;
+		Item workItem = RigTarget.workItem();
 		var inventory = player.getInventory();
 		for (int i = 0; i < 37; i++) {
 			ItemStack stack = i < 36 ? inventory.getItem(i) : player.getOffhandItem();
@@ -149,20 +159,20 @@ public final class Preconditions {
 			Item item = stack.getItem();
 			// trades can only pay from the main inventory: count emeralds/books
 			// there exclusively so precheck matches checkLockMaterials' view
-			// (lecterns still count the offhand — the rig places from it)
+			// (the work block still counts the offhand — the rig places from it)
 			if (i < 36 && required.containsKey(item)) carried.merge(item, stack.getCount(), Integer::sum);
-			else if (item == Items.LECTERN) lecterns += stack.getCount();
-			// with preventAxeBreaking on, nearly-broken axes are unusable (the
-			// strategies refuse them): don't count them, fail up front instead
-			// of mid-run at the first lectern break
-			else if (needAxe && !axeCarried && item instanceof AxeItem) {
-				if (!config.preventAxeBreaking || !LecternRestock.axeNearlyBroken(stack)) axeCarried = true;
-				else axeNearlyBroken = true;
+			if (workItem != null && item == workItem) workBlocks += stack.getCount();
+			// with preventAxeBreaking on, nearly-broken tools are unusable (the strategies
+			// refuse them): don't count them, fail up front instead of mid-run at the first
+			// break
+			if (!toolCarried && (needAxe ? item instanceof AxeItem : item == needItem)) {
+				if (!config.preventAxeBreaking || !LecternRestock.toolNearlyBroken(stack)) toolCarried = true;
+				else toolNearlyBroken = true;
 			}
 		}
 
 		// name the missing material and the amount: "not enough materials" left the
-		// player guessing whether to restock emeralds, books, a lectern or a tag
+		// player guessing whether to restock emeralds, books, the work block or a tag
 		for (Map.Entry<Item, Integer> entry : required.entrySet()) {
 			int have = carried.getOrDefault(entry.getKey(), 0);
 			if (have < entry.getValue()) {
@@ -171,16 +181,19 @@ public final class Preconditions {
 			}
 		}
 
-		if (lecterns < 1 && !LecternRestock.isLecternAt(client.level, lectern)) {
-			return Component.translatable("trademaster.message.lectern_lost");
+		if (workBlocks < 1 && !RigTarget.isWorkBlockAt(client.level, lectern)) {
+			// the default lectern keeps its established wording
+			return Component.translatable(RigTarget.workBlock() == net.minecraft.world.level.block.Blocks.LECTERN
+					? "trademaster.message.lectern_lost"
+					: "trademaster.message.workblock_lost");
 		}
 
-		if (needAxe && !axeCarried) {
-			// axe_present but rejected by the axe guard vs. no axe at all:
+		if (!toolCarried) {
+			// "a tool is present but the durability guard rejects it" vs "no tool at all":
 			// report the same wording the runtime strategies use (R20-7)
-			return Component.translatable(axeNearlyBroken
-					? "trademaster.message.axe_breaking"
-					: "trademaster.message.axe_required");
+			return Component.translatable(toolNearlyBroken
+					? RigTarget.toolBreakingKey(workState, player)
+					: RigTarget.toolRequiredKey(workState, player));
 		}
 
 		return null;

@@ -27,6 +27,18 @@ loom {
 	accessWidenerPath = file("src/client/resources/trade-master.accesswidener")
 }
 
+// Fabric client game tests (src/gametest). Creates the `gametest` source set and the
+// `runClientGameTest` task; the test mod lives in its own fabric.mod.json there.
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = "trade-master-test"
+		enableGameTests = false
+		enableClientGameTests = true
+		eula = true
+	}
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 

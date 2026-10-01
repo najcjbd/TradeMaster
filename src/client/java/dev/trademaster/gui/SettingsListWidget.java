@@ -85,6 +85,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				pos -> c.lecternPos = pos, PositionPicker.Slot.LECTERN));
 		addEntry(new PosRow("trademaster.settings.summonButtonPos", () -> c.summonButtonPos,
 				pos -> c.summonButtonPos = pos, PositionPicker.Slot.SUMMON_BUTTON));
+		// the dispenser is OPTIONAL (unset = the minecart check is skipped), so its row must
+		// be clearable like the grindstone's, not treated as a required picker slot
+		addEntry(new PosRow("trademaster.settings.dispenserPos", () -> c.dispenserPos,
+				pos -> c.dispenserPos = pos, PositionPicker.Slot.DISPENSER, true));
 		addEntry(new PosRow("trademaster.settings.sendAwayButtonPos", () -> c.sendAwayButtonPos,
 				pos -> c.sendAwayButtonPos = pos, PositionPicker.Slot.SEND_AWAY_BUTTON));
 		addEntry(new PosRow("trademaster.settings.grindstonePos", () -> c.grindstonePos,

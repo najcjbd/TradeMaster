@@ -133,6 +133,10 @@ public final class TradeMasterConfig {
 	public @Nullable BlockPos lecternPos = null;
 	public @Nullable BlockPos summonButtonPos = null;
 	public @Nullable BlockPos sendAwayButtonPos = null;
+	/** The minecart dispenser checked before each summon (null = skip the check). A
+	 * dispenser's contents can only be read by opening it, so the check briefly opens and
+	 * closes this block. */
+	public @Nullable BlockPos dispenserPos = null;
 	/** Overflow chests for enchanted books when the inventory is full; tried in order. */
 	public final List<BlockPos> chestPositions = new ArrayList<>();
 
@@ -145,6 +149,39 @@ public final class TradeMasterConfig {
 		if (pos == null || this.chestPositions.size() >= MAX_CHESTS) return false;
 		if (this.chestPositions.contains(pos)) return false;
 		return this.chestPositions.add(pos);
+	}
+
+	// villagers (the rig's job-site block and the profession it should take)
+	/** The job-site block the rig breaks / re-places / restocks. An id; a namespaceless
+	 * value means minecraft: (resolved by {@code RigTarget}, which falls back to the
+	 * lectern when the id is unknown). */
+	public String workBlockId = "minecraft:lectern";
+	/** The profession the rig's villager should take. The matching / naming / deduction
+	 * still assume the profession SELLS ENCHANTED BOOKS — only the id is configurable. */
+	public String professionId = "minecraft:librarian";
+	/** Profession ids that can never sell a trade, beyond the built-in nitwit. A villager
+	 * holding one is handled like a nitwit (dispatched as a blocker), and the configured
+	 * target profession may not be one of them. Ids are stored normalised
+	 * (namespaceless → minecraft:), like the air-item list. */
+	public final List<String> nonTradeableProfessions = new ArrayList<>();
+
+	/** {@link #workBlockId} as an Identifier (namespaceless → minecraft:), or null. */
+	public @Nullable Identifier workBlockIdentifier() {
+		return parseId(this.workBlockId);
+	}
+
+	/** {@link #professionId} as an Identifier (namespaceless → minecraft:), or null. */
+	public @Nullable Identifier professionIdentifier() {
+		return parseId(this.professionId);
+	}
+
+	/** Parses a config id: namespaceless means {@code minecraft:}, a blank or unparsable
+	 * value means null. Shared with the Villagers tab's profession list. */
+	public static @Nullable Identifier parseId(String raw) {
+		if (raw == null) return null;
+		String text = raw.trim().toLowerCase(java.util.Locale.ROOT);
+		if (text.isEmpty()) return null;
+		return text.indexOf(':') >= 0 ? Identifier.tryParse(text) : Identifier.tryParse("minecraft:" + text);
 	}
 
 	// grindstone recycling (replaces the chest deposit steps when fully configured)

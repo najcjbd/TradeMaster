@@ -10,7 +10,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
@@ -103,22 +102,22 @@ public class AxeRerollStrategy implements RerollStrategy {
 		if (!this.look.tick(player, aimAt)) return StepResult.RUNNING;
 
 		// Never break empty-handed: put an axe into the main hand first.
-		switch (LecternRestock.bringAxeToHand(mc, player)) {
+		switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 			case NONE -> {
-				return StepResult.failed(Component.translatable("trademaster.message.axe_required"));
+				return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 			case WORKING -> {
 				return StepResult.RUNNING;
 			}
 			case READY -> {}
 		}
-		if (config.preventAxeBreaking && LecternRestock.axeNearlyBroken(player)) {
-			return StepResult.failed(Component.translatable("trademaster.message.axe_breaking"));
+		if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
+			return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 		}
 
 		// update the break gate EVERY tick so a present reading resets it; only a
 		// server-confirmed break may proceed to placement
-		if (LecternRestock.isLecternAt(mc.level, lecternPos)) {
+		if (LecternRestock.isWorkBlockAt(mc.level, lecternPos)) {
 			// slow mode paces the break as well as the place
 			if (config.slowMode) {
 				if (this.breakDelayCounter > 0) {
@@ -170,7 +169,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 
 		List<ItemEntity> drops = mc.level.getEntitiesOfClass(ItemEntity.class,
 				AABB.ofSize(center, 7, 7, 7),
-				e -> e.getItem().is(Items.LECTERN)
+				e -> RigTarget.workItem() != null && e.getItem().is(RigTarget.workItem())
 						&& e.position().distanceTo(center) <= 3);
 		if (!drops.isEmpty()) this.seenDrop = true;
 		// an unpickable drop (clipped into a block) must not stall or fail the
@@ -227,7 +226,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 
 		// Done only when the lectern is verified present — a blind click can be
 		// rejected by the server while the client happily predicts success.
-		if (LecternRestock.isLecternAt(mc.level, lecternPos)) {
+		if (LecternRestock.isWorkBlockAt(mc.level, lecternPos)) {
 			return StepResult.DONE;
 		}
 
@@ -248,7 +247,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// Click only with a lectern really in the offhand: restock() sends raw
 		// packets that take effect next tick, so clicking immediately would be an
 		// empty-hand click that places nothing.
-		if (!LecternRestock.offhandHasLectern(player)) {
+		if (!LecternRestock.offhandHasWorkItem(player)) {
 			if (!LecternRestock.restock(player)) {
 				return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
 			}

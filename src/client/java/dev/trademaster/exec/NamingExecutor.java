@@ -169,17 +169,24 @@ public class NamingExecutor {
 	}
 
 	private Result failed(String reason) {
-		this.failReason = reason;
 		// once the EQUIP swap packet is out, a moved item (e.g. the axe) sits in
 		// the tag's old slot: cover EQUIP too, because equip-hand fails right after
 		// that packet on a slow sync — swap it back before reporting failure
 		if ((this.equipSwapSlot >= 0 || this.equipOriginalSlot >= 0)
 				&& (this.stage == Stage.EQUIP || this.stage == Stage.APPLY || this.stage == Stage.VERIFY)
 				&& this.pendingFail == null) {
+			this.failReason = reason;
 			this.pendingFail = reason;
 			next(Stage.RESTORE);
 			return Result.RUNNING;
 		}
+		// while unwinding, report the failure we are unwinding FOR: a RESTORE timeout of its
+		// own must not replace the real reason (e.g. "verify-timeout") in the chat message
+		if (this.pendingFail != null) {
+			this.failReason = this.pendingFail;
+			return Result.FAILED;
+		}
+		this.failReason = reason;
 		return Result.FAILED;
 	}
 
@@ -244,7 +251,7 @@ public class NamingExecutor {
 		if (mc.gameMode == null || this.equipSwapSlot < 0 || this.restoreSwapped) {
 			// nothing to swap back, but the anvil may still be open from a failed
 			// rename: leaving it open swallows input and wedges every later phase
-			// (bringAxeToHand sees containerMenu != inventoryMenu and never returns)
+			// (bringToolToHand sees containerMenu != inventoryMenu and never returns)
 			if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 			return;
 		}

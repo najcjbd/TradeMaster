@@ -4,6 +4,7 @@ import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.strategy.LecternRestock;
+import dev.trademaster.strategy.RigTarget;
 import dev.trademaster.strategy.RerollStrategy.StepResult;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -11,7 +12,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -85,7 +85,7 @@ public class LecternGuardian {
 		}
 		this.session = session;
 		BlockPos lecternPos = session.lecternPos;
-		boolean present = LecternRestock.isLecternAt(mc.level, lecternPos);
+		boolean present = LecternRestock.isWorkBlockAt(mc.level, lecternPos);
 		// update the break gate EVERY tick (a present reading resets it)
 		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
 
@@ -122,17 +122,17 @@ public class LecternGuardian {
 
 		if (present) {
 			// REFRESH / BREAK_ONLY: break the lectern to drop the previous claim.
-			switch (LecternRestock.bringAxeToHand(mc, player)) {
+			switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 				case NONE -> {
-					return StepResult.failed(Component.translatable("trademaster.message.axe_required"));
+					return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 				}
 				case WORKING -> {
 					return StepResult.RUNNING;
 				}
 				case READY -> {}
 			}
-			if (config.preventAxeBreaking && LecternRestock.axeNearlyBroken(player)) {
-				return StepResult.failed(Component.translatable("trademaster.message.axe_breaking"));
+			if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
+				return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 			if (!this.announcedBreak) {
 				this.announcedBreak = true;
@@ -200,7 +200,7 @@ public class LecternGuardian {
 			return StepResult.RUNNING;
 		}
 
-		if (!LecternRestock.offhandHasLectern(player)) {
+		if (!LecternRestock.offhandHasWorkItem(player)) {
 			if (!LecternRestock.restock(player)) {
 				return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
 			}
@@ -230,7 +230,7 @@ public class LecternGuardian {
 		Vec3 center = Vec3.atCenterOf(lecternPos);
 		List<ItemEntity> drops = mc.level.getEntitiesOfClass(ItemEntity.class,
 				AABB.ofSize(center, 7, 7, 7),
-				e -> e.getItem().is(Items.LECTERN)
+				e -> RigTarget.workItem() != null && e.getItem().is(RigTarget.workItem())
 						&& e.position().distanceTo(center) <= 3);
 		this.pickupTicks++;
 		if (!drops.isEmpty()) this.seenDrop = true;

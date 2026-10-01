@@ -11,6 +11,7 @@ import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.detection.DetectionHub;
 import dev.trademaster.detection.OfferSnapshot;
+import dev.trademaster.exec.DispenserCheck;
 import dev.trademaster.exec.BookDisposal;
 import dev.trademaster.exec.ButtonPresser;
 import dev.trademaster.exec.EnchantmentNamer;
@@ -23,6 +24,7 @@ import dev.trademaster.matching.OfferCosts;
 import dev.trademaster.matching.TradeMatcher;
 import dev.trademaster.strategy.AxeRerollStrategy;
 import dev.trademaster.strategy.LecternRestock;
+import dev.trademaster.strategy.RigTarget;
 import dev.trademaster.strategy.RerollStrategy;
 import dev.trademaster.strategy.TaskChainRerollStrategy;
 import net.minecraft.ChatFormatting;
@@ -70,6 +72,19 @@ public final class RerollController {
 	private static @Nullable RerollStrategy strategy = null;
 	private static @Nullable LecternGuardian guardian = null;
 	private static @Nullable ButtonPresser summonPresser = null;
+	/** The pending dispenser check (open/scan/close), or null when idle. */
+	private static @Nullable dev.trademaster.exec.DispenserCheck dispenserCheck = null;
+	/** Ticks left before re-checking a dispenser whose minecart is missing. */
+	private static int dispenserWaitTicks = 0;
+	/** Whether the once-per-run "no dispenser configured" warning was shown. */
+	private static boolean dispenserUnsetWarned = false;
+	/** Whether the once-per-run "dispenser out of reach" warning was shown. */
+	private static boolean dispenserOutOfReachWarned = false;
+	/** Whether the once-per-run "no dispenser at that position" warning was shown. */
+	private static boolean dispenserNotADispenserWarned = false;
+	/** Consecutive dispenser OPEN failures: a missing cart may be waited out forever, a
+	 * dispenser that cannot be opened must not be. */
+	private static int dispenserFailedAttempts = 0;
 	private static @Nullable ButtonPresser sendAwayPresser = null;
 	private static @Nullable LockTradeExecutor lockExecutor = null;
 	private static @Nullable NamingExecutor namingExecutor = null;
@@ -191,6 +206,12 @@ public final class RerollController {
 		return phase != Phase.IDLE;
 	}
 
+	/** The current pipeline phase. Package-private so a client game test in this package can
+	 * watch the run advance. */
+	static Phase currentPhase() {
+		return phase;
+	}
+
 	/** Largest outstanding hunt budget (marked-1) across this run's marked prices.
 	 * The hunt can demand more emeralds than any configured maxPrice, so the
 	 * precheck's emerald floor must account for it. */
@@ -294,8 +315,10 @@ public final class RerollController {
 		s.matcher.setHuntPrices(huntMarkedPrices);
 		s.matcher.setComboHuntPrices(comboHuntPrices);
 		refreshNeeds(mc, s);
-		// warn BEFORE the empty check: when every enabled demand is dead the matcher is
-		// empty, and returning on "all done" first hid exactly that case
+		// the rig target is validated first (a bad work block / unknown profession would
+		// make the pipeline stall with no explanation), then the demands, then the empty
+		// check — a config whose demands are all dead must still explain itself
+		warnRigTarget();
 		warnUnmatchableDemands(mc);
 		if (s.matcher.isEmpty()) {
 			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
@@ -338,6 +361,12 @@ public final class RerollController {
 		sneakPaused = false;
 		xpNamingPaused = false;
 		LecternRestock.resetRestock();
+		dispenserCheck = null;
+		dispenserWaitTicks = 0;
+		dispenserUnsetWarned = false;
+		dispenserOutOfReachWarned = false;
+		dispenserNotADispenserWarned = false;
+		dispenserFailedAttempts = 0;
 		s.goodBaseline.clear();
 		s.lockedResults.clear();
 		if (Minecraft.getInstance().player != null) {
@@ -765,7 +794,89 @@ public final class RerollController {
 		}
 	}
 
+	/** Whether the summon may proceed: true when no dispenser is configured (with a
+	 * once-per-run warning), or when the configured one currently holds a minecart.
+	 *
+	 * <p>A MISSING CART is waited out a minute at a time (the rig recycles carts, so it is
+	 * normally transient). An unreachable position is treated as unset. A position that holds
+	 * no dispenser, or one that repeatedly refuses to open, is a rig/config error: it is
+	 * reported and the run stops instead of waiting for ever.
+	 *
+	 * <p>Package-private so a client game test in this package can drive the gate against a
+	 * real dispenser. */
+	static boolean dispenserReady() {
+		var pos = TradeMasterConfig.INSTANCE.dispenserPos;
+		if (pos == null) {
+			if (!dispenserUnsetWarned) {
+				dispenserUnsetWarned = true;
+				notice(Component.translatable("trademaster.message.dispenser_unset"));
+			}
+			return true;
+		}
+		LocalPlayer dispenserPlayer = Minecraft.getInstance().player;
+		// a coordinate the player cannot REACH is as good as unset: the open would just
+		// fail and we would wait a minute for nothing, so treat it like a parse failure
+		if (dispenserPlayer == null || !dispenserPlayer.isWithinBlockInteractionRange(pos, 1.0)) {
+			if (!dispenserOutOfReachWarned) {
+				dispenserOutOfReachWarned = true;
+				chat(Component.translatable("trademaster.message.dispenser_out_of_reach")
+						.withStyle(ChatFormatting.YELLOW));
+			}
+			return true;
+		}
+		if (dispenserWaitTicks > 0) {
+			dispenserWaitTicks--;
+			return false;
+		}
+		if (dispenserCheck == null) dispenserCheck = new dev.trademaster.exec.DispenserCheck(pos);
+		switch (dispenserCheck.tick()) {
+			case RUNNING -> {
+				return false;
+			}
+			case HAS_CART -> {
+				dispenserCheck = null;
+				dispenserFailedAttempts = 0;
+				return true;
+			}
+			case NO_CART -> {
+				// transient by design: the clone command refills the dispenser
+				dispenserCheck = null;
+				dispenserWaitTicks = 20 * 60;
+				debug("summon: dispenser has no minecart yet, retrying in a minute");
+				return false;
+			}
+			case NO_DISPENSER -> {
+				// the position holds no dispenser (wrong coordinate, or the block was
+				// replaced): the open can never succeed, so say so and stop
+				dispenserCheck = null;
+				stop(Component.translatable("trademaster.message.dispenser_not_a_dispenser"),
+						ChatFormatting.RED);
+				return false;
+			}
+			case FAILED -> {
+				// the open was refused or timed out: a few times may be lag, for ever is a
+				// walled-off / broken dispenser
+				dispenserCheck = null;
+				if (++dispenserFailedAttempts >= 3) {
+					stop(Component.translatable("trademaster.message.dispenser_open_failed"),
+							ChatFormatting.RED);
+					return false;
+				}
+				dispenserWaitTicks = 20 * 5;
+				debug("summon: could not open the dispenser, retrying shortly (attempt "
+						+ dispenserFailedAttempts + ")");
+				return false;
+			}
+		}
+		return false;
+	}
+
 	private static void tickSummon(RunSession s) {
+		// the minecart gate: with a dispenser configured the summon must not fire without
+		// a cart (the villager could not be sent away afterwards and the rig jams). The
+		// check opens the dispenser — the only client-side way to see its slots — and a
+		// missing cart is WAITED OUT (the rig recycles carts; the return path is long).
+		if (!dispenserReady()) return;
 		if (summonPresser == null) summonPresser = new ButtonPresser(s.summonButtonPos);
 		RerollStrategy.StepResult result = summonPresser.tick();
 		if (result.step() == RerollStrategy.Step.DONE) {
@@ -1023,7 +1134,7 @@ public final class RerollController {
 			}
 			return;
 		}
-		if (s.villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+		if (s.villager.getVillagerData().profession().is(RigTarget.professionKey())) {
 			urgentProfessionHeal = false;
 			checkLook.reset();
 			enter(Phase.CHECK_TRADE);
@@ -1037,7 +1148,7 @@ public final class RerollController {
 		if (phaseTicks % scanInterval != 0) return;
 		Villager found = findArrivedVillager(client, s.lecternPos);
 		if (found != null && found != s.villager
-				&& found.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+				&& found.getVillagerData().profession().is(RigTarget.professionKey())) {
 			debug("wait-profession: stale reference, switched to librarian at arrival point");
 			s.villager = found;
 			professionHealCycles = 0;
@@ -1063,7 +1174,7 @@ public final class RerollController {
 				return;
 			}
 			professionHealCycles++;
-			boolean lecternThere = LecternRestock.isLecternAt(client.level, s.lecternPos);
+			boolean lecternThere = LecternRestock.isWorkBlockAt(client.level, s.lecternPos);
 			debug("wait-profession: no profession (read="
 					+ professionName(s.villager.getVillagerData().profession()) + ", lectern="
 					+ (lecternThere ? "present" : "missing") + ", cycle " + professionHealCycles + ") -> "
@@ -1101,7 +1212,7 @@ public final class RerollController {
 				return;
 			}
 		}
-		if (!s.villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+		if (!s.villager.getVillagerData().profession().is(RigTarget.professionKey())) {
 			// After a reroll the villager has to re-claim the lectern; under lag
 			// that can take a long time or fail outright. Waiting here used to
 			// stall until the phase timeout killed the run — instead, allow a
@@ -1138,7 +1249,7 @@ public final class RerollController {
 			detectionPending = false;
 			Villager replacement = findArrivedVillager(client, s.lecternPos);
 			if (replacement != null && replacement != s.villager
-					&& replacement.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+					&& replacement.getVillagerData().profession().is(RigTarget.professionKey())) {
 				// an EVENT-mode detection can have left the merchant menu open; the
 				// replacement villager needs a fresh interact, so clear it
 				closeMerchantMenuIfOpen(client);
@@ -1633,12 +1744,15 @@ public final class RerollController {
 		enter(Phase.REROLL);
 	}
 
-	/** axe_required / axe_breaking never self-resolve: retrying them is a silent hang. */
+	/** axe_required / axe_breaking / tool_* never self-resolve: retrying them is a silent
+	 * hang. tool_cannot_harvest is included: no retry can conjure the missing tool. */
 	private static boolean isPermanentAxeFailure(@Nullable Component reason) {
 		if (reason == null) return false;
 		if (!(reason.getContents() instanceof TranslatableContents contents)) return false;
 		String key = contents.getKey();
-		return key.equals("trademaster.message.axe_required") || key.equals("trademaster.message.axe_breaking");
+		return key.equals("trademaster.message.axe_required") || key.equals("trademaster.message.axe_breaking")
+				|| key.equals("trademaster.message.tool_required") || key.equals("trademaster.message.tool_breaking")
+				|| key.equals("trademaster.message.tool_cannot_harvest");
 	}
 
 	private static void finishLock(RunSession s) {
@@ -1830,7 +1944,7 @@ public final class RerollController {
 				// same cleanup as the timeout backstop: fire the pending EQUIP
 				// swap-back and close the anvil, or a failed rename strands the
 				// displaced hand item AND leaves the anvil open, wedging every
-				// later phase (bringAxeToHand never leaves WORKING)
+				// later phase (bringToolToHand never leaves WORKING)
 				namingExecutor.abortCleanly();
 				namingExecutor = null;
 				SmoothRotation.reset();
@@ -2106,6 +2220,62 @@ public final class RerollController {
 				|| (phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent());
 	}
 
+	/** Warns (yellow, non-blocking) when the configured rig target cannot work: the work
+	 * block is not a job site any villager profession can use, or the profession id is
+	 * unknown. Both would otherwise stall the pipeline silently (no villager ever takes
+	 * the job at the block). */
+	private static void warnRigTarget() {
+		for (Component warning : rigTargetWarnings()) {
+			chat(warning.copy().withStyle(ChatFormatting.YELLOW));
+		}
+	}
+
+	/** The rig-target warnings for the current config, in order (empty when the rig target
+	 * is fine). Pure so the decisions and their message keys can be tested without a client;
+	 * {@link #warnRigTarget} only styles and sends them. */
+	static List<Component> rigTargetWarnings() {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		List<Component> warnings = new ArrayList<>(4);
+		// an UNKNOWN block id silently falls back to the lectern, so report the config
+		// itself (the job-site check below would pass on the fallback and stay quiet)
+		Identifier blockId = config.workBlockIdentifier();
+		net.minecraft.world.level.block.Block resolved = blockId == null ? null
+				: BuiltInRegistries.BLOCK.getValue(blockId);
+		boolean blockUsable = blockId != null && resolved != null
+				&& resolved != net.minecraft.world.level.block.Blocks.AIR;
+		if (!blockUsable) {
+			warnings.add(Component.translatable("trademaster.message.workblock_unknown", config.workBlockId));
+		} else if (!RigTarget.isJobSiteBlock(resolved)) {
+			warnings.add(Component.translatable("trademaster.message.workblock_invalid", resolved.getName()));
+		} else if (RigTarget.professionKnown()
+				&& !RigTarget.professionKey().equals(VillagerProfession.NONE)
+				&& !RigTarget.isJobSiteBlockFor(resolved, RigTarget.professionKey())) {
+			// a valid job site, but not for THIS profession: the villager can never take the
+			// job, so waiting for a profession would never end (a composter is never a
+			// librarian's job site). Skipped for the unemployed target, which needs no job.
+			warnings.add(Component.translatable("trademaster.message.workblock_not_for_profession",
+					resolved.getName()));
+		}
+		if (!RigTarget.professionKnown()) {
+			warnings.add(Component.translatable("trademaster.message.profession_invalid", config.professionId));
+		} else if (RigTarget.professionConfiguredNonTradeable()) {
+			// the target degrades to the librarian: say which id was ignored
+			warnings.add(Component.translatable("trademaster.message.profession_not_tradeable",
+					config.professionId));
+		}
+		// a non-librarian profession may sell GOODS instead of books: an enchantment
+		// target only matches an enchanted-book result, so an enabled one would never
+		// match and the run would spin. Point at the goods table instead. Only for a KNOWN,
+		// tradeable profession — an unknown one already has its own warning.
+		Identifier profession = config.professionIdentifier();
+		if (RigTarget.professionKnown() && profession != null
+				&& !profession.equals(Identifier.withDefaultNamespace("librarian"))
+				&& !config.enabledTargets().isEmpty()) {
+			warnings.add(Component.translatable("trademaster.message.profession_not_book"));
+		}
+		return warnings;
+	}
+
 	/** Enabled demands that buildNeeds leaves out because they can never match, so the
 	 * user sees why nothing is rolled for them: enchantment targets whose vanilla
 	 * minimum price exceeds the configured max, targets no longer in the registry /
@@ -2210,7 +2380,7 @@ public final class RerollController {
 		for (Villager villager : villagersAtArrivalPoint(client, arrival)) {
 			if (villager.isBaby()) continue;
 			double distance = villager.position().distanceToSqr(arrival);
-			if (villager.getVillagerData().profession().is(VillagerProfession.LIBRARIAN)) {
+			if (villager.getVillagerData().profession().is(RigTarget.professionKey())) {
 				if (distance < bestLibrarianDistance) {
 					bestLibrarianDistance = distance;
 					bestLibrarian = villager;
@@ -2517,8 +2687,7 @@ public final class RerollController {
 	 * other non-librarian profession will not switch at this lectern: neither is
 	 * rollable, they must be dispatched. */
 	private static boolean unusableProfession(Holder<VillagerProfession> profession) {
-		return profession.is(VillagerProfession.NITWIT)
-				|| (!profession.is(VillagerProfession.NONE) && !profession.is(VillagerProfession.LIBRARIAN));
+		return RigTarget.isUnusable(profession);
 	}
 
 	/** Whether the sand-wheel mode definition changed while the run was going. The

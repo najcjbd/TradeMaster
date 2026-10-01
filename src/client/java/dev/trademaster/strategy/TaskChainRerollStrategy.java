@@ -13,7 +13,6 @@ import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -40,12 +39,14 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		// from an aborted run must not fight the new chain's LookSteps
 		SmoothRotation.reset();
 		this.pickupStep = new PickupLecternStep();
+		// the CONFIGURED profession (RigTarget defaults a blank/garbage id to the librarian)
+		ResourceKey<VillagerProfession> wanted = RigTarget.professionKey();
 		this.runner = new StepRunner()
 				.add(new BreakLecternStep())
 				.add(this.pickupStep)
 				.add(new WaitProfessionStep(VillagerProfession.NONE, "trademaster.error.wait-none-timeout"))
 				.add(new PlaceLecternStep())
-				.add(new WaitProfessionStep(VillagerProfession.LIBRARIAN, "trademaster.error.wait-librarian-timeout"));
+				.add(new WaitProfessionStep(wanted, "trademaster.error.wait-librarian-timeout"));
 	}
 
 	@Override
@@ -102,22 +103,22 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			// server-confirmed break may advance, and while it is client-absent but
 			// unconfirmed we must not keep swinging at air
 			if (this.breakGate.observe(mc.level, lecternPos)) return StepResult.DONE;
-			if (!LecternRestock.isLecternAt(mc.level, lecternPos)) return StepResult.RUNNING;
+			if (!LecternRestock.isWorkBlockAt(mc.level, lecternPos)) return StepResult.RUNNING;
 
 			if (!ensureLook(player, lecternAim(lecternPos))) return StepResult.RUNNING;
 
 			// Never break empty-handed: put an axe into the main hand first.
-			switch (LecternRestock.bringAxeToHand(mc, player)) {
+			switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 				case NONE -> {
-					return StepResult.failed(Component.translatable("trademaster.message.axe_required"));
+					return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 				}
 				case WORKING -> {
 					return StepResult.RUNNING;
 				}
 				case READY -> {}
 			}
-			if (TradeMasterConfig.INSTANCE.preventAxeBreaking && LecternRestock.axeNearlyBroken(player)) {
-				return StepResult.failed(Component.translatable("trademaster.message.axe_breaking"));
+			if (TradeMasterConfig.INSTANCE.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
+				return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 
 			if (TradeMasterConfig.INSTANCE.slowMode) {
@@ -154,7 +155,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			Vec3 center = Vec3.atCenterOf(session.lecternPos);
 			List<ItemEntity> drops = mc.level.getEntitiesOfClass(ItemEntity.class,
 					AABB.ofSize(center, 7, 7, 7),
-					e -> e.getItem().is(Items.LECTERN)
+					e -> RigTarget.workItem() != null && e.getItem().is(RigTarget.workItem())
 							&& e.position().distanceTo(center) <= 3);
 			this.ticks++;
 			if (!drops.isEmpty()) this.seenDrop = true;
@@ -247,7 +248,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			}
 
 			BlockPos lecternPos = session.lecternPos;
-			if (LecternRestock.isLecternAt(mc.level, lecternPos)) return StepResult.DONE;
+			if (LecternRestock.isWorkBlockAt(mc.level, lecternPos)) return StepResult.DONE;
 			if (lecternPos.getY() >= mc.level.getMaxY()) {
 				return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));
 			}
@@ -270,7 +271,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 				return StepResult.RUNNING;
 			}
 
-			if (!LecternRestock.offhandHasLectern(player)) {
+			if (!LecternRestock.offhandHasWorkItem(player)) {
 				if (!LecternRestock.restock(player)) {
 					return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
 				}

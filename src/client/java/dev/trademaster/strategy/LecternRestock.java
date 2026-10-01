@@ -17,11 +17,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.AxeItem;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
-import net.minecraft.world.level.block.LecternBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.Vec3;
@@ -62,8 +62,8 @@ public final class LecternRestock {
 		restockFromSlot = fromContainerSlot;
 	}
 
-	public static boolean isLecternAt(BlockGetter level, BlockPos pos) {
-		return level.getBlockState(pos).getBlock() instanceof LecternBlock;
+	public static boolean isWorkBlockAt(BlockGetter level, BlockPos pos) {
+		return RigTarget.isWorkBlockAt(level, pos);
 	}
 
 	/** How many consecutive absent readings prove a break landed on the server. */
@@ -82,7 +82,7 @@ public final class LecternRestock {
 		private int absentTicks = 0;
 
 		public boolean observe(BlockGetter level, BlockPos pos) {
-			if (LecternRestock.isLecternAt(level, pos)) {
+			if (LecternRestock.isWorkBlockAt(level, pos)) {
 				this.absentPos = null;
 				this.absentTicks = 0;
 				return false;
@@ -105,10 +105,18 @@ public final class LecternRestock {
 		restockInFlightTicks = -1;
 		restockFromSlot = -1;
 		restockCarriedWaitTicks = 0;
+		// a stale tool lock from a previous run may point at an item that is gone, and
+		// the configured block may have changed
+		RigTarget.clearToolLock();
+		// a run that ended without stop() (disconnect / crash / world change) would otherwise
+		// leak the remembered hotbar slot into the next run's restoreOriginalSelection
+		originalSelected = -1;
 	}
 
-	public static boolean offhandHasLectern(LocalPlayer player) {
-		return player.getOffhandItem().getItem().equals(Items.LECTERN);
+	/** Whether the offhand already holds the configured work block's item. */
+	public static boolean offhandHasWorkItem(LocalPlayer player) {
+		Item item = RigTarget.workItem();
+		return item != null && player.getOffhandItem().getItem() == item;
 	}
 
 	/**
@@ -131,9 +139,9 @@ public final class LecternRestock {
 	/** Marks a close-container batch: its effect is only visible once the menu is gone. */
 	private static final int RESTOCK_FROM_CLOSE = -2;
 
-	/** Moves the whole lectern stack into the offhand via packets. Returns false when none is available. */
+	/** Moves the whole work-block stack into the offhand via packets. Returns false when none is available. */
 	public static boolean restock(LocalPlayer player) {
-		if (offhandHasLectern(player)) {
+		if (offhandHasWorkItem(player)) {
 			// the batch landed: retire the in-flight state HERE, or the stale slot would
 			// make the NEXT restock wait out the whole bound before sending anything
 			restockInFlightTicks = -1;
@@ -142,13 +150,17 @@ public final class LecternRestock {
 		}
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.gameMode == null) return false;
+		// the configured work block's item (null when the block has none): with nothing to
+		// stock there is nothing to restock
+		Item work = RigTarget.workItem();
+		if (work == null) return false;
 		// a batch is in flight: wait until its effect is visible (the server broadcast),
 		// bounded so a REJECTED batch is retried instead of stalling forever
 		if (restockInFlightTicks >= 0) {
 			boolean landed = (restockFromSlot == RESTOCK_FROM_CLOSE
 							&& player.containerMenu == player.inventoryMenu)
 					|| (restockFromSlot >= 0
-							&& player.getInventory().getItem(restockFromSlot).getItem() != Items.LECTERN);
+							&& player.getInventory().getItem(restockFromSlot).getItem() != work);
 			if (!landed && ++restockInFlightTicks < RESTOCK_INFLIGHT_MAX_TICKS) return true;
 			restockInFlightTicks = -1;
 			restockFromSlot = -1;
@@ -166,7 +178,7 @@ public final class LecternRestock {
 			}
 			restockCarriedWaitTicks = 0;
 			for (int i = 9; i < 45; i++) {
-				if (player.getInventory().getItem(i >= 36 ? i - 36 : i).getItem() != Items.LECTERN) continue;
+				if (player.getInventory().getItem(i >= 36 ? i - 36 : i).getItem() != work) continue;
 				boolean itemInOffhand = !player.getOffhandItem().isEmpty();
 				var container = player.containerMenu;
 
@@ -193,7 +205,7 @@ public final class LecternRestock {
 			}
 		} else {
 			for (int i = 0; i < 9; i++) {
-				if (player.getInventory().getItem(i).getItem() != Items.LECTERN) continue;
+				if (player.getInventory().getItem(i).getItem() != work) continue;
 				rememberSelection(player);
 				if (i != player.getInventory().getSelectedSlot()) {
 					Interactions.selectHotbarSlot(player, i);
@@ -211,7 +223,7 @@ public final class LecternRestock {
 			// menu is open: close it so the next retry takes the normal path
 			// instead of reporting the lectern lost
 			for (int i = 9; i < 36; i++) {
-				if (player.getInventory().getItem(i).getItem() == Items.LECTERN) {
+				if (player.getInventory().getItem(i).getItem() == work) {
 					player.closeContainer();
 					markRestockInFlight(RESTOCK_FROM_CLOSE);
 					return true;
@@ -221,59 +233,101 @@ public final class LecternRestock {
 		return false;
 	}
 
-	public enum AxeState { READY, WORKING, NONE }
+	public enum ToolState { READY, WORKING, NONE }
 
 	/**
-	 * Makes the main hand hold an axe in a single inventory pass: hotbar axes
-	 * are selected directly, inventory axes are SWAPped into the selected slot.
-	 * WORKING means "try again next tick" (swap in flight or menu not open).
-	 * With preventAxeBreaking on, nearly-broken axes are skipped in favour of
-	 * healthy ones (a broken one is used last so the caller's guard still fires),
-	 * and an offhand axe — which Preconditions counts as carried — is swapped
-	 * into the main hand instead of failing at the first lectern break.
+	 * Makes the main hand hold the tool that breaks the CONFIGURED work block: its best
+	 * tool among the player's items (see {@link RigTarget}, which also LOCKS the choice so
+	 * equal tools are not swapped every tick). A hotbar item is selected directly, an
+	 * inventory item is SWAPped into the selected slot, an offhand item is swapped in.
+	 * WORKING means "try again next tick" (swap in flight or menu not open). With
+	 * preventAxeBreaking on, nearly-broken tools are skipped in favour of healthy ones (a
+	 * broken one is used last so the caller's durability guard still fires).
+	 *
+	 * <p>When the block has NO better-than-hand tool the LEGACY behaviour is kept: an axe
+	 * is required (what a lectern rig has always used).
 	 */
-	public static AxeState bringAxeToHand(Minecraft mc, LocalPlayer player) {
+	public static ToolState bringToolToHand(Minecraft mc, LocalPlayer player, BlockState state) {
+		Item tool = RigTarget.chooseTool(state, player);
+		if (tool != null) return equipChosenTool(mc, player, tool);
+		// a block that only drops for a tool the player does NOT carry must not be broken:
+		// the legacy axe would destroy the work block without a drop and stall the run.
+		// NONE makes the caller fail with RigTarget.toolRequiredKey's dedicated wording.
+		if (RigTarget.cannotHarvest(state, player)) return ToolState.NONE;
+		return bringLegacyAxeToHand(mc, player);
+	}
+
+	/** Equips the derived tool (by item identity), preferring a healthy copy. */
+	private static ToolState equipChosenTool(Minecraft mc, LocalPlayer player, Item tool) {
 		var inventory = player.getInventory();
 		boolean guardDurability = TradeMasterConfig.INSTANCE.preventAxeBreaking;
 		ItemStack held = inventory.getSelectedItem();
-		// a nearly-broken axe already in hand must not short-circuit: the skip
-		// loop below still has to run so a healthy spare can replace it
-		if (held.getItem() instanceof AxeItem && (!guardDurability || !axeNearlyBroken(held))) {
-			return AxeState.READY;
+		// a nearly-broken copy already in hand must not short-circuit: the skip loop
+		// below still has to run so a healthy spare can replace it
+		if (held.getItem() == tool && (!guardDurability || !toolNearlyBroken(held))) {
+			return ToolState.READY;
+		}
+		int brokenFallback = -1;
+		for (int i = 0; i < 36; i++) {
+			ItemStack stack = inventory.getItem(i);
+			if (stack.getItem() != tool) continue;
+			if (guardDurability && toolNearlyBroken(stack)) {
+				if (brokenFallback < 0) brokenFallback = i;
+				continue;
+			}
+			return equipTool(mc, player, i);
+		}
+		if (player.getOffhandItem().getItem() == tool
+				&& (!guardDurability || !toolNearlyBroken(player.getOffhandItem()) || brokenFallback < 0)) {
+			return equipOffhandTool(mc, player);
+		}
+		return brokenFallback >= 0 ? equipTool(mc, player, brokenFallback) : ToolState.NONE;
+	}
+
+	/** The legacy path: the block has no better-than-hand tool, so an axe is required. */
+	private static ToolState bringLegacyAxeToHand(Minecraft mc, LocalPlayer player) {
+		var inventory = player.getInventory();
+		boolean guardDurability = TradeMasterConfig.INSTANCE.preventAxeBreaking;
+		ItemStack held = inventory.getSelectedItem();
+		if (held.getItem() instanceof AxeItem && (!guardDurability || !toolNearlyBroken(held))) {
+			return ToolState.READY;
 		}
 		int brokenFallback = -1;
 		for (int i = 0; i < 36; i++) {
 			ItemStack stack = inventory.getItem(i);
 			if (!(stack.getItem() instanceof AxeItem)) continue;
-			if (guardDurability && axeNearlyBroken(stack)) {
+			if (guardDurability && toolNearlyBroken(stack)) {
 				if (brokenFallback < 0) brokenFallback = i;
 				continue;
 			}
-			return equipAxe(mc, player, i);
+			return equipTool(mc, player, i);
 		}
 		ItemStack offhand = player.getOffhandItem();
 		if (offhand.getItem() instanceof AxeItem
-				&& (!guardDurability || !axeNearlyBroken(offhand) || brokenFallback < 0)) {
-			// menu slot 45 is the offhand in InventoryMenu (0 result, 1-4 craft,
-			// 5-8 armor, 9-35 main, 36-44 hotbar) — slot 40 is hotbar slot 4!
-			// The predicted SWAP applies client-side immediately, so the next tick
-			// sees the result instead of resending a raw toggle packet. A broken
-			// offhand axe is swapped in only as last resort, so the caller's
-			// durability guard reports axe_breaking rather than axe_required.
-			if (mc.gameMode == null) return AxeState.WORKING;
-			if (player.containerMenu != player.inventoryMenu) {
-				// the swap below needs the inventory menu: with a foreign menu open it never
-				// runs and the caller loops until its phase timeout. Close it (like
-				// restock's close branch) so the next tick takes the normal path.
-				player.closeContainer();
-				return AxeState.WORKING;
-			}
-			rememberSelection(player);
-			mc.gameMode.handleContainerInput(0, 45, inventory.getSelectedSlot(),
-					ContainerInput.SWAP, player);
-			return AxeState.WORKING;
+				&& (!guardDurability || !toolNearlyBroken(offhand) || brokenFallback < 0)) {
+			return equipOffhandTool(mc, player);
 		}
-		return brokenFallback >= 0 ? equipAxe(mc, player, brokenFallback) : AxeState.NONE;
+		return brokenFallback >= 0 ? equipTool(mc, player, brokenFallback) : ToolState.NONE;
+	}
+
+	/** Swaps the offhand item into the main hand. Menu slot 45 is the offhand in
+	 * InventoryMenu (0 result, 1-4 craft, 5-8 armor, 9-35 main, 36-44 hotbar) — slot 40
+	 * is hotbar slot 4! The predicted SWAP applies client-side immediately, so the next
+	 * tick sees the result instead of resending a raw toggle packet. A broken offhand tool
+	 * is swapped in only as last resort, so the caller's durability guard still fires. */
+	private static ToolState equipOffhandTool(Minecraft mc, LocalPlayer player) {
+		if (mc.gameMode == null) return ToolState.WORKING;
+		if (player.containerMenu != player.inventoryMenu) {
+			// the swap below needs the inventory menu: with a foreign menu open it never
+			// runs and the caller loops until its phase timeout. Close it (like restock's
+			// close branch) so the next tick takes the normal path.
+			player.closeContainer();
+			return ToolState.WORKING;
+		}
+		rememberSelection(player);
+		mc.gameMode.handleContainerInput(0, 45, player.getInventory().getSelectedSlot(),
+				ContainerInput.SWAP, player);
+		return ToolState.WORKING;
 	}
 
 	/** The hotbar slot selected before this run started moving items around; -1 when
@@ -301,28 +355,34 @@ public final class LecternRestock {
 		}
 	}
 
-	private static AxeState equipAxe(Minecraft mc, LocalPlayer player, int slot) {
+	private static ToolState equipTool(Minecraft mc, LocalPlayer player, int slot) {
 		rememberSelection(player);
 		if (slot < 9) {
 			Interactions.selectHotbarSlot(player, slot);
-			return AxeState.READY;
+			return ToolState.READY;
 		}
-		if (mc.gameMode == null || player.containerMenu != player.inventoryMenu) return AxeState.WORKING;
+		if (mc.gameMode == null) return ToolState.WORKING;
+		if (player.containerMenu != player.inventoryMenu) {
+			// the swap below needs the inventory menu: with a foreign menu open it never runs
+			// and the caller loops until its phase timeout. Close it, like the offhand path.
+			player.closeContainer();
+			return ToolState.WORKING;
+		}
 		// InventoryMenu maps main-inventory slots 9-35 onto themselves
 		mc.gameMode.handleContainerInput(0, slot, player.getInventory().getSelectedSlot(),
 				ContainerInput.SWAP, player);
-		return AxeState.WORKING;
+		return ToolState.WORKING;
 	}
 
-	/** Whether the given axe stack is at or below the preventAxeBreaking durability threshold. */
-	public static boolean axeNearlyBroken(ItemStack stack) {
-		return stack.getItem() instanceof AxeItem
-				&& stack.getMaxDamage() - stack.getDamageValue() <= 5;
+	/** Whether the given TOOL stack is at or below the preventAxeBreaking durability
+	 * threshold (5, as before). Non-damageable stacks are never "nearly broken". */
+	public static boolean toolNearlyBroken(ItemStack stack) {
+		return RigTarget.isNearlyBroken(stack);
 	}
 
-	/** Whether the held axe is at or below the preventAxeBreaking durability threshold. */
-	public static boolean axeNearlyBroken(LocalPlayer player) {
-		return axeNearlyBroken(player.getInventory().getSelectedItem());
+	/** Whether the held tool is at or below the preventAxeBreaking durability threshold. */
+	public static boolean toolNearlyBroken(LocalPlayer player) {
+		return toolNearlyBroken(player.getInventory().getSelectedItem());
 	}
 
 	/**

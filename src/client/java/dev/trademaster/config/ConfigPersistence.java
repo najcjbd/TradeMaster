@@ -35,8 +35,8 @@ public final class ConfigPersistence {
 	 * "enchantments" section would parse "mechanism", "naming", ... as bogus targets
 	 * and replace the whole enchantment table. */
 	private static final java.util.Set<String> SECTION_NAMES = java.util.Set.of(
-			"mechanism", "naming", "positions", "grindstone", "offers", "antiCheat",
-			"enchantments", "hotkeys",
+			"mechanism", "naming", "positions", "grindstone", "villagers", "offers",
+			"antiCheat", "enchantments", "hotkeys",
 			// sub-keys an early flat layout stored at the root
 			"specs", "customNames", "nameHistory", "airItems");
 
@@ -184,7 +184,9 @@ public final class ConfigPersistence {
 		}
 	}
 
-	private static void writeFrom(TradeMasterConfig c, JsonObject root) {
+	/** Serialises the model into {@code root} (merging, see {@link #save}). Package-private
+	 * so a test can round-trip the model through JSON without a FabricLoader config dir. */
+	static void writeFrom(TradeMasterConfig c, JsonObject root) {
 		root.addProperty("configVersion", CONFIG_VERSION);
 
 		JsonObject mechanism = sectionForWrite(root, "mechanism");
@@ -228,6 +230,7 @@ public final class ConfigPersistence {
 		positions.add("lectern", writePos(c.lecternPos));
 		positions.add("summonButton", writePos(c.summonButtonPos));
 		positions.add("sendAwayButton", writePos(c.sendAwayButtonPos));
+		positions.add("dispenser", writePos(c.dispenserPos));
 		positions.add("villagerRegionOrigin", writePos(c.villagerRegionOrigin));
 		positions.add("villagerRegionDelta", writePos(c.villagerRegionDelta));
 		positions.addProperty("villagerSphereRadius", c.villagerSphereRadius);
@@ -237,6 +240,16 @@ public final class ConfigPersistence {
 		}
 		positions.add("chests", chests);
 		root.add("positions", positions);
+
+		JsonObject villagers = sectionForWrite(root, "villagers");
+		villagers.addProperty("workBlock", c.workBlockId);
+		villagers.addProperty("profession", c.professionId);
+		JsonArray nonTradeable = new JsonArray();
+		for (String id : c.nonTradeableProfessions) {
+			if (id != null && !id.isBlank()) nonTradeable.add(id);
+		}
+		villagers.add("nonTradeableProfessions", nonTradeable);
+		root.add("villagers", villagers);
 
 		JsonObject grindstone = sectionForWrite(root, "grindstone");
 		grindstone.addProperty("enabled", c.grindstoneEnabled);
@@ -313,7 +326,9 @@ public final class ConfigPersistence {
 		root.add("hotkeys", hotkeys);
 	}
 
-	private static void readInto(TradeMasterConfig c, JsonObject root) {
+	/** Reads {@code root} into the model (see {@link #load}). Package-private so a test can
+	 * round-trip the model through JSON without a FabricLoader config dir. */
+	static void readInto(TradeMasterConfig c, JsonObject root) {
 		JsonObject mechanism = sectionOrRoot(root, "mechanism");
 		if (mechanism != null) {
 			c.rerollMechanism = readEnum(mechanism, "reroll", c.rerollMechanism);
@@ -383,6 +398,7 @@ public final class ConfigPersistence {
 			c.lecternPos = readPos(positions.get("lectern"));
 			c.summonButtonPos = readPos(positions.get("summonButton"));
 			c.sendAwayButtonPos = readPos(positions.get("sendAwayButton"));
+			c.dispenserPos = readPos(positions.get("dispenser"));
 			c.villagerRegionOrigin = readPos(positions.get("villagerRegionOrigin"));
 			c.villagerRegionDelta = readPos(positions.get("villagerRegionDelta"));
 			c.villagerSphereRadius = Math.max(1, Math.min(64,
@@ -400,6 +416,26 @@ public final class ConfigPersistence {
 					}
 					BlockPos pos = readPos(e);
 					if (pos != null) c.addChest(pos);
+				}
+			}
+		}
+
+		JsonObject villagers = sectionOrRoot(root, "villagers");
+		if (villagers != null) {
+			c.workBlockId = readIdString(villagers, "workBlock", c.workBlockId);
+			c.professionId = readIdString(villagers, "profession", c.professionId);
+			JsonElement nonTradeable = villagers.get("nonTradeableProfessions");
+			if (nonTradeable != null && nonTradeable.isJsonArray()) {
+				// clear only when the file carries the array: a partial file must keep the list
+				c.nonTradeableProfessions.clear();
+				for (JsonElement e : nonTradeable.getAsJsonArray()) {
+					if (!e.isJsonPrimitive()) continue;
+					// the same normalisation readIdString applies: a namespaceless entry means
+					// minecraft:, a hand-written "NITWIT" would otherwise never match
+					Identifier id = TradeMasterConfig.parseId(e.getAsString());
+					if (id != null && !c.nonTradeableProfessions.contains(id.toString())) {
+						c.nonTradeableProfessions.add(id.toString());
+					}
 				}
 			}
 		}
@@ -580,6 +616,16 @@ public final class ConfigPersistence {
 		// to drop a note/forward-compat key nested one level deeper
 		JsonObject oldSpecs = getSection(offers, "specs");
 		JsonObject specs = new JsonObject();
+		// seed with the on-disk keys the model does NOT own: a hand-written note (an object
+		// carrying neither entry key) survives a save, exactly like the enchantments section.
+		// A stale SPEC entry is dropped instead of kept: the reader would turn it back into a
+		// target the model no longer has.
+		if (oldSpecs != null) {
+			for (Map.Entry<String, JsonElement> e : oldSpecs.entrySet()) {
+				if (looksLikeSpecEntry(e.getValue())) continue;
+				specs.add(e.getKey(), e.getValue());
+			}
+		}
 		for (Map.Entry<Identifier, TradeOfferSpec> entry : c.tradeSpecs.entrySet()) {
 			TradeOfferSpec spec = entry.getValue().normalized();
 			JsonObject o = entryObject(oldSpecs, entry.getKey());
@@ -604,6 +650,14 @@ public final class ConfigPersistence {
 		offers.add("goods", goods);
 		offers.addProperty("nonBookDisposal", c.nonBookDisposal.name());
 		return offers;
+	}
+
+	/** Whether a JSON value looks like a spec entry (the writer always emits these keys), so a
+	 * hand-written note can be told apart from an entry to preserve or drop. */
+	private static boolean looksLikeSpecEntry(JsonElement value) {
+		if (value == null || !value.isJsonObject()) return false;
+		JsonObject o = value.getAsJsonObject();
+		return o.has("costs") || o.has("result");
 	}
 
 	private static JsonArray writeCosts(List<TradeOfferSpec.TradeCost> costs) {
@@ -692,6 +746,18 @@ public final class ConfigPersistence {
 		if (value == null || !value.isJsonObject()) return false;
 		JsonObject o = value.getAsJsonObject();
 		return o.has("enabled") || o.has("level") || o.has("maxPrice");
+	}
+
+	/** Reads an id stored as a string, normalising it the way the GUI writes it
+	 * (lowercase; a namespaceless value means minecraft:). An unparsable/absent value
+	 * keeps the current one rather than blanking it. */
+	private static String readIdString(JsonObject o, String key, String fallback) {
+		JsonElement e = o.get(key);
+		if (e == null || !e.isJsonPrimitive()) return fallback;
+		String raw = e.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
+		if (raw.isEmpty()) return fallback;
+		Identifier id = raw.indexOf(':') >= 0 ? Identifier.tryParse(raw) : Identifier.tryParse("minecraft:" + raw);
+		return id == null ? fallback : id.toString();
 	}
 
 	/** The object already stored for {@code id} under {@code specs}, so a hand-written

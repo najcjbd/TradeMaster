@@ -10,7 +10,7 @@ An automated **librarian enchanted-book trade rerolling pipeline** for Minecraft
 
 ## Contents
 
-[Overview](#overview) · [Requirements](#requirements) · [Installation](#installation) · [Quick start](#quick-start) · [The rig and coordinates](#the-rig-and-coordinates) · [Pipeline (12 phases)](#pipeline-12-phases) · [Reroll mechanisms](#reroll-mechanisms) · [Trade detection](#trade-detection) · [Matching and budget](#matching-and-budget) · [Locking](#locking) · [Naming](#naming) · [Storage](#storage) · [Arrival check and staging area](#arrival-check-and-staging-area) · [Special villagers](#special-villagers) · [Anti-stall and self-healing](#anti-stall-and-self-healing) · [Anti-cheat / legit mode](#anti-cheat--legit-mode) · [Settings reference](#settings-reference) · [Commands and hotkeys](#commands-and-hotkeys) · [Config entry points](#config-entry-points) · [Compatibility and risks](#compatibility-and-risks) · [Building](#building) · [License and attribution](#license-and-attribution) · [Development disclosure](#development-disclosure)
+[Overview](#overview) · [Requirements](#requirements) · [Installation](#installation) · [Quick start](#quick-start) · [The rig and coordinates](#the-rig-and-coordinates) · [Pipeline (12 phases)](#pipeline-12-phases) · [Reroll mechanisms](#reroll-mechanisms) · [Trade detection](#trade-detection) · [Matching and budget](#matching-and-budget) · [Locking](#locking) · [Naming](#naming) · [Storage](#storage) · [Arrival check and staging area](#arrival-check-and-staging-area) · [Special villagers](#special-villagers) · [Villagers (work block and profession)](#villagers-work-block-and-profession) · [Anti-stall and self-healing](#anti-stall-and-self-healing) · [Anti-cheat / legit mode](#anti-cheat--legit-mode) · [Settings reference](#settings-reference) · [Commands and hotkeys](#commands-and-hotkeys) · [Config entry points](#config-entry-points) · [Compatibility and risks](#compatibility-and-risks) · [Building](#building) · [License and attribution](#license-and-attribution) · [Development disclosure](#development-disclosure)
 
 ---
 
@@ -203,6 +203,15 @@ something else into a librarian's trade).
 | Unemployed | Can take the librarian profession → normal flow |
 | Any other profession | Will **never** switch at this lectern → dispatched |
 | Already-named villager | Participates in the named-villager deduction |
+
+## Villagers (work block and profession)
+
+The **Villagers** tab turns the whole rig from "lectern + librarian" into any **work block + profession** pair:
+
+- **Work block**: the block the mod breaks / re-places / restocks from chests (default `minecraft:lectern`). Its position stays on the Settings tab.
+- **Profession**: the profession the villager should take (default `minecraft:librarian`). **If it sells enchanted books** → use the Enchantments tab and the offer shapes; **if it sells other items** → list those items in the Offers tab's **goods** table (a good's result may be any item), and do NOT enable enchantment targets (they only match enchanted-book results, so they would never match and the run would spin).
+- **The breaking tool is derived**: the block's best tool among the player's items (slots 0-35 plus the offhand, highest destroy speed). If nothing beats the bare hand, the legacy behaviour is kept (an axe is required). Ties are broken by: **Unbreaking present → higher Unbreaking level → higher remaining durability → random**, and the pick is then **locked** (no tool flip-flopping).
+- Start-time validation: a work block that is not a job site for any profession, or an unknown profession id, logs a yellow warning (it does not block the start).
 
 ## Anti-stall and self-healing
 

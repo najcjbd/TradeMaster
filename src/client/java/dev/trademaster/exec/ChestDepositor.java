@@ -660,16 +660,18 @@ public class ChestDepositor implements BookDisposal {
 			// allowance is a per-item TOTAL, so without this component check a
 			// component-distinct copy of the player's own item could satisfy it
 			List<ItemStack> expected = this.expectedResults.get(stack.getItem());
-			if (expected != null) {
-				boolean produced = false;
-				for (ItemStack candidate : expected) {
-					if (ItemStack.isSameItemSameComponents(stack, candidate)) {
-						produced = true;
-						break;
-					}
+			// no recorded output for this item means it is not one of this run's products,
+			// whatever the per-item allowance says: never store or drop the player's own
+			// items (the allowance is only derived from the goods baseline)
+			if (expected == null) return false;
+			boolean produced = false;
+			for (ItemStack candidate : expected) {
+				if (ItemStack.isSameItemSameComponents(stack, candidate)) {
+					produced = true;
+					break;
 				}
-				if (!produced) return false;
 			}
+			if (!produced) return false;
 			// only a stack that is ENTIRELY produced may be taken: QUICK_MOVE and
 			// DROP_ALL_ITEMS move the whole stack, so a stack merged with the player's
 			// own items would take theirs too. A mixed stack is left alone — nothing of

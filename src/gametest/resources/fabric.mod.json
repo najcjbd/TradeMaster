@@ -1,0 +1,30 @@
+{
+	"schemaVersion": 1,
+	"id": "trade-master-test",
+	"version": "1.0.0",
+	"name": "TradeMaster Game Tests",
+	"environment": "client",
+	"entrypoints": {
+		"fabric-client-gametest": [
+			"dev.trademaster.gametest.TradeMasterClientGameTest",
+			"dev.trademaster.gametest.VillagersTabClientGameTest",
+			"dev.trademaster.gametest.VillagersTabEditClientGameTest",
+			"dev.trademaster.gametest.ToolEquipClientGameTest",
+			"dev.trademaster.core.DispenserGateClientGameTest",
+			"dev.trademaster.core.PhaseMachineClientGameTest",
+			"dev.trademaster.core.TradeMatchClientGameTest",
+			"dev.trademaster.core.NamingClientGameTest",
+			"dev.trademaster.core.DepositClientGameTest",
+			"dev.trademaster.core.GrindstoneClientGameTest",
+			"dev.trademaster.core.RegionFallbackClientGameTest",
+			"dev.trademaster.core.RerollClientGameTest",
+			"dev.trademaster.core.NamingXpShortClientGameTest",
+			"dev.trademaster.core.DispenserMisconfiguredClientGameTest"
+		]
+	},
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"fabric-client-gametest-api-v1": "*",
+		"trade-master": "*"
+	}
+}

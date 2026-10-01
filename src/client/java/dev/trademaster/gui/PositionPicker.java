@@ -23,7 +23,7 @@ import java.util.function.Consumer;
  */
 public final class PositionPicker {
 
-	public enum Slot { LECTERN, SUMMON_BUTTON, SEND_AWAY_BUTTON, CHEST, GRINDSTONE }
+	public enum Slot { LECTERN, SUMMON_BUTTON, SEND_AWAY_BUTTON, DISPENSER, CHEST, GRINDSTONE }
 
 	private static @Nullable Slot pendingSlot = null;
 	private static @Nullable Consumer<BlockPos> pendingSetter = null;
@@ -145,6 +145,7 @@ public final class PositionPicker {
 			case LECTERN -> c.lecternPos = pos;
 			case SUMMON_BUTTON -> c.summonButtonPos = pos;
 			case SEND_AWAY_BUTTON -> c.sendAwayButtonPos = pos;
+			case DISPENSER -> c.dispenserPos = pos;
 			case CHEST -> c.chestPositions.add(pos.immutable());
 			case GRINDSTONE -> c.grindstonePos = pos;
 		}
