@@ -254,6 +254,12 @@ public class TradeMatcher {
 		if (good.maxPrice() < 1) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
 		if (good.resultItem() == null) return false;
+		// an id that is ALSO an enabled enchantment TARGET shares one needs queue: the good
+		// and the target would inflate each other's budget and the target's price slot would
+		// be read from the good. The Offers tab refuses such a good already; a hand-edited
+		// file lands here (and the start warning names it).
+		EnchantmentTarget sameId = TradeMasterConfig.INSTANCE.enchantments.get(good.id());
+		if (sameId != null && sameId.enabled()) return false;
 		return specHasPayableSlot(good.spec());
 	}
 
@@ -721,11 +727,18 @@ public class TradeMatcher {
 			// reading must win, or an alias literally equal to "{name} {roman}" would
 			// strand its own book.
 			String whole = String.join(" ", span);
-			Identifier wholeId = nameToId.get(EnchantmentNamer.canonical(whole));
-			if (wholeId != null && TradeMasterConfig.INSTANCE.goodFor(wholeId) != null) {
-				return List.of(new NamedPart(whole, 0));
-			}
 			String rest = String.join(" ", span.subList(0, span.size() - 1));
+			Identifier restId = rest.isEmpty() ? null
+					: nameToId.get(EnchantmentNamer.canonical(rest));
+			// the legacy "{name} {roman}" reading wins when `rest` really is an enchantment:
+			// otherwise a good whose name happens to BE "{name} {roman}" would shadow that
+			// enchantment and its own alias could never resolve back
+			if (restId == null || !TradeMasterConfig.INSTANCE.enchantments.containsKey(restId)) {
+				Identifier wholeId = nameToId.get(EnchantmentNamer.canonical(whole));
+				if (wholeId != null && TradeMasterConfig.INSTANCE.goodFor(wholeId) != null) {
+					return List.of(new NamedPart(whole, 0));
+				}
+			}
 			if (!rest.contains("+")) {
 				return rest.isEmpty() ? List.of() : List.of(new NamedPart(rest, detachedLevel));
 			}
@@ -826,12 +839,14 @@ public class TradeMatcher {
 		return index;
 	}
 
-	/** Order-insensitive cost check (the agreed rule): every slot the offer charges must
-	 * be declared by one of the matched targets' specs (same item), and the total
-	 * charged per item may not exceed the total the specs allow. Slots declared but not
-	 * charged are fine — the player simply pays less. A slot whose item is an "air"
-	 * item is not a cost on either side, so a server that spells "free" as air works,
-	 * and a spec field left empty means "not required". */
+	/** Order-insensitive cost check (the agreed rule): every slot the offer charges must be
+	 * declared by one of the matched targets' specs, and the total charged per ITEM may not
+	 * exceed the total the specs allow, so the slots' ORDER does not matter here. Slot 0 is
+	 * still the price slot for the CALLER (it reads the offer's slot 0 as the price) — the
+	 * allowances are summed per item, the price is positional. Slots declared but not charged
+	 * are fine — the player simply pays less. A slot whose item is an "air" item is not a cost
+	 * on either side, so a server that spells "free" as air works, and a spec field left empty
+	 * means "not required". */
 	private boolean costsAllowed(MerchantOffer offer, List<MatchPart> parts) {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		Map<Identifier, Integer> allowed = new HashMap<>();

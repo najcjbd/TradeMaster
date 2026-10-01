@@ -173,11 +173,15 @@ public class LockTradeExecutor {
 				// cursor: verify the item actually landed before closing, otherwise
 				// the run would treat the villager as locked and dispatch it
 				if (this.menu.getCarried().isEmpty()) {
-					// deliberately NOT flagged like the stage-3 timeout: the client's
-					// own prediction puts the book on the cursor whenever the click was
-					// applied, so an empty cursor here means the click did not go
-					// through at all — retrying this one buys nothing twice
-					if (++this.pickupWaitTicks > 10) return Result.FAILED;
+					// The PICKUP click was SENT (handleContainerInput applies it locally but
+					// sends the packet regardless of whether the local apply succeeded), so an
+					// empty cursor only means WE cannot see the result yet — the server may have
+					// applied it. Report the outcome as UNKNOWN, never as a clean rejection, or
+					// the caller retries the same slot and buys a SECOND book.
+					if (++this.pickupWaitTicks > 10) {
+						this.uncertain = true;
+						return Result.FAILED;
+					}
 					return Result.RUNNING;
 				}
 				// the purchase went through but the book is not the matched one:
@@ -211,7 +215,13 @@ public class LockTradeExecutor {
 				// server DROPS the rest at the player's feet. Both deltas count, together.
 				int gained = client.player == null ? 0
 						: matchingBookCount(client.player) - this.preBookCount;
-				int dropped = Math.max(0, droppedMatches(client) - this.droppedBaseline);
+				// the ground side only counts when the inventory had nowhere to put the
+				// delivery (the server then drops it at the player): summing unconditionally
+				// could count one unit twice while a pickup is in flight
+				boolean droppedDelivery = client.player != null
+						&& !dev.trademaster.core.Preconditions.hasFreeSlot(client.player);
+				int dropped = droppedDelivery
+						? Math.max(0, droppedMatches(client) - this.droppedBaseline) : 0;
 				if (gained + dropped >= need) {
 					this.verified = true;
 					return Result.DONE;

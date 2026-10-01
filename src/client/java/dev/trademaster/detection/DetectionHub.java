@@ -75,9 +75,9 @@ public final class DetectionHub {
 		this.onFail = onFail;
 	}
 
-	/** Arms the hub for one check. {@code expectedTrader} is the villager the check is meant
-	 * for: the event channel's menu must belong to it (see
-	 * {@link #eventMenuMatchesTrader()}), so a menu another villager opened is not accepted. */
+	/** Arms the hub for one check. NOTE: {@code expectedTrader} is currently UNUSED — the event
+	 * channel's menu cannot be tied to a villager entity (a client merchant menu wraps a
+	 * {@code ClientSideMerchant}), so it is kept only for a future identity check. */
 	public static void arm(DetectionMode mode, boolean interceptScreen, @Nullable Merchant expectedTrader,
 			Consumer<OfferSnapshot> onResult, Consumer<String> onFail) {
 		// single volatile write: the hub and its intercept flag are published together
@@ -132,8 +132,10 @@ public final class DetectionHub {
 	 * @param hub the hub captured when the packet ARRIVED (see {@link #armedHub()});
 	 * null means nothing was armed then, so only the static leftover marker is set. */
 	public static void onMerchantScreenSuppressed(@Nullable DetectionHub hub, int containerId) {
-		lastSuppressedContainerId = containerId;
+		// a queued task whose hub was already disarmed must not set the id: the next check
+		// (with no bound anchor) would then refuse a legitimate offers packet
 		if (hub == null) return;
+		lastSuppressedContainerId = containerId;
 		hub.expectedContainerId = containerId;
 	}
 
@@ -191,10 +193,12 @@ public final class DetectionHub {
 
 	private void tryDeliverEvent() {
 		if (this.gotEvent || this.eventMask != 3 || this.eventMenu == null) return;
-		if (!eventMenuMatchesTrader()) {
-			fail("merchant menu belongs to another villager");
-			return;
-		}
+		// NOTE: the event channel only exposes the MENU, and a client merchant menu wraps a
+		// ClientSideMerchant (which holds no villager reference), so the opening cannot be tied
+		// to the villager this check armed for: any menu that arrives is accepted. A foreign
+		// menu is bounded instead by the LOCK phase, which re-interacts the session villager and
+		// refuses a drifted offer (see RerollController). expectedTrader is kept for a future
+		// identity check.
 		this.gotEvent = true;
 		if (this.mode == DetectionMode.EVENT) {
 			deliver(eventSnapshot());
@@ -206,10 +210,6 @@ public final class DetectionHub {
 	private void tryDeliverBoth() {
 		if (this.mode != DetectionMode.BOTH) return;
 		if (!this.gotPacket || !this.gotEvent) return;
-		if (!eventMenuMatchesTrader()) {
-			fail("merchant menu belongs to another villager");
-			return;
-		}
 		OfferSnapshot event = eventSnapshot();
 		if (event == null) {
 			fail("event channel produced no merchant");
@@ -234,17 +234,6 @@ public final class DetectionHub {
 	 * is armed would be delivered as this check's result. The last line in every mode
 	 * is the LOCK-time fingerprint re-check (slotStillMatches), which refuses to buy
 	 * any offer that no longer matches the matched trade. */
-	/** Whether the observed menu belongs to the villager THIS check armed for. The event
-	 * channel only exposes the menu, but the menu carries its own trader, so another villager's
-	 * screen can no longer be read as this check's answer. A hub armed without an expectation
-	 * (expectedTrader == null) accepts any menu, as before. */
-	private boolean eventMenuMatchesTrader() {
-		if (this.eventMenu == null) return false;
-		if (this.expectedTrader == null) return true;
-		return ((dev.trademaster.mixin.MerchantMenuAccessor) this.eventMenu).getTrader()
-				== this.expectedTrader;
-	}
-
 	private @Nullable OfferSnapshot eventSnapshot() {
 		if (this.eventMenu == null) return null;
 		Merchant trader = ((dev.trademaster.mixin.MerchantMenuAccessor) this.eventMenu).getTrader();

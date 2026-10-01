@@ -20,7 +20,8 @@
 			"dev.trademaster.core.RerollClientGameTest",
 			"dev.trademaster.core.NamingXpShortClientGameTest",
 			"dev.trademaster.core.DispenserMisconfiguredClientGameTest",
-			"dev.trademaster.core.SummonGateClientGameTest"
+			"dev.trademaster.core.SummonGateClientGameTest",
+			"dev.trademaster.core.DetectionEventModeClientGameTest"
 		]
 	},
 	"depends": {

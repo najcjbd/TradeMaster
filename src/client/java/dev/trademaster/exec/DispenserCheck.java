@@ -69,8 +69,13 @@ public final class DispenserCheck {
 			}
 			case USE -> {
 				if (player.containerMenu instanceof DispenserMenu menu) {
-					rememberMenu(menu);
-					enter(State.SCAN);
+					// a menu already open here is NOT ours (this cycle has not sent its use
+					// packet yet) unless it is the one we opened before: adopting the player's
+					// own dispenser would SCAN their slots and then close their container. Only
+					// ours is scanned; a foreign one is left alone for its owner to close.
+					if (this.openedContainerId >= 0 && menu.containerId == this.openedContainerId) {
+						enter(State.SCAN);
+					}
 					return Result.RUNNING;
 				}
 				// a leftover menu of unknown origin would swallow the click
@@ -85,6 +90,7 @@ public final class DispenserCheck {
 			}
 			case WAIT_MENU -> {
 				if (player.containerMenu instanceof DispenserMenu menu) {
+					// the use packet was sent this cycle, so this menu is ours
 					rememberMenu(menu);
 					enter(State.SCAN);
 				} else if (this.stateTicks > MAX_MENU_WAIT_TICKS) {
@@ -123,7 +129,11 @@ public final class DispenserCheck {
 	private void closeOwnMenu(@Nullable LocalPlayer player) {
 		if (player == null) return;
 		if (!(player.containerMenu instanceof DispenserMenu menu)) return;
-		if (menu.containerId != this.openedContainerId) return;
+		// ours by id; and in WAIT_MENU the menu that just appeared is ours even before the id
+		// was captured (a one-tick window in which an abort could otherwise leave it behind)
+		boolean ours = menu.containerId == this.openedContainerId
+				|| (this.openedContainerId < 0 && this.state == State.WAIT_MENU);
+		if (!ours) return;
 		player.closeContainer();
 	}
 

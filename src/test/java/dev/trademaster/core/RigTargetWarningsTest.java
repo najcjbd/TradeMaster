@@ -4,6 +4,7 @@ import com.google.gson.JsonObject;
 import dev.trademaster.config.ConfigTest;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.strategy.RigTarget;
 import dev.trademaster.testutil.McTest;
 import net.minecraft.network.chat.Component;
@@ -196,6 +197,20 @@ class RigTargetWarningsTest {
 		List<Component> warnings = RerollController.rigTargetWarnings();
 		assertTrue(has(warnings, "trademaster.message.profession_not_tradeable"), "got " + warnings);
 		assertEquals(VillagerProfession.LIBRARIAN, RigTarget.professionKey());
+	}
+
+	@Test
+	void aBlankPriceSlotIsDetected() {
+		// slot 0 declares no item: only a trade charging nothing there can match
+		assertTrue(RerollController.blankPriceSlot(new TradeOfferSpec(
+				List.of(new TradeOfferSpec.TradeCost(TradeOfferSpec.AIR, 0)), TradeOfferSpec.ENCHANTED_BOOK)));
+		assertTrue(RerollController.blankPriceSlot(new TradeOfferSpec(
+				List.of(new TradeOfferSpec.TradeCost(null, 0)), TradeOfferSpec.ENCHANTED_BOOK)));
+		assertTrue(RerollController.blankPriceSlot(new TradeOfferSpec(
+				List.of(), TradeOfferSpec.ENCHANTED_BOOK)));
+		// a real price item is fine
+		assertFalse(RerollController.blankPriceSlot(new TradeOfferSpec(
+				List.of(new TradeOfferSpec.TradeCost(TradeOfferSpec.EMERALD, 0)), TradeOfferSpec.ENCHANTED_BOOK)));
 	}
 
 	/** The warning keys in order, so a test can assert the exact set. */

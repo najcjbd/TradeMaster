@@ -167,13 +167,14 @@ public final class RerollController {
 	 * Flips off when the user disables hunt-cheaper mid-run, triggering a plain
 	 * rebuild (locked vouchers, named-villager deduction) on the next precheck. */
 	private static boolean huntAppliedToNeeds = false;
-	/** Fingerprint (id/level/maxPrice of every enabled target) of the config the
-	 * current needs table was built from: any mid-run edit triggers a one-shot
-	 * rebuild, same pattern as the hunt flip above. */
-	/** Hash of the live target config, or null before the first refresh. A long
-	 * instead of a string: this is compared on EVERY tick, and building the string
-	 * cost an ArrayList plus a StringBuilder plus one Identifier.toString() per
-	 * enabled target per tick (tens of objects, twice a second on 20 tps). */
+	/** Hash of the live TARGET config (id/level/maxPrice of every enabled target, its spec
+	 * shape, and the goods) the current needs table was built from, or null before the first
+	 * refresh: any mid-run edit triggers a one-shot rebuild, same pattern as the hunt flip
+	 * above. A long instead of a string because it is compared on EVERY tick — building a
+	 * string cost an ArrayList plus a StringBuilder plus one Identifier.toString() per enabled
+	 * target per tick (tens of objects, twice a second on 20 tps). The rig target itself (work
+	 * block / profession / non-tradeable list) is NOT part of it: those stop the run instead
+	 * (see snapRigTarget). */
 	private static @Nullable Long needsFingerprint = null;
 	/** Lock retries exhausted with a full inventory: draining chests before rerolling on. */
 	private static boolean lockExhaustionDepositPending = false;
@@ -515,7 +516,11 @@ public final class RerollController {
 		}
 		// the staging area is part of the running rig too: losing the region coords
 		// mid-run would silently move the staging wait to the lectern sphere
-		if (snapRigTarget != null && !snapRigTarget.equals(rigTargetDefinition(config))) {
+		// a FINISHING run (naming / dispatching / a lock in flight) keeps its own definition:
+		// stopping here would strand the locked villager, and the edit only matters to the next
+		// run anyway (the rename/needs paths exempt finalizingRun the same way)
+		if (!finalizingRun() && snapRigTarget != null
+				&& !snapRigTarget.equals(rigTargetDefinition(config))) {
 			// the rig definition (work block / target profession / non-tradeable list) belongs
 			// to the running rig: switching any of them mid-run makes the pipeline work the old
 			// spot with the new rules (or break/place a block that is not there). Stop the
@@ -1404,7 +1409,7 @@ public final class RerollController {
 								// voucher the attempted target first: the rebuild re-enqueues
 								// every enabled target, and re-demanding this one would buy a
 								// SECOND copy (see handleLockFailure)
-								if (s.matchedTrade != null) s.lockedIds.addAll(s.matchedTrade.matchedIds());
+								voucherUnprovenPurchase(s);
 								// the edit may have emptied the matcher, and the tick-top check
 								// is a one-shot on the fingerprint (suppressed while
 								// finalizing): finish the run here instead of parking in
@@ -1486,11 +1491,14 @@ public final class RerollController {
 					case DONE -> finishLock(s);
 					case FAILED -> {
 						// the click is out and the outcome is unknown: voucher the attempted
-						// target, or awaitNextVillager's restoreBudget puts it straight back and
-						// the next villager buys a SECOND copy (same rule as handleLockFailure)
-						if ((lockExecutor.uncertain() || lockExecutor.drifted()) && s.matchedTrade != null) {
-							s.lockedIds.addAll(s.matchedTrade.matchedIds());
-						}
+						// target, or the next villager buys a SECOND copy (same rule as
+						// handleLockFailure). The voucher only takes effect once the needs are
+						// rebuilt (dropLocked), and awaitNextVillager does NOT rebuild — so do it
+						// here. Without the rebuild the target stays matchable (with
+						// reserveCheaperTraders it even keeps a price-1 slot) and it is re-bought.
+						boolean unproven = lockExecutor.uncertain() || lockExecutor.drifted();
+						if (unproven) voucherUnprovenPurchase(s);
+						if (unproven) refreshNeeds(client, s);
 						awaitNextVillager(client, s);
 					}
 					case RUNNING -> {}
@@ -1657,10 +1665,9 @@ public final class RerollController {
 					: "trademaster.message.lock_drift_purchased"));
 			// the click is out and the outcome is unknown: the target must not be re-demanded,
 			// or the next villager buys a SECOND copy. The needs rebuild re-enqueues every
-			// still-enabled target, so voucher the attempted ones as obtained for this run
-			// first — exactly the bookkeeping a proven purchase would have written.
-			// (No lockedResults/hunt/auto-disable: the purchase is not proven.)
-			if (s.matchedTrade != null) s.lockedIds.addAll(s.matchedTrade.matchedIds());
+			// still-enabled target, so voucher the attempted ones as obtained for this run first
+			// (no auto-disable, no hunt mark: the purchase is not proven).
+			voucherUnprovenPurchase(s);
 			// the rebuild also finishes a run whose targets were all disabled in the meantime,
 			// like the edited-out path does
 			refreshNeeds(client, s);
@@ -1804,6 +1811,30 @@ public final class RerollController {
 				|| key.equals("trademaster.message.tool_cannot_harvest");
 	}
 
+	/** Vouchers an UNPROVEN purchase (a click was sent, the outcome is unknown) for the rest of
+	 * this run: the attempted targets must not be re-demanded, or the next villager buys a
+	 * SECOND copy. No auto-disable and no hunt mark (the purchase is not proven), but the
+	 * expected result IS remembered so an actually-delivered item can still be disposed of. */
+	private static void voucherUnprovenPurchase(RunSession s) {
+		if (s.matchedTrade == null) return;
+		s.lockedIds.addAll(s.matchedTrade.matchedIds());
+		rememberProduced(s.lockedResults, s.matchedTrade.purchase().result());
+	}
+
+	/** Remembers a distinct produced stack (item AND components) so the disposal only ever
+	 * takes a stack that IS one of this run's outputs. */
+	private static void rememberProduced(
+			Map<Item, java.util.List<net.minecraft.world.item.ItemStack>> into,
+			@Nullable net.minecraft.world.item.ItemStack produced) {
+		if (produced == null || produced.isEmpty()) return;
+		java.util.List<net.minecraft.world.item.ItemStack> known =
+				into.computeIfAbsent(produced.getItem(), k -> new java.util.ArrayList<>());
+		for (net.minecraft.world.item.ItemStack prev : known) {
+			if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(prev, produced)) return;
+		}
+		known.add(produced.copy());
+	}
+
 	private static void finishLock(RunSession s) {
 		lockExecutor = null;
 		lockInteracted = false;
@@ -1817,19 +1848,7 @@ public final class RerollController {
 			s.lockedIds.addAll(s.matchedTrade.matchedIds());
 			// remember every distinct stack this trade yields (item AND components), so the
 			// disposal only ever takes a stack that IS one of this run's outputs
-			net.minecraft.world.item.ItemStack produced = s.matchedTrade.purchase().result();
-			if (produced != null && !produced.isEmpty()) {
-				java.util.List<net.minecraft.world.item.ItemStack> known =
-						s.lockedResults.computeIfAbsent(produced.getItem(), k -> new java.util.ArrayList<>());
-				boolean seen = false;
-				for (net.minecraft.world.item.ItemStack prev : known) {
-					if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(prev, produced)) {
-						seen = true;
-						break;
-					}
-				}
-				if (!seen) known.add(produced.copy());
-			}
+			rememberProduced(s.lockedResults, s.matchedTrade.purchase().result());
 			// hunt-cheaper: the locked enchantment stays live; mark its price so
 			// future matches only accept a strictly cheaper copy. Only a purchase
 			// with exactly one matched part has a price attributable to one target —
@@ -2104,9 +2123,12 @@ public final class RerollController {
 					chat(Component.translatable("trademaster.message.emergency_purchase",
 									describeBook(bookFingerprint(altOffer, alt)), altOffer.getBaseCostA().getCount())
 							.withStyle(ChatFormatting.YELLOW));
-					// keep the match: LOCK re-picks the affordable slot and fingerprints
-					// the offer it actually buys, while locked ids / auto-disable / hunt
-					// marks still follow the matched targets
+					// keep the match: LOCK re-picks the affordable slot and fingerprints the
+					// offer it actually buys, while locked ids / auto-disable / hunt marks still
+					// follow the matched targets. That is deliberate: the run's goal is a
+					// LOCKED villager, and a locked villager keeps selling what the matched
+					// target wanted (its offers do not disappear), so locking it via another of
+					// its books reaches the same end state — the matched book stays buyable
 				} else {
 					debug("offers: matched " + hit.price() + " emeralds and nothing is affordable, stopping");
 					// a combo's price is the sum of its parts and can exceed an emerald
@@ -2348,6 +2370,7 @@ public final class RerollController {
 		List<String> dead = new ArrayList<>();
 		List<String> unavailable = new ArrayList<>();
 		List<String> uncosted = new ArrayList<>();
+		List<String> blankPrice = new ArrayList<>();
 		List<String> goods = new ArrayList<>();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			if (!TradeMatcher.registryTradeable(target.id())) {
@@ -2360,6 +2383,14 @@ public final class RerollController {
 				uncosted.add(target.id().toString());
 				continue;
 			}
+			// a BLANK price slot (slot 0) declares no item, so only a trade that charges
+			// nothing there can match: a normal librarian trade always charges emeralds, so
+			// the demand silently never matches (it may still ride a combo). The GUI lets the
+			// row be left empty (= "not required"), so this is reachable without hand-editing.
+			if (blankPriceSlot(TradeMasterConfig.INSTANCE.specFor(target.id()))) {
+				blankPrice.add(target.id().toString());
+				continue;
+			}
 			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) {
 				Enchantment enchantment = mc.level.registryAccess()
 						.lookupOrThrow(Registries.ENCHANTMENT).getValue(target.id());
@@ -2369,7 +2400,11 @@ public final class RerollController {
 			}
 		}
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
-			if (!TradeMatcher.goodMatchable(good)) goods.add(good.id().toString());
+			if (!TradeMatcher.goodMatchable(good)) {
+				goods.add(good.id().toString());
+				continue;
+			}
+			if (blankPriceSlot(good.spec())) blankPrice.add(good.id().toString());
 		}
 		if (!dead.isEmpty()) {
 			chat(Component.translatable("trademaster.message.unmatchable_targets", String.join(", ", dead))
@@ -2387,6 +2422,17 @@ public final class RerollController {
 			chat(Component.translatable("trademaster.message.uncosted_targets", String.join(", ", uncosted))
 					.withStyle(ChatFormatting.YELLOW));
 		}
+		if (!blankPrice.isEmpty()) {
+			chat(Component.translatable("trademaster.message.blank_price_slot", String.join(", ", blankPrice))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+	}
+
+	/** Whether a spec's PRICE slot (slot 0) declares no item, so only a trade charging nothing
+	 * there can match it. */
+	static boolean blankPriceSlot(TradeOfferSpec spec) {
+		TradeOfferSpec.TradeCost first = spec.costAt(0);
+		return first == null || first.item() == null || TradeMasterConfig.INSTANCE.isAirItem(first.item());
 	}
 
 	/** Closes a leftover merchant menu (EVENT/BOTH detection leaves it open).

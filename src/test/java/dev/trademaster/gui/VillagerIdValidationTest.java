@@ -58,8 +58,7 @@ class VillagerIdValidationTest {
 
 	@Test
 	void aNonTradeableProfessionCannotBeTheTarget() {
-		TradeMasterConfig.INSTANCE.nonTradeableProfessions.clear();
-		try {
+		withCleanList(() -> {
 			// the built-in never-trades profession
 			assertEquals("trademaster.villagers.not_tradeable",
 					VillagersListWidget.professionError("minecraft:nitwit"));
@@ -69,8 +68,21 @@ class VillagerIdValidationTest {
 					VillagersListWidget.professionError("minecraft:cleric"));
 			// a normal profession is still fine
 			assertNull(VillagersListWidget.professionError("minecraft:librarian"));
+		});
+	}
+
+	/** Runs {@code body} with the shared non-tradeable list EMPTY, restoring the previous
+	 * contents afterwards (the whole suite shares the singleton, so a plain clear() would
+	 * silently drop whatever was there). */
+	private static void withCleanList(Runnable body) {
+		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		List<String> saved = List.copyOf(c.nonTradeableProfessions);
+		c.nonTradeableProfessions.clear();
+		try {
+			body.run();
 		} finally {
-			TradeMasterConfig.INSTANCE.nonTradeableProfessions.clear();
+			c.nonTradeableProfessions.clear();
+			c.nonTradeableProfessions.addAll(saved);
 		}
 	}
 
@@ -78,8 +90,7 @@ class VillagerIdValidationTest {
 	void listEntriesRejectTheTargetAndTheUnemployedId() {
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 		String savedProfession = c.professionId;
-		c.nonTradeableProfessions.clear();
-		try {
+		withCleanList(() -> {
 			c.professionId = "minecraft:librarian";
 			// a normal other profession is fine to list
 			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:cleric"));
@@ -97,24 +108,18 @@ class VillagerIdValidationTest {
 			assertEquals("trademaster.villagers.list_target",
 					VillagersListWidget.nonTradeableEntryError("minecraft:cleric"));
 			assertNull(VillagersListWidget.nonTradeableEntryError("minecraft:librarian"));
-		} finally {
 			c.professionId = savedProfession;
-			c.nonTradeableProfessions.clear();
-		}
+		});
 	}
 
 	@Test
 	void theUnemployedProfessionCannotBeTheTarget() {
-		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-		c.nonTradeableProfessions.clear();
-		try {
+		withCleanList(() -> {
 			// it sells no trade, so as a target the run could never be satisfied
 			assertEquals("trademaster.villagers.profession_unemployed",
 					VillagersListWidget.professionError("minecraft:none"));
 			assertNull(VillagersListWidget.professionError("minecraft:librarian"));
-		} finally {
-			c.nonTradeableProfessions.clear();
-		}
+		});
 	}
 
 	@Test
@@ -142,15 +147,23 @@ class VillagerIdValidationTest {
 
 	@Test
 	void anOverlongListIsRefused() {
+		// the reader truncates at the cap, so the GUI must not write past it
+		String overlong = ids(TradeMasterConfig.MAX_NON_TRADEABLE + 1);
+		assertNull(VillagersListWidget.parseList(overlong));
+		assertTrue(VillagersListWidget.isOverlong(overlong));
+		// and EXACTLY the cap is still accepted: an off-by-one must not pass this test
+		String atCap = ids(TradeMasterConfig.MAX_NON_TRADEABLE);
+		assertEquals(TradeMasterConfig.MAX_NON_TRADEABLE, VillagersListWidget.parseList(atCap).size());
+		assertFalse(VillagersListWidget.isOverlong(atCap));
+	}
+
+	private static String ids(int count) {
 		StringBuilder text = new StringBuilder();
-		for (int i = 0; i <= TradeMasterConfig.MAX_NON_TRADEABLE; i++) {
+		for (int i = 0; i < count; i++) {
 			if (i > 0) text.append(',');
 			text.append('a').append(i);
 		}
-		// the reader truncates at the cap, so the GUI must not write past it
-		assertNull(VillagersListWidget.parseList(text.toString()));
-		assertTrue(VillagersListWidget.isOverlong(text.toString()));
-		assertFalse(VillagersListWidget.isOverlong("a,b,c"));
+		return text.toString();
 	}
 
 	@Test

@@ -13,7 +13,7 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Cross-feature GUI test: in a real (singleplayer) client, the mod screen opens with all
- * six tabs and the Villagers tab builds its two-row list. This is the wiring a pure-logic
+ * six tabs and the Villagers tab builds its three-row list. This is the wiring a pure-logic
  * test cannot reach — the tab layout math and the new list widget only exist as widgets.
  */
 @SuppressWarnings("UnstableApiUsage")

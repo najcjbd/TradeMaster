@@ -74,7 +74,7 @@ public class TradeMasterScreen extends Screen {
 		if (this.tab == Tab.VILLAGERS && this.villagersList != null) {
 			this.pendingVillagersScroll = this.villagersList.scrollAmount();
 		}
-		// four tabs must still fit a narrow (Android/FCL) screen: shrink them rather
+		// six tabs must still fit a narrow (Android/FCL) screen: shrink them rather
 		// than let the last one clip off the right edge. No floor at all — a floor of
 		// ANY size makes the row wider than the screen once the width drops below it,
 		// and an unreachable tab is worse than a cramped one

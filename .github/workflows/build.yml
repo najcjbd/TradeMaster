@@ -77,7 +77,8 @@ jobs:
       # at: a bare runner has neither guaranteed, and a missing library would crash the client
       # at boot for a reason unrelated to the code
       - name: Install the client test dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libopenal1
+        # libgl1-mesa-dri provides the llvmpipe software renderer the headless client needs
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xvfb libopenal1 libgl1-mesa-dri
 
       - name: Run the client game tests headlessly
         env:
@@ -87,6 +88,8 @@ jobs:
           # null backend. Harmless where audio works.
           JAVA_TOOL_OPTIONS: "-Dorg.lwjgl.openal.libname=libopenal.so.1"
           ALSOFT_DRIVERS: "null"
+          # force the software renderer: the runner has no GPU
+          LIBGL_ALWAYS_SOFTWARE: "1"
         run: xvfb-run -a --server-args="-screen 0 1280x720x24" ./gradlew runClientGameTest --console=plain --stacktrace
 
       # a failing client test is hard to diagnose without the client log
@@ -99,4 +102,3 @@ jobs:
           path: |
             build/run/clientGameTest/logs/
             build/run/clientGameTest/crash-reports/
-            build/reports/tests/
