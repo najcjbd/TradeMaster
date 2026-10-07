@@ -34,10 +34,19 @@ stonecutter {
         fun mc(mcVersion: String, name: String = mcVersion, loaders: Iterable<String>) =
             loaders.forEach { version("$name-$it", mcVersion) }
 
-        // Start with Fabric first (validated on this machine). NeoForge/Forge nodes are
-        // added as the loader buildscripts are ported (maven.neoforged.net is flaky here).
+        // Fabric first (validated on this machine). NeoForge/Forge nodes are added as the
+        // loader buildscripts are ported (maven.neoforged.net is flaky on this box).
+        mc("1.16.5", loaders = listOf("fabric"))
+        mc("1.18.2", loaders = listOf("fabric"))
+        mc("1.19.2", loaders = listOf("fabric"))
+        mc("1.20.1", loaders = listOf("fabric"))
+        mc("1.21.1", loaders = listOf("fabric"))
         mc("1.21.4", loaders = listOf("fabric"))
+        mc("1.21.5", loaders = listOf("fabric"))
+        mc("1.21.8", loaders = listOf("fabric"))
+        mc("26.1", loaders = listOf("fabric"))
         mc("26.2", loaders = listOf("fabric"))
+        mc("26.3", loaders = listOf("fabric"))
 
         // Default target for the IDE / plain `./gradlew build`.
         vcsVersion = "1.21.4-fabric"

@@ -1,18 +1,16 @@
 package dev.trademaster;
 
-import com.mojang.logging.LogUtils;
-import org.slf4j.Logger;
-
 /**
  * Loader-agnostic client entry point. Everything client-only lives in this shared
  * source set; each loader's entrypoint just calls {@link #initialize()}.
+ *
+ * <p>No logger yet on purpose: {@code com.mojang.logging.LogUtils} only exists from
+ * MC 1.17, so a version-agnostic logger is wired during the porting pass.
  */
 public final class TradeMasterClient {
 
-	public static final Logger LOGGER = LogUtils.getLogger();
-
 	public static void initialize() {
-		LOGGER.info("Trade Master client initialising");
+		// real initialisation is migrated here subsystem by subsystem
 	}
 
 	private TradeMasterClient() {}
