@@ -321,7 +321,7 @@ public final class ConfigPersistence {
 
 		// merge the adapter's keys into the on-disk object: same reason as above
 		JsonObject hotkeys = sectionForWrite(root, "hotkeys");
-		for (Map.Entry<String, JsonElement> entry : MaliLibAdapter.writeHotkeys().entrySet()) {
+		for (Map.Entry<String, JsonElement> entry : Platforms.writeHotkeys().entrySet()) {
 			hotkeys.add(entry.getKey(), entry.getValue());
 		}
 		root.add("hotkeys", hotkeys);
@@ -597,7 +597,7 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
-		MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
+		Platforms.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 
 	/** Tolerates hand-edited files where a section has the wrong JSON type

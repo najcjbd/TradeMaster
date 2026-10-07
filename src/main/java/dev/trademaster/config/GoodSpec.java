@@ -1,7 +1,7 @@
 package dev.trademaster.config;
 
+import dev.trademaster.compat.McBuiltIn;
 import dev.trademaster.compat.McRegistry;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -42,7 +42,7 @@ public record GoodSpec(ResourceLocation result, int resultCount, boolean enabled
 
 	/** The result item, or null when the id no longer exists in the registry. */
 	public @Nullable Item resultItem() {
-		return McRegistry.value(BuiltInRegistries.ITEM, this.result);
+		return McRegistry.value(McBuiltIn.items(), this.result);
 	}
 
 	/** The name used for the villager and the deduction index: the custom alias when

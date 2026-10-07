@@ -59,12 +59,12 @@ public final class McRegistry {
 	 * lookup method is renamed registryOrThrow -> lookupOrThrow by 1.21.8. */
 	public static Registry<net.minecraft.world.item.enchantment.Enchantment> enchantments(
 			net.minecraft.world.level.Level level) {
-		//? if >=1.21.8 {
-		/*return level.registryAccess()
-				.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);*/
-		//?} elif >=1.19.3 {
+		//? if >=1.21.2 {
 		return level.registryAccess()
-				.registryOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+				.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+		//?} elif >=1.19.3 {
+		/*return level.registryAccess()
+				.registryOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);*/
 		//?} else {
 		/*return net.minecraft.core.Registry.ENCHANTMENT;*/
 		//?}

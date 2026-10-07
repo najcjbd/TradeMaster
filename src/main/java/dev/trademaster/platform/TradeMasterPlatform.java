@@ -24,6 +24,16 @@ public interface TradeMasterPlatform {
 	/** The loader's config directory (where the config file is read/written). */
 	java.nio.file.Path configDir();
 
+	/** Hotkey definitions to persist in the config file. maLiLib owns the hotkeys on
+	 * Fabric; other loaders have none, so the default is empty. */
+	default java.util.Map<String, com.google.gson.JsonElement> writeHotkeys() {
+		return java.util.Map.of();
+	}
+
+	/** Load persisted hotkeys. No-op when the loader has none. */
+	default void readHotkeys(com.google.gson.JsonObject section) {
+	}
+
 	/** True only on Fabric with maLiLib present, where the extra maLiLib screen is wired. */
 	default boolean hasMalilib() {
 		return false;

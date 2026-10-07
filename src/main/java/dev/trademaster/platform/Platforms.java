@@ -16,5 +16,15 @@ public final class Platforms {
 		return platform;
 	}
 
+	/** Hotkeys to persist, or empty when no platform is installed (headless tests). */
+	public static java.util.Map<String, com.google.gson.JsonElement> writeHotkeys() {
+		return platform == null ? java.util.Map.of() : platform.writeHotkeys();
+	}
+
+	/** Load persisted hotkeys (no-op without a platform). */
+	public static void readHotkeys(com.google.gson.JsonObject section) {
+		if (platform != null) platform.readHotkeys(section);
+	}
+
 	private Platforms() {}
 }

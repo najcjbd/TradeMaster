@@ -1,12 +1,12 @@
 package dev.trademaster.config;
 
 import dev.trademaster.compat.McIds;
+import dev.trademaster.compat.McEnchantTags;
 import dev.trademaster.compat.McRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.item.enchantment.Enchantment;
 import org.jetbrains.annotations.Nullable;
 
@@ -243,7 +243,7 @@ public final class TradeMasterConfig {
 		LinkedHashMap<ResourceLocation, EnchantmentTarget> merged = new LinkedHashMap<>();
 		List<ResourceLocation> ids = new ArrayList<>();
 		for (ResourceLocation id : registry.keySet()) {
-			if (!McRegistry.isInTag(registry, EnchantmentTags.TRADEABLE, id)) continue;
+			if (!McRegistry.isInTag(registry, McEnchantTags.tradeable(), id)) continue;
 			ids.add(id);
 		}
 		ids.sort(ResourceLocation::compareTo);
@@ -330,7 +330,7 @@ public final class TradeMasterConfig {
 		if (doublePriceCacheSource != registry) {
 			var cache = new java.util.LinkedHashSet<ResourceLocation>();
 			for (ResourceLocation candidate : registry.keySet()) {
-				if (McRegistry.isInTag(registry, EnchantmentTags.DOUBLE_TRADE_PRICE, candidate)) {
+				if (McRegistry.isInTag(registry, McEnchantTags.doubleTradePrice(), candidate)) {
 					cache.add(candidate);
 				}
 			}
