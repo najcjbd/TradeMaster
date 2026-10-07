@@ -35,7 +35,8 @@ stonecutter {
             loaders.forEach { version("$name-$it", mcVersion) }
 
         // Loaders per era: fabric everywhere; forge for <=1.20.1; neoforge for >=1.20.2.
-        mc("1.16.5", loaders = listOf("fabric", "forge"))
+        // NB: 1.14-1.16 are Java 8, which cannot compile records/switch-expressions; the
+        // shared codebase is modern, so those versions are out of scope (1.18.2+ = Java 17+).
         mc("1.18.2", loaders = listOf("fabric", "forge"))
         mc("1.19.2", loaders = listOf("fabric", "forge"))
         mc("1.20.1", loaders = listOf("fabric", "forge"))

@@ -1,5 +1,6 @@
 package dev.trademaster.config;
 
+import dev.trademaster.compat.McIds;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
 
@@ -27,11 +28,11 @@ import java.util.List;
  */
 public record TradeOfferSpec(List<TradeCost> costs, ResourceLocation result) {
 
-	public static final ResourceLocation EMERALD = ResourceLocation.withDefaultNamespace("emerald");
-	public static final ResourceLocation BOOK = ResourceLocation.withDefaultNamespace("book");
-	public static final ResourceLocation ENCHANTED_BOOK = ResourceLocation.withDefaultNamespace("enchanted_book");
+	public static final ResourceLocation EMERALD = McIds.mc("emerald");
+	public static final ResourceLocation BOOK = McIds.mc("book");
+	public static final ResourceLocation ENCHANTED_BOOK = McIds.mc("enchanted_book");
 	/** The canonical "not charged" item; a spec slot left without an item becomes this. */
-	public static final ResourceLocation AIR = ResourceLocation.withDefaultNamespace("air");
+	public static final ResourceLocation AIR = McIds.mc("air");
 
 	/** emerald + book → enchanted book: exactly what the mod required before this
 	 * feature existed (it never capped the book count), so an absent spec keeps
