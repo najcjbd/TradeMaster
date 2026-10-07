@@ -18,4 +18,10 @@ class VersionProbeTest {
 		assertNotNull(net.minecraft.SharedConstants.class);
 		assertNotNull(net.minecraft.world.item.ItemStack.class);
 	}
+
+	@Test
+	void theResourceLocationClassResolvesOnThisVersion() {
+		// the global ResourceLocation -> Identifier replacement must produce a live class
+		assertNotNull(dev.trademaster.probe.IdProbe.idClass());
+	}
 }

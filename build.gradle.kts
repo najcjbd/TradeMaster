@@ -38,6 +38,13 @@ modstitch {
 // Stonecutter loader constants, matched from the target name suffix (e.g. "26.2-fabric").
 stonecutter {
     constants.match(name.split("-")[1], "fabric", "neoforge", "forge", "vanilla")
+
+    // Global rename: Mojang renamed ResourceLocation -> Identifier at 26.1 (the
+    // unobfuscation release). Source is written with ResourceLocation; rewrite it for
+    // 26.1+ so a single codebase compiles on 1.16.5..26.3.
+    replacements.string(current.parsed >= "26.1") {
+        replace("ResourceLocation", "Identifier")
+    }
 }
 
 dependencies {
