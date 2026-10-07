@@ -27,6 +27,9 @@ public class ToolEquipClientGameTest implements FabricClientGameTest {
 	public void runTest(ClientGameTestContext context) {
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
 			world.getClientLevel().waitForChunksRender();
+			// capture the PRIOR value so the finally can restore it (not a hard-coded default)
+			boolean preventAxeBreakingOriginal = context.computeOnClient(
+					(Minecraft mc) -> TradeMasterConfig.INSTANCE.preventAxeBreaking);
 			context.runOnClient((Minecraft mc) -> {
 				if (mc.player == null) throw new AssertionError("no player");
 				TradeMasterConfig.INSTANCE.preventAxeBreaking = true;
@@ -86,6 +89,7 @@ public class ToolEquipClientGameTest implements FabricClientGameTest {
 				// restore even on an assertion failure, so a leaked work block / tool lock cannot
 				// poison the NEXT game test in the same client JVM
 				context.runOnClient((Minecraft mc) -> {
+					TradeMasterConfig.INSTANCE.preventAxeBreaking = preventAxeBreakingOriginal;
 					TradeMasterConfig.INSTANCE.workBlockId = "minecraft:lectern";
 					RigTarget.clearToolLock();
 					mc.player.getInventory().setSelectedSlot(0);

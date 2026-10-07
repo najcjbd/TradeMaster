@@ -207,16 +207,21 @@ public class TradeMatcher {
 		return TradeMasterConfig.INSTANCE.goodFor(id) != null;
 	}
 
-	/** The price slot's amount for a demand: the good's max price, or the target's. */
+	/** The price slot's amount for a demand: the good's max price, or the target's.
+	 * An id that is an enabled TARGET wins over a same-id good (mirrors goodMatchable,
+	 * which refuses such a good): reading a target's price from the good would shrink
+	 * its allowance and silently unmatch it. */
 	private int priceOf(Identifier id) {
-		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
-		if (good != null) return good.maxPrice();
 		EnchantmentTarget target = this.targets.get(id);
-		return target == null ? 0 : target.maxPrice();
+		if (target != null) return target.maxPrice();
+		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+		return good != null ? good.maxPrice() : 0;
 	}
 
-	/** The cost spec for a demand: the good's, or the enchantment's. */
+	/** The cost spec for a demand: the good's, or the enchantment's. An id that is an
+	 * enabled target wins over a same-id good (see {@link #priceOf}). */
 	private TradeOfferSpec specOf(Identifier id) {
+		if (this.targets.containsKey(id)) return TradeMasterConfig.INSTANCE.specFor(id);
 		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 		return good != null ? good.spec() : TradeMasterConfig.INSTANCE.specFor(id);
 	}
@@ -492,7 +497,9 @@ public class TradeMatcher {
 			// would never be given back: the good would drop out of the needs until the
 			// next full rebuild
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(need.id());
-			if (good != null) {
+			// an id that is an enabled TARGET wins over a same-id good (mirrors goodMatchable):
+			// otherwise the target's budget would be restored from the good's price
+			if (this.targets.get(need.id()) == null && good != null) {
 				// an unmarked good is budgeted at its own price, exactly like
 				// budgetFor does for a target (taking price-1 here made a legitimate
 				// offer at the configured price stop matching, and dropped the good
