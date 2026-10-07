@@ -80,6 +80,7 @@ public class DetectionEventModeClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("the crafted offer did not stick: " + offers);
 			}
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.detectionMode = dev.trademaster.config.DetectionMode.EVENT;
@@ -112,6 +113,7 @@ public class DetectionEventModeClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] EVENT mode reached LOCK ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -125,6 +127,7 @@ public class DetectionEventModeClientGameTest implements FabricClientGameTest {
 				c.goods.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

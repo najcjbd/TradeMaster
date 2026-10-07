@@ -49,6 +49,7 @@ public class DispenserMisconfiguredClientGameTest implements FabricClientGameTes
 			context.waitFor((Minecraft mc) -> !mc.level.getEntitiesOfClass(Villager.class,
 					AABB.ofSize(VILLAGER_AT, 6, 6, 6)).isEmpty());
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -84,6 +85,7 @@ public class DispenserMisconfiguredClientGameTest implements FabricClientGameTes
 			}
 			System.out.println("[TM-GAMETEST] misconfigured dispenser stopped the run ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -97,6 +99,7 @@ public class DispenserMisconfiguredClientGameTest implements FabricClientGameTes
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

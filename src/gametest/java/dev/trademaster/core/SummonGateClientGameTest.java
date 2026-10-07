@@ -41,6 +41,7 @@ public class SummonGateClientGameTest implements FabricClientGameTest {
 			context.waitFor((Minecraft mc) -> !mc.level.getEntitiesOfClass(Villager.class,
 					AABB.ofSize(VILLAGER_AT, 6, 6, 6)).isEmpty());
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -77,6 +78,7 @@ public class SummonGateClientGameTest implements FabricClientGameTest {
 			if (!leftSummon) throw new AssertionError("the summon never completed (phase=" + last + ")");
 			System.out.println("[TM-GAMETEST] summon with a cart completed ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -90,6 +92,7 @@ public class SummonGateClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

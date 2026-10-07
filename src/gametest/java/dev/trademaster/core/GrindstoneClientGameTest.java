@@ -43,6 +43,7 @@ public class GrindstoneClientGameTest implements FabricClientGameTest {
 				}
 			});
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -83,6 +84,7 @@ public class GrindstoneClientGameTest implements FabricClientGameTest {
 			if (!sawDeposit[0]) throw new AssertionError("the run never entered DEPOSIT");
 			System.out.println("[TM-GAMETEST] grindstone recycled the book ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -98,6 +100,7 @@ public class GrindstoneClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

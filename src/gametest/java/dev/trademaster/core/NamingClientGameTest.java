@@ -78,6 +78,7 @@ public class NamingClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("the crafted enchanted-book offer did not stick: " + offers);
 			}
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -129,6 +130,7 @@ public class NamingClientGameTest implements FabricClientGameTest {
 			}
 			System.out.println("[TM-GAMETEST] villager named: " + name);
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -142,6 +144,7 @@ public class NamingClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

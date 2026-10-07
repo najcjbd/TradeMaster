@@ -43,6 +43,7 @@ public class DepositClientGameTest implements FabricClientGameTest {
 				}
 			});
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -89,6 +90,7 @@ public class DepositClientGameTest implements FabricClientGameTest {
 			if (!inChest) throw new AssertionError("the enchanted book was not deposited into the chest");
 			System.out.println("[TM-GAMETEST] deposit into chest ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -99,9 +101,12 @@ public class DepositClientGameTest implements FabricClientGameTest {
 				c.villagerRegionOrigin = null;
 				c.villagerRegionDelta = null;
 				c.chestPositions.clear();
+				// restore the flag this test turned off (default true), or it leaks to later tests
+				c.grindstoneEnabled = true;
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

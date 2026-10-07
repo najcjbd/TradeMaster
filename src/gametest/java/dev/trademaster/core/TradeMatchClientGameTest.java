@@ -78,6 +78,7 @@ public class TradeMatchClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("the crafted offer did not stick: " + offers);
 			}
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -109,6 +110,7 @@ public class TradeMatchClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] matched trade reached LOCK ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -121,6 +123,7 @@ public class TradeMatchClientGameTest implements FabricClientGameTest {
 				c.goods.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

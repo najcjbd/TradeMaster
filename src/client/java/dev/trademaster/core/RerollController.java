@@ -1941,7 +1941,14 @@ public final class RerollController {
 		TradeMasterConfig lockConfig = TradeMasterConfig.INSTANCE;
 		if (lockConfig.autoDisableAfterLock && s.matchedTrade != null) {
 			boolean changed = false;
-			for (Identifier id : s.matchedTrade.matchedIds()) {
+			// the matched targets, plus (for an emergency buy) the DIFFERENT book's fulfilled
+			// targets: both were vouched into lockedIds, so both must be disabled or the next
+			// run re-farms the emergency book's target (see voucherEmergencyBook)
+			List<Identifier> toDisable = new ArrayList<>(s.matchedTrade.matchedIds());
+			if (bought != null && bought != s.matchedTrade) {
+				toDisable.addAll(fulfilledTargetIds(bought));
+			}
+			for (Identifier id : toDisable) {
 				EnchantmentTarget target = lockConfig.enchantments.get(id);
 				if (target != null && target.enabled()) {
 					lockConfig.enchantments.put(id, target.withEnabled(false));

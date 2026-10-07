@@ -51,6 +51,7 @@ public class NamingXpShortClientGameTest implements FabricClientGameTest {
 					!mc.level.getEntitiesOfClass(Villager.class, AABB.ofSize(VILLAGER_AT, 8, 8, 8)).isEmpty());
 			context.waitTicks(5);
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -108,6 +109,7 @@ public class NamingXpShortClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] xp-short naming skipped ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -121,6 +123,7 @@ public class NamingXpShortClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

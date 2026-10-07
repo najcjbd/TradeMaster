@@ -35,6 +35,7 @@ public class PhaseMachineClientGameTest implements FabricClientGameTest {
 			context.waitFor((Minecraft mc) -> mc.level != null
 					&& mc.level.getBlockState(LECTERN).is(Blocks.LECTERN)
 					&& mc.player != null && !mc.player.getInventory().getItem(0).isEmpty());
+			try {
 			configure(context);
 
 			// 1) no villager: the run must start and rest waiting for one
@@ -106,6 +107,7 @@ public class PhaseMachineClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] reached CHECK_TRADE ok after " + toCheck + " ticks");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -118,6 +120,7 @@ public class PhaseMachineClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

@@ -35,6 +35,7 @@ public class RegionFallbackClientGameTest implements FabricClientGameTest {
 					&& mc.level.getBlockState(LECTERN).is(Blocks.LECTERN)
 					&& mc.player != null && !mc.player.getInventory().getItem(0).isEmpty());
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -87,6 +88,7 @@ public class RegionFallbackClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] region fallback confirmed ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -97,6 +99,7 @@ public class RegionFallbackClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 

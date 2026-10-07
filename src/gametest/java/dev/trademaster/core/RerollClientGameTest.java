@@ -67,6 +67,7 @@ public class RerollClientGameTest implements FabricClientGameTest {
 				throw new AssertionError("the crafted offer did not stick: " + offers);
 			}
 
+			try {
 			context.runOnClient((Minecraft mc) -> {
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 				c.workBlockId = "minecraft:lectern";
@@ -99,6 +100,7 @@ public class RerollClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] non-matching offer reached REROLL ok");
 
+			} finally {
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
 				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
@@ -111,6 +113,7 @@ public class RerollClientGameTest implements FabricClientGameTest {
 				c.enchantments.clear();
 				c.save();
 			});
+			}
 		}
 	}
 
