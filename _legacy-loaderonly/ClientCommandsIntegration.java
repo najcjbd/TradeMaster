@@ -1,3 +1,4 @@
+//? if fabric {
 package dev.trademaster.compat;
 
 import dev.trademaster.TradeMasterClient;
@@ -27,3 +28,4 @@ public final class ClientCommandsIntegration {
 		}
 	}
 }
+//?}

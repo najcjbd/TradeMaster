@@ -1,3 +1,4 @@
+//? if fabric {
 package dev.trademaster.compat;
 
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
@@ -15,3 +16,4 @@ public class ModMenuImpl implements ModMenuApi {
 		return parent -> MaliLibAdapter.INSTANCE.get().setParent(parent);
 	}
 }
+//?}
