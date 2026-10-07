@@ -321,6 +321,11 @@ public class TradeMatcher {
 					? null
 					: TradeMasterConfig.INSTANCE.goodFor(resultItem);
 			if (good != null) {
+				// the SAME gate buildNeeds used to enqueue goods: goodFor still returns a good
+				// that the gate refuses (e.g. its id is ALSO an enabled target, which shares one
+				// needs queue) — matching it here would read the target's queue for a non-book
+				// offer. buildNeeds and tryMatch must agree on the demand set or they diverge.
+				if (!goodMatchable(good)) continue;
 				if (result.getCount() < good.resultCount()) continue;
 				IntHeapPriorityQueue goodQueue = this.needs.get(good.id());
 				if (goodQueue == null) continue;

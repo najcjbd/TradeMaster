@@ -1819,6 +1819,35 @@ public final class RerollController {
 		if (s.matchedTrade == null) return;
 		s.lockedIds.addAll(s.matchedTrade.matchedIds());
 		rememberProduced(s.lockedResults, s.matchedTrade.purchase().result());
+		voucherEmergencyBook(s, lockExecutor == null ? null : lockExecutor.expected());
+	}
+
+	/** An EMERGENCY buy purchases a DIFFERENT book than the matched one (the matched book
+	 * was unaffordable). That book's own target(s) are physically satisfied by the purchase,
+	 * but they are not in {@code matchedTrade.matchedIds()} — without vouching them the needs
+	 * rebuild re-demands that target and a later villager sells a SECOND copy. Only targets
+	 * the bought book actually FULFILS are vouched (its level must meet the configured level),
+	 * so a below-level copy cannot mask a genuinely-needed higher-level one. */
+	private static void voucherEmergencyBook(RunSession s, TradeMatcher.@Nullable MatchedTrade bought) {
+		if (bought == null || bought == s.matchedTrade) return;
+		s.lockedIds.addAll(fulfilledTargetIds(bought));
+		rememberProduced(s.lockedResults, bought.purchase().result());
+	}
+
+	/** Ids of a bought book that its OWN purchase fulfils: an enabled enchantment target
+	 * whose configured level the bought part meets. */
+	static List<Identifier> fulfilledTargetIds(TradeMatcher.MatchedTrade bought) {
+		List<Identifier> ids = new ArrayList<>();
+		for (TradeMatcher.MatchedBook book : bought.books()) {
+			for (TradeMatcher.MatchPart part : book.parts()) {
+				if (ids.contains(part.id())) continue;
+				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
+				if (target != null && target.enabled() && part.level() >= target.level()) {
+					ids.add(part.id());
+				}
+			}
+		}
+		return ids;
 	}
 
 	/** Remembers a distinct produced stack (item AND components) so the disposal only ever
@@ -1836,6 +1865,9 @@ public final class RerollController {
 	}
 
 	private static void finishLock(RunSession s) {
+		// capture the actually-bought trade BEFORE the executor is dropped: an emergency buy
+		// fingers a different, affordable book and its targets need vouching too (below)
+		TradeMatcher.MatchedTrade bought = lockExecutor == null ? null : lockExecutor.expected();
 		lockExecutor = null;
 		lockInteracted = false;
 		// session-level voucher: survives the needs rebuild even when the villager
@@ -1898,6 +1930,10 @@ public final class RerollController {
 					}
 				}
 			}
+			// an emergency buy bought a DIFFERENT (affordable) book: voucher the targets THAT
+			// book fulfils too, or the needs rebuild re-demands them and a later villager sells
+			// a second copy (see voucherEmergencyBook)
+			voucherEmergencyBook(s, bought);
 		}
 		// an EVENT-mode detection can leave the merchant menu open; naming needs to
 		// open an anvil, so clear it out first
@@ -2355,6 +2391,9 @@ public final class RerollController {
 		Identifier profession = config.professionIdentifier();
 		if (RigTarget.professionKnown() && profession != null
 				&& !RigTarget.professionKey().equals(VillagerProfession.LIBRARIAN)
+				// unemployed sells nothing at all, so the goods-table hint cannot apply to it
+				// (only the profession_unemployed warning above is right for it)
+				&& !RigTarget.professionKey().equals(VillagerProfession.NONE)
 				&& !config.enabledTargets().isEmpty()) {
 			warnings.add(Component.translatable("trademaster.message.profession_not_book"));
 		}

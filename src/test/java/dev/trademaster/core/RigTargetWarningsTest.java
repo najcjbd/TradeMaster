@@ -5,11 +5,13 @@ import dev.trademaster.config.ConfigTest;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
+import dev.trademaster.matching.TradeMatcher;
 import dev.trademaster.strategy.RigTarget;
 import dev.trademaster.testutil.McTest;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.item.ItemStack;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -211,6 +213,46 @@ class RigTargetWarningsTest {
 		// a real price item is fine
 		assertFalse(RerollController.blankPriceSlot(new TradeOfferSpec(
 				List.of(new TradeOfferSpec.TradeCost(TradeOfferSpec.EMERALD, 0)), TradeOfferSpec.ENCHANTED_BOOK)));
+	}
+
+	@Test
+	void theUnemployedTargetIsNotAlsoWarnedAsNotBook() {
+		c().workBlockId = "minecraft:lectern";
+		c().nonTradeableProfessions.clear();
+		c().professionId = "minecraft:none";
+		Identifier mending = Identifier.withDefaultNamespace("mending");
+		c().enchantments.clear();
+		c().enchantments.put(mending, new EnchantmentTarget(mending, true, 1, 20));
+		List<Component> warnings = RerollController.rigTargetWarnings();
+		assertTrue(has(warnings, "trademaster.message.profession_unemployed"), "got " + warnings);
+		// unemployed sells nothing at all, so the "use the goods table" hint must not fire
+		assertFalse(has(warnings, "trademaster.message.profession_not_book"), "got " + warningKeys(warnings));
+	}
+
+	@Test
+	void anEmergencyBookVouchersOnlyTheTargetsItFulfils() {
+		Identifier mending = Identifier.withDefaultNamespace("mending");
+		Identifier silk = Identifier.withDefaultNamespace("silk_touch");
+		c().enchantments.clear();
+		c().enchantments.put(mending, new EnchantmentTarget(mending, true, 1, 20));
+		c().enchantments.put(silk, new EnchantmentTarget(silk, true, 2, 20));
+
+		// a bought book carrying mending I + silk I: mending (needs 1) is fulfilled, silk
+		// (needs 2) is NOT — vouching silk here would mask the genuinely-needed level 2
+		assertEquals(List.of(mending), RerollController.fulfilledTargetIds(book(List.of(
+				new TradeMatcher.MatchPart(mending, 1), new TradeMatcher.MatchPart(silk, 1)))));
+		// at level 2 both are fulfilled
+		assertEquals(List.of(mending, silk), RerollController.fulfilledTargetIds(book(List.of(
+				new TradeMatcher.MatchPart(mending, 1), new TradeMatcher.MatchPart(silk, 2)))));
+		// a disabled target is never vouched
+		c().enchantments.put(mending, new EnchantmentTarget(mending, false, 1, 20));
+		assertEquals(List.of(silk), RerollController.fulfilledTargetIds(book(List.of(
+				new TradeMatcher.MatchPart(mending, 1), new TradeMatcher.MatchPart(silk, 2)))));
+	}
+
+	private static TradeMatcher.MatchedTrade book(List<TradeMatcher.MatchPart> parts) {
+		TradeMatcher.MatchedBook b = new TradeMatcher.MatchedBook(parts, parts, 5, 0, List.of(), ItemStack.EMPTY);
+		return new TradeMatcher.MatchedTrade(List.of(b), List.of(), 0);
 	}
 
 	/** The warning keys in order, so a test can assert the exact set. */

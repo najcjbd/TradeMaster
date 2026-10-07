@@ -100,9 +100,18 @@ public final class DispenserCheck {
 				}
 			}
 			case SCAN -> {
+				// the menu detected last tick can vanish or be replaced before this one; reading
+				// whatever is open now (the player inventory's craft/armour slots, or a foreign
+				// container) would silently scan the WRONG slots and misreport HAS_CART/NO_CART.
+				// Only the dispenser THIS check opened is scanned.
+				if (!(player.containerMenu instanceof DispenserMenu menu)
+						|| menu.containerId != this.openedContainerId) {
+					closeOwnMenu(player);
+					return Result.FAILED;
+				}
 				// a DispenserMenu carries the dispenser's 9 slots FIRST, then the player's
-				for (int i = 0; i < 9 && i < player.containerMenu.slots.size(); i++) {
-					if (player.containerMenu.slots.get(i).getItem().is(Items.MINECART)) {
+				for (int i = 0; i < 9 && i < menu.slots.size(); i++) {
+					if (menu.slots.get(i).getItem().is(Items.MINECART)) {
 						this.found = true;
 						break;
 					}

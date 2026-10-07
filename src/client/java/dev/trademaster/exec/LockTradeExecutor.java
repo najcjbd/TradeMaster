@@ -104,6 +104,13 @@ public class LockTradeExecutor {
 		return this.menu;
 	}
 
+	/** The trade this executor was built to buy. Usually the matched trade, but for an
+	 * emergency buy (the matched book was unaffordable) it is the DIFFERENT affordable
+	 * book actually purchased — the controller needs it to voucher that book too. */
+	public TradeMatcher.@Nullable MatchedTrade expected() {
+		return this.expected;
+	}
+
 	/** True once the purchase click has been sent and the server-side lock is underway. */
 	public boolean purchaseSent() {
 		return this.stage >= 2;

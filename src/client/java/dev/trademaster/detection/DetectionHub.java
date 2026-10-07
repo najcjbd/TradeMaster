@@ -132,9 +132,10 @@ public final class DetectionHub {
 	 * @param hub the hub captured when the packet ARRIVED (see {@link #armedHub()});
 	 * null means nothing was armed then, so only the static leftover marker is set. */
 	public static void onMerchantScreenSuppressed(@Nullable DetectionHub hub, int containerId) {
-		// a queued task whose hub was already disarmed must not set the id: the next check
-		// (with no bound anchor) would then refuse a legitimate offers packet
-		if (hub == null) return;
+		// a queued task whose hub was already disarmed (or replaced by a later re-arm) must
+		// not set the id: disarm() clears it on purpose, and re-writing a stale one would make
+		// the NEXT check (with no bound anchor) refuse a legitimate offers packet
+		if (hub == null || armed != hub) return;
 		lastSuppressedContainerId = containerId;
 		hub.expectedContainerId = containerId;
 	}

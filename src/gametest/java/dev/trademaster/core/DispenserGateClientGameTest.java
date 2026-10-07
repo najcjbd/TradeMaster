@@ -31,54 +31,57 @@ public class DispenserGateClientGameTest implements FabricClientGameTest {
 		try (TestSingleplayerContext world = context.worldBuilder().create()) {
 			world.getClientLevel().waitForChunksRender();
 			buildRig(world, /*withCart=*/ true);
-
-			// an out-of-reach coordinate is treated like "unset": the gate must not block
-			context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = FAR_AWAY);
-			context.runOnClient((Minecraft mc) -> {
-				if (!RerollController.dispenserReady()) {
-					throw new AssertionError("an unreachable dispenser must not block the summon");
-				}
-			});
-
-			// no dispenser configured at all: also fine
-			context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = null);
-			context.runOnClient((Minecraft mc) -> {
-				if (!RerollController.dispenserReady()) {
-					throw new AssertionError("an unset dispenser must not block the summon");
-				}
-			});
-
-			// positive control: a dispenser holding a minecart eventually allows the summon
-			context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = DISPENSER);
-			boolean[] opened = { false };
-			boolean ready = false;
-			for (int i = 0; i < 150 && !ready; i++) {
-				context.waitTick();
-				ready = context.computeOnClient((Minecraft mc) -> {
-					if (mc.player != null && mc.player.containerMenu instanceof DispenserMenu) opened[0] = true;
-					return RerollController.dispenserReady();
+			try {
+				// an out-of-reach coordinate is treated like "unset": the gate must not block
+				context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = FAR_AWAY);
+				context.runOnClient((Minecraft mc) -> {
+					if (!RerollController.dispenserReady()) {
+						throw new AssertionError("an unreachable dispenser must not block the summon");
+					}
 				});
-			}
-			if (!ready) throw new AssertionError("a dispenser with a minecart should allow the summon");
-			if (!opened[0]) throw new AssertionError("the dispenser was never opened");
-			System.out.println("[TM-GAMETEST] dispenser with cart ok");
 
-			// negative control: empty the dispenser; the gate must open it and still refuse
-			world.getServer().runCommand("item replace block 2 100 0 container.0 with minecraft:air");
-			awaitEmpty(world, context);
-			boolean[] openedEmpty = { false };
-			for (int i = 0; i < 150; i++) {
-				context.waitTick();
-				boolean allowed = context.computeOnClient((Minecraft mc) -> {
-					if (mc.player != null && mc.player.containerMenu instanceof DispenserMenu) openedEmpty[0] = true;
-					return RerollController.dispenserReady();
+				// no dispenser configured at all: also fine
+				context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = null);
+				context.runOnClient((Minecraft mc) -> {
+					if (!RerollController.dispenserReady()) {
+						throw new AssertionError("an unset dispenser must not block the summon");
+					}
 				});
-				if (allowed) throw new AssertionError("an empty dispenser must not allow the summon");
-			}
-			if (!openedEmpty[0]) throw new AssertionError("the empty dispenser was never opened");
-			System.out.println("[TM-GAMETEST] dispenser empty ok");
 
-			context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = null);
+				// positive control: a dispenser holding a minecart eventually allows the summon
+				context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = DISPENSER);
+				boolean[] opened = { false };
+				boolean ready = false;
+				for (int i = 0; i < 150 && !ready; i++) {
+					context.waitTick();
+					ready = context.computeOnClient((Minecraft mc) -> {
+						if (mc.player != null && mc.player.containerMenu instanceof DispenserMenu) opened[0] = true;
+						return RerollController.dispenserReady();
+					});
+				}
+				if (!ready) throw new AssertionError("a dispenser with a minecart should allow the summon");
+				if (!opened[0]) throw new AssertionError("the dispenser was never opened");
+				System.out.println("[TM-GAMETEST] dispenser with cart ok");
+
+				// negative control: empty the dispenser; the gate must open it and still refuse
+				world.getServer().runCommand("item replace block 2 100 0 container.0 with minecraft:air");
+				awaitEmpty(world, context);
+				boolean[] openedEmpty = { false };
+				for (int i = 0; i < 150; i++) {
+					context.waitTick();
+					boolean allowed = context.computeOnClient((Minecraft mc) -> {
+						if (mc.player != null && mc.player.containerMenu instanceof DispenserMenu) openedEmpty[0] = true;
+						return RerollController.dispenserReady();
+					});
+					if (allowed) throw new AssertionError("an empty dispenser must not allow the summon");
+				}
+				if (!openedEmpty[0]) throw new AssertionError("the empty dispenser was never opened");
+				System.out.println("[TM-GAMETEST] dispenser empty ok");
+			} finally {
+				// restore even on an assertion failure, so a leaked dispenser coordinate cannot
+				// poison the NEXT game test in the same client JVM
+				context.runOnClient((Minecraft mc) -> TradeMasterConfig.INSTANCE.dispenserPos = null);
+			}
 		}
 	}
 

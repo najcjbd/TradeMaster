@@ -82,18 +82,29 @@ public class PhaseMachineClientGameTest implements FabricClientGameTest {
 			});
 			System.out.println("[TM-GAMETEST] WAIT_PROFESSION ok after " + toProfession + " ticks");
 
-			context.waitFor((Minecraft mc) ->
-					RerollController.currentPhase().ordinal() >= Phase.CHECK_TRADE.ordinal()
-							|| !RerollController.isRunning(), 900);
+			// A completed run resets the phase to IDLE, so the FINAL phase cannot prove the
+			// run got here — a run that stopped early would also read as "not CHECK_TRADE".
+			// Poll and record the MAX ordinal seen: the phase machine advances one phase per
+			// client tick, so every phase the run passes through is observed.
+			int maxOrdinal = context.computeOnClient((Minecraft mc) -> RerollController.currentPhase().ordinal());
+			int toCheck = 0;
+			for (; toCheck < 900; toCheck++) {
+				context.waitTick();
+				int ord = context.computeOnClient((Minecraft mc) -> RerollController.currentPhase().ordinal());
+				if (ord > maxOrdinal) maxOrdinal = ord;
+				if (ord >= Phase.CHECK_TRADE.ordinal()) break;
+				if (!context.computeOnClient((Minecraft mc) -> RerollController.isRunning())) break;
+			}
+			final int reached = maxOrdinal;
 			context.runOnClient((Minecraft mc) -> {
-				Phase phase = RerollController.currentPhase();
-				System.out.println("[TM-GAMETEST] deep run phase=" + phase
+				System.out.println("[TM-GAMETEST] deep run maxPhaseOrdinal=" + reached
+						+ " phase=" + RerollController.currentPhase()
 						+ " running=" + RerollController.isRunning());
-				if (RerollController.isRunning() && phase.ordinal() < Phase.CHECK_TRADE.ordinal()) {
-					throw new AssertionError("run did not reach CHECK_TRADE, stuck in " + phase);
+				if (reached < Phase.CHECK_TRADE.ordinal()) {
+					throw new AssertionError("the run never reached CHECK_TRADE (max ordinal " + reached + ")");
 				}
 			});
-			System.out.println("[TM-GAMETEST] reached CHECK_TRADE ok");
+			System.out.println("[TM-GAMETEST] reached CHECK_TRADE ok after " + toCheck + " ticks");
 
 			context.runOnClient((Minecraft mc) -> {
 				RerollController.stopManual();
