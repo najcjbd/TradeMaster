@@ -26,6 +26,16 @@ public final class McIds {
 	}*/
 	//?}
 
+	//? if >=1.21 {
+	public static ResourceLocation of(String namespace, String path) {
+		return ResourceLocation.fromNamespaceAndPath(namespace, path);
+	}
+	//?} else {
+	/*public static ResourceLocation of(String namespace, String path) {
+		return new ResourceLocation(namespace, path);
+	}*/
+	//?}
+
 	/** Parse a full "namespace:path" id, or null. */
 	public static ResourceLocation tryParse(String text) {
 		return ResourceLocation.tryParse(text);
