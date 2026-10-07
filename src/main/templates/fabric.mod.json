@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "${mod_id}",
+  "name": "${mod_name}",
+  "version": "${mod_version}",
+  "description": "${mod_description}",
+  "authors": ["${mod_author}"],
+  "license": "${mod_license}",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.trademaster.loaders.fabric.FabricClientEntrypoint"
+    ]
+  }
+}
