@@ -54,5 +54,21 @@ public final class McRegistry {
 		//?}
 	}
 
+	/** The live enchantment registry. It is a datapack registry from 1.19.3 (looked up
+	 * from the level); before that it was the static {@code Registry.ENCHANTMENT}. The
+	 * lookup method is renamed registryOrThrow -> lookupOrThrow by 1.21.8. */
+	public static Registry<net.minecraft.world.item.enchantment.Enchantment> enchantments(
+			net.minecraft.world.level.Level level) {
+		//? if >=1.21.8 {
+		/*return level.registryAccess()
+				.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);*/
+		//?} elif >=1.19.3 {
+		return level.registryAccess()
+				.registryOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT);
+		//?} else {
+		/*return net.minecraft.core.Registry.ENCHANTMENT;*/
+		//?}
+	}
+
 	private McRegistry() {}
 }

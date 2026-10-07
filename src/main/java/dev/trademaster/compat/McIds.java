@@ -26,5 +26,10 @@ public final class McIds {
 	}*/
 	//?}
 
+	/** Parse a full "namespace:path" id, or null. */
+	public static ResourceLocation tryParse(String text) {
+		return ResourceLocation.tryParse(text);
+	}
+
 	private McIds() {}
 }

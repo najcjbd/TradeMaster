@@ -21,6 +21,9 @@ public interface TradeMasterPlatform {
 	/** Opens the mod's own in-game config screen (used on every loader). */
 	void openConfigScreen();
 
+	/** The loader's config directory (where the config file is read/written). */
+	java.nio.file.Path configDir();
+
 	/** True only on Fabric with maLiLib present, where the extra maLiLib screen is wired. */
 	default boolean hasMalilib() {
 		return false;

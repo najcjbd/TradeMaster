@@ -15,5 +15,10 @@ public class NeoforgePlatform implements TradeMasterPlatform {
 	public void openConfigScreen() {
 		// opens the mod's own TradeMasterScreen
 	}
+
+	@Override
+	public java.nio.file.Path configDir() {
+		return net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get();
+	}
 }
 *///?}

@@ -24,5 +24,10 @@ public class FabricPlatform implements TradeMasterPlatform {
 	public boolean hasMalilib() {
 		return true;
 	}
+
+	@Override
+	public java.nio.file.Path configDir() {
+		return net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir();
+	}
 }
 //?}
