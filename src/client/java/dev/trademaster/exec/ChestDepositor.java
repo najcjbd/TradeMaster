@@ -72,12 +72,21 @@ public class ChestDepositor implements BookDisposal {
 	/** A rejected swap scheduled for resend after a short delay. */
 	private boolean swapRetryPending = false;
 	private int swapRetryDelay = 0;
+	/** Menu state id when the offhand SWAP was sent, and how many ticks it has stayed
+	 * unchanged. An accepted swap changes the menu state; resending while a sync is
+	 * merely slow could reverse a swap the server already applied. */
+	private int swapStateId = -1;
+	private int swapQuietTicks = 0;
 	/** Hotbar slot selected before this depositor switched away; restored when the
 	 * deposit ends so the player keeps their original hand. */
 	private int originalSlot = -1;
 	/** Drop flow (used when every chest refuses a good and the disposal option is
 	 * "drop"): the selected slot holding the item to drop, plus its send/wait state. */
 	private int dropSlot = -1;
+	/** Menu state id before the goods-drop staging SWAP click (see pricingSlots-era
+	 * notes): an inventory SWAP click is applied locally, so contents alone can be a
+	 * prediction; a changed state id or a long quiet wait proves the server saw it. */
+	private int dropStageStateId = -1;
 	private int dropWaitTicks = 0;
 	private int dropAimTicks = 0;
 	private boolean dropSent = false;
@@ -234,10 +243,17 @@ public class ChestDepositor implements BookDisposal {
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
-					this.swapWaitTicks = 0;
+					this.markSwapSent(player);
 					return StepResult.RUNNING;
 				}
 				if (this.swapWaitTicks >= 0) {
+					// track whether the server touched the menu since the send
+					if (player.containerMenu.getStateId() != this.swapStateId) {
+						this.swapStateId = player.containerMenu.getStateId();
+						this.swapQuietTicks = 0;
+					} else {
+						this.swapQuietTicks++;
+					}
 					// the raw SWAP packet has no client-side prediction: wait for
 					// the server's slot sync (offhand no longer holds the book)
 					// before ANYTHING reads the inventory — including the
@@ -248,6 +264,11 @@ public class ChestDepositor implements BookDisposal {
 					if (!disposable(player.getOffhandItem())) {
 						this.swapWaitTicks = -1;
 					} else if (++this.swapWaitTicks > 20) {
+						// no state change since the send: the packet may have been lost OR
+						// its sync may still be in flight. Give the server a longer quiet
+						// grace before resending (an early resend can reverse a swap the
+						// server already applied).
+						if (this.swapQuietTicks < 40) return StepResult.RUNNING;
 						this.swapWaitTicks = -1;
 						if (chestHasSpace(player)) {
 							// the packet was rejected/dropped but this chest can still
@@ -302,7 +323,7 @@ public class ChestDepositor implements BookDisposal {
 							player.connection.send(new ServerboundPlayerActionPacket(
 									ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 									BlockPos.ZERO, Direction.DOWN));
-							this.swapWaitTicks = 0;
+							this.markSwapSent(player);
 							return StepResult.RUNNING;
 						}
 						// unreachable in practice (an all-books hotbar would have
@@ -399,6 +420,7 @@ public class ChestDepositor implements BookDisposal {
 				this.dropSourceSlot = slot.index;
 				this.dropStagedBook = slot.getItem().copy();
 				this.dropDisplaced = player.getInventory().getItem(selected).copy();
+				this.dropStageStateId = player.containerMenu.getStateId();
 				mc.gameMode.handleContainerInput(player.containerMenu.containerId, slot.index,
 						selected, ContainerInput.SWAP, player);
 				this.state = State.DROP_STAGE_WAIT;
@@ -410,13 +432,16 @@ public class ChestDepositor implements BookDisposal {
 				// AND the source holds exactly the displaced stack (EMPTY when the target
 				// was empty). A rejection restores both, so the prediction cannot pass.
 				if (++this.dropWaitTicks >= 10) {
-					boolean landed = this.dropSourceSlot < 0
+					boolean serverProof = this.dropSourceSlot < 0
+							|| player.containerMenu.getStateId() != this.dropStageStateId
+							|| this.dropWaitTicks >= 40;
+					boolean landed = serverProof && (this.dropSourceSlot < 0
 							|| (player.containerMenu == player.inventoryMenu
 									&& ItemStack.isSameItemSameComponents(
 											player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
 									&& ItemStack.isSameItemSameComponents(
 											player.containerMenu.slots.get(this.dropSourceSlot).getItem(),
-											this.dropDisplaced));
+											this.dropDisplaced)));
 					if (landed) {
 						this.state = State.DROP_AIM;
 						this.dropAimTicks = 0;
@@ -509,6 +534,8 @@ public class ChestDepositor implements BookDisposal {
 		this.swapAttempts = 0;
 		this.swapRetryPending = false;
 		this.swapRetryDelay = 0;
+		this.swapStateId = -1;
+		this.swapQuietTicks = 0;
 		this.lastBookCount = -1;
 		this.noProgressTicks = 0;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
@@ -615,6 +642,12 @@ public class ChestDepositor implements BookDisposal {
 		if (stack.isEmpty()) return false;
 		if (!this.goodsOnly && stack.is(Items.ENCHANTED_BOOK)) return true;
 		return droppable(stack);
+	}
+
+	private void markSwapSent(LocalPlayer player) {
+		this.swapStateId = player.containerMenu.getStateId();
+		this.swapQuietTicks = 0;
+		this.swapWaitTicks = 0;
 	}
 
 	/** Re-derives the produced-goods allowance from the live inventory: count now minus

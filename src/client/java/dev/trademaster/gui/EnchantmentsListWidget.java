@@ -172,6 +172,8 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		this.suppressFocusClear = true;
 		try {
 			// a deliberate click ends the scroll-deferral: the render commit may now

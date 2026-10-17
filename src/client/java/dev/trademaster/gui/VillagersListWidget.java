@@ -140,6 +140,8 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		// a field the pointer is NOT on commits its draft and loses focus; the field under
 		// the pointer is left alone (the pointer's own click focuses it)
 		for (Row row : this.children()) {

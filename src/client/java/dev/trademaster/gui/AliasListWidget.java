@@ -151,6 +151,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		this.suppressFocusClear = true;
 		try {
 			// Commit + unfocus every row the click did NOT land in. Without this two

@@ -260,6 +260,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		// Commit the rows the pointer is NOT on BEFORE super runs: a click on [Remove]
 		// deletes a chest inside super.mouseClicked, which shifts the rows after it —
 		// their originalPos guard would then silently discard an in-flight draft.
@@ -474,6 +476,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				boolean before = this.getter.get();
 				this.setter.accept(!before);

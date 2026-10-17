@@ -91,6 +91,10 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** One staging resend for the cursed-book drop: reset at the start of every
 	 * staging attempt (both sources), spent once. */
 	private boolean dropStageResent = false;
+	/** Menu state id before the staging SWAP click: on 1.21+ an accepted slot packet
+	 * echoes it (server proof, not just the local prediction); pre-1.21 slot packets
+	 * carry no state id, so a long quiet wait is used instead. */
+	private int dropStageStateId = -1;
 	/** Which staging action the current drop used — the resend must replay the
 	 * same one: the raw offhand swap, or the inventory SWAP click. */
 	private boolean dropStageOffhand = false;
@@ -512,6 +516,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageResent = false;
 					// the destination is an EMPTY hotbar slot (a full hotbar fails above),
 					// so the SWAP is a plain move: the source slot simply empties
+					this.dropStageStateId = player.containerMenu.getStateId();
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							inventoryMenuSlot(invSlot), target, ContainerInput.SWAP, player);
 				}
@@ -531,7 +536,12 @@ public class GrindstoneRecycler implements BookDisposal {
 						&& (this.dropStageSource < 0
 								|| (player.containerMenu == player.inventoryMenu
 										&& player.getInventory().getItem(this.dropStageSource).isEmpty()));
-				if (this.waitTicks >= 10 && staged) {
+				// an inventory SWAP click applies its result locally; require a server echo
+				// (changed state id) or a long quiet wait on versions without it
+				boolean serverProof = this.dropStageSource < 0
+						|| player.containerMenu.getStateId() != this.dropStageStateId
+						|| this.waitTicks >= 40;
+				if (this.waitTicks >= 10 && staged && serverProof) {
 					this.waitTicks = 0;
 					this.dropStagedBook = player.getInventory().getItem(this.dropSlot).copy();
 					this.state = State.DROP_AIM;
@@ -561,6 +571,7 @@ public class GrindstoneRecycler implements BookDisposal {
 							}
 							this.dropStageResent = true;
 							this.waitTicks = 0;
+							this.dropStageStateId = player.containerMenu.getStateId();
 							mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 									inventoryMenuSlot(this.dropStageSource), this.dropSlot, ContainerInput.SWAP, player);
 							return StepResult.RUNNING;

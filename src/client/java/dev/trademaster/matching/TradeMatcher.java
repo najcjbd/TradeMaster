@@ -130,7 +130,7 @@ public class TradeMatcher {
 			for (MatchedBook book : this.books) {
 				for (MatchPart part : book.parts()) {
 					EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-					if (target != null && part.level() < target.level()) return true;
+					if (target != null && target.enabled() && part.level() < target.level()) return true;
 				}
 			}
 			return false;
@@ -139,13 +139,11 @@ public class TradeMatcher {
 		 * the match (a mid-run edit that invalidates the combo). */
 		public boolean anyTargetGone() {
 			for (Identifier id : matchedIds()) {
-				// target id wins over a same-id good, matching priceOf/specOf: a
-				// same-id disabled good must not make a still-enabled target look gone
+				// an ENABLED target id wins over a same-id good, matching priceOf/specOf
+				// (which only know enabled targets). A DISABLED target must not shadow a
+				// legitimate good match, or every such match would be reverted forever.
 				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
-				if (target != null) {
-					if (!target.enabled()) return true;
-					continue;
-				}
+				if (target != null && target.enabled()) continue;
 				// a good is switched off in its own list, and is absent from the
 				// enchantment map: without this branch every good match would look
 				// "gone" and be reverted right after it was found
@@ -895,7 +893,7 @@ public class TradeMatcher {
 			}
 		}
 		Map<Identifier, Integer> charged = new HashMap<>();
-		for (ItemStack stack : OfferCosts.slots(offer)) {
+		for (ItemStack stack : OfferCosts.pricingSlots(offer)) {
 			if (stack == null || stack.isEmpty()) continue;
 			Identifier item = BuiltInRegistries.ITEM.getKey(stack.getItem());
 			if (item == null || config.isAirItem(item)) continue;
