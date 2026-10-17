@@ -310,19 +310,10 @@ public class GrindstoneRecycler implements BookDisposal {
 				if (!player.getOffhandItem().is(Items.ENCHANTED_BOOK)) {
 					this.state = State.SCAN;
 				} else if (++this.waitTicks > 40) {
-					if (!this.offhandResent) {
-						// safe single resend: the server sync still shows the book
-						// in the offhand, so the first packet was lost — it cannot
-						// double-swap. (A blind resend while the sync is merely late
-						// would swap the book straight back.)
-						this.offhandResent = true;
-						this.waitTicks = 0;
-						player.connection.send(new ServerboundPlayerActionPacket(
-								ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
-								BlockPos.ZERO, Direction.DOWN));
-					} else {
-						return fail(player, "trademaster.message.curse_stage_failed");
-					}
+					// never resend the raw offhand swap: a landed-but-unsynced swap
+					// would be reversed (or exchange a different hotbar slot). Fail
+					// with the book still in hand instead.
+					return fail(player, "trademaster.message.curse_stage_failed");
 				}
 			}
 			case PLACE -> {
@@ -699,17 +690,21 @@ public class GrindstoneRecycler implements BookDisposal {
 	private void undoOffhandStage(net.minecraft.client.player.LocalPlayer player) {
 		int slot = this.stagedHotbarSlot;
 		ItemStack displaced = this.stagedDisplaced;
+		if (slot < 0) {
+			this.stagedHotbarSlot = -1;
+			this.stagedDisplaced = ItemStack.EMPTY;
+			return;
+		}
+		// the staged slot must hold either nothing (book dropped/deposited) or the
+		// plain book the grindstone produced from it
+		ItemStack inSlot = player.getInventory().getItem(slot);
+		// keep the record when the guards fail: a late sync may still make the undo
+		// valid on the next attempt; clearing first lost it forever
+		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK)) return;
+		// the offhand must still carry exactly what the swap displaced
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
-		if (slot < 0) return;
-		// the staged slot must hold either nothing (book dropped/deposited) or the
-		// plain book the grindstone produced from it. Requiring it to be EMPTY missed
-		// the grind path, whose result lands right back in that slot
-		ItemStack inSlot = player.getInventory().getItem(slot);
-		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK)) return;
-		// the offhand must still carry exactly what the swap displaced: anything else
-		// means the player changed it, and moving it now would be theft
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
 		if (player.getInventory().getSelectedSlot() != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}

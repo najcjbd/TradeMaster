@@ -1991,22 +1991,14 @@ public final class RerollController {
 			// the matched targets, plus (for an emergency buy) the DIFFERENT book's fulfilled
 			// targets: both were vouched into lockedIds, so both must be disabled or the next
 			// run re-farms the emergency book's target (see voucherEmergencyBook)
-			List<Identifier> toDisable = new ArrayList<>(s.matchedTrade.matchedIds());
-			if (bought != null && bought != s.matchedTrade) {
-				toDisable.addAll(fulfilledTargetIds(bought));
+			// KIND-AWARE: a level-0 part is a good and disables that row even when an
+			// enchantment shares its id; an enchantment part disables the target row.
+			for (TradeMatcher.MatchPart part : s.matchedTrade.matchedParts()) {
+				changed |= disableLockedRow(lockConfig, part.id(), part.level() == 0);
 			}
-			for (Identifier id : toDisable) {
-				EnchantmentTarget target = lockConfig.enchantments.get(id);
-				if (target != null && target.enabled()) {
-					lockConfig.enchantments.put(id, target.withEnabled(false));
-					changed = true;
-					continue;
-				}
-				// a custom good is switched off in its own list
-				GoodSpec good = lockConfig.goodFor(id);
-				if (good != null && good.enabled()) {
-					lockConfig.goods.set(lockConfig.goods.indexOf(good), good.withEnabled(false));
-					changed = true;
+			if (bought != null && bought != s.matchedTrade) {
+				for (Identifier id : fulfilledTargetIds(bought)) {
+					changed |= disableLockedRow(lockConfig, id, false);
 				}
 			}
 			if (changed) lockConfig.save();
@@ -2020,6 +2012,24 @@ public final class RerollController {
 			sendAwayPresser = null;
 			enter(Phase.SEND_AWAY);
 		}
+	}
+
+	/** Disables the one row a matched part refers to (good vs enchantment). */
+	private static boolean disableLockedRow(TradeMasterConfig config, Identifier id, boolean goodPart) {
+		if (goodPart) {
+			GoodSpec good = config.goodFor(id);
+			if (good != null && good.enabled()) {
+				config.goods.set(config.goods.indexOf(good), good.withEnabled(false));
+				return true;
+			}
+			return false;
+		}
+		EnchantmentTarget target = config.enchantments.get(id);
+		if (target != null && target.enabled()) {
+			config.enchantments.put(id, target.withEnabled(false));
+			return true;
+		}
+		return false;
 	}
 
 	private static void tickName(Minecraft client, LocalPlayer player, RunSession s) {
@@ -2209,9 +2219,16 @@ public final class RerollController {
 				int alt = player == null ? -1 : cheapestAffordableBookSlot(snapshot.offers(), player);
 				if (alt >= 0) {
 					MerchantOffer altOffer = snapshot.offers().get(alt);
-					debug("offers: matched " + hit.price() + " emeralds, unaffordable; emergency buy at slot " + alt);
+					debug("offers: matched " + hit.price() + ", unaffordable; emergency buy at slot " + alt);
+					// lowest-priced affordable book (the run only needs the LOCK); name the
+					// ACTUAL price item, which need not be an emerald under custom specs
+					java.util.List<net.minecraft.world.item.ItemStack> altCosts = OfferCosts.pricingSlots(altOffer);
+					Component priceText = altCosts.isEmpty() || altCosts.get(0).isEmpty()
+							? Component.literal(String.valueOf(TradeMatcher.offerPrice(altOffer)))
+							: Component.literal(TradeMatcher.offerPrice(altOffer) + "x ")
+									.append(altCosts.get(0).getHoverName());
 					chat(Component.translatable("trademaster.message.emergency_purchase",
-									describeBook(bookFingerprint(altOffer, alt)), TradeMatcher.offerPrice(altOffer))
+									describeBook(bookFingerprint(altOffer, alt)), priceText)
 							.withStyle(ChatFormatting.YELLOW));
 					// keep the match: LOCK re-picks the affordable slot and fingerprints the
 					// offer it actually buys, while locked ids / auto-disable / hunt marks still
@@ -2760,35 +2777,41 @@ public final class RerollController {
 		}
 		int budget = 0;
 		for (TradeMatcher.MatchPart part : purchase.parts()) {
+			boolean goodPart = part.level() == 0;
 			Integer marked = huntMarkedPrices.get(part.id());
 			if (marked != null) {
-				// same rule as TradeMatcher.budgetFor: the hunt lowers the budget and
-				// the configured max price caps it, so a mid-run maxPrice drop also
-				// invalidates an already-pending match. An unknown target is left
-				// uncapped (it was disabled/removed mid-run).
-				// target id wins over a same-id good, matching priceOf/specOf
+				// the part's KIND (level 0 = good) chooses the row when both share the id
 				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-				if (markedTarget != null && markedTarget.enabled()) {
+				GoodSpec markedGood = TradeMasterConfig.INSTANCE.goodFor(part.id());
+				if (goodPart && markedGood != null) {
+					budget += Math.min(marked - 1, markedGood.maxPrice());
+					continue;
+				}
+				if (!goodPart && markedTarget != null) {
 					budget += Math.min(marked - 1, markedTarget.maxPrice());
 					continue;
 				}
-				GoodSpec markedGood = TradeMasterConfig.INSTANCE.goodFor(part.id());
 				if (markedGood != null) {
 					budget += Math.min(marked - 1, markedGood.maxPrice());
 					continue;
 				}
-				// an unknown target (disabled/removed mid-run) is left uncapped
+				if (markedTarget != null) {
+					budget += Math.min(marked - 1, markedTarget.maxPrice());
+					continue;
+				}
 				budget += marked - 1;
 				continue;
 			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-			if (target != null && target.enabled()) {
-				budget += target.maxPrice();
-				continue;
-			}
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(part.id());
-			if (good != null) {
+			if (goodPart && good != null) {
 				budget += good.maxPrice();
+			} else if (!goodPart && target != null) {
+				budget += target.maxPrice();
+			} else if (good != null) {
+				budget += good.maxPrice();
+			} else if (target != null) {
+				budget += target.maxPrice();
 			}
 		}
 		return purchase.price() > Math.min(budget, 64);
@@ -2851,6 +2874,8 @@ public final class RerollController {
 			MerchantOffer offer = offers.get(i);
 			if (offer.isOutOfStock()) continue;
 			if (!offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
+			// a blank book cannot be fingerprinted (empty parts / no voucher)
+			if (net.minecraft.world.item.enchantment.EnchantmentHelper.getEnchantmentsForCrafting(offer.getResult()).isEmpty()) continue;
 			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
 			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) continue;

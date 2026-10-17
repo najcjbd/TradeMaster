@@ -623,8 +623,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				int delta = click.x() > this.x + this.entryWidth / 2.0 ? 1 : -1;
-				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
-				playClick();
+				int before = this.getter.get();
+				int next = Mth.clamp(before + delta, this.min, this.max);
+				this.setter.accept(next);
+				if (next != before) playClick();
 				return true;
 			}
 			return false;
@@ -1533,6 +1535,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				// active): only sound when it actually ran, like BoolRow does
 				boolean ran = this.action.getAsBoolean();
 				if (ran) playClick();
+				else playDeny();
 				return true;
 			}
 			return false;

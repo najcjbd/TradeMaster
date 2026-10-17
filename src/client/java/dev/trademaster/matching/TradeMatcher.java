@@ -114,6 +114,17 @@ public class TradeMatcher {
 		public int level() { return purchase().parts().get(0).level(); }
 		public int price() { return purchase().price(); }
 		public int offerIndex() { return purchase().offerIndex(); }
+		/** All matched parts with their kind (level 0 = custom good, >=1 = enchantment). */
+		public List<MatchPart> matchedParts() {
+			List<MatchPart> parts = new ArrayList<>();
+			for (MatchedBook book : this.books) {
+				for (MatchPart part : book.parts()) {
+					if (!parts.contains(part)) parts.add(part);
+				}
+			}
+			return parts;
+		}
+
 		/** Every matched target id across all qualifying books, first-seen order. */
 		public List<Identifier> matchedIds() {
 			List<Identifier> ids = new ArrayList<>();
@@ -129,6 +140,8 @@ public class TradeMatcher {
 		public boolean anyPartBelowConfigLevel() {
 			for (MatchedBook book : this.books) {
 				for (MatchPart part : book.parts()) {
+					// level 0 marks a GOOD part: it has no configured level
+					if (part.level() == 0) continue;
 					EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
 					if (target != null && target.enabled() && part.level() < target.level()) return true;
 				}
@@ -138,27 +151,21 @@ public class TradeMatcher {
 		/** Whether any matched target was removed or disabled in the config since
 		 * the match (a mid-run edit that invalidates the combo). */
 		public boolean anyTargetGone() {
-			for (Identifier id : matchedIds()) {
-				// an ENABLED target id wins over a same-id good, matching priceOf/specOf
-				// (which only know enabled targets). A DISABLED target must not shadow a
-				// legitimate good match, or every such match would be reverted forever.
-				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
-				if (target != null && target.enabled()) {
-					// the row can also be switched off WITHOUT disabling it: an AIR
-					// spec result, or an enchantment no longer in the live registry
-					if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(id).result())) return true;
-					if (!registryTradeable(id)) return true;
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			for (MatchPart part : matchedParts()) {
+				Identifier id = part.id();
+				if (part.level() == 0) {
+					// a GOOD part: shadowed as soon as a same-id target is enabled
+					EnchantmentTarget sameId = config.enchantments.get(id);
+					if (sameId != null && sameId.enabled()) return true;
+					GoodSpec good = config.goodFor(id);
+					if (good == null || !good.enabled() || !goodMatchable(good)) return true;
 					continue;
 				}
-				// a good is switched off in its own list, and is absent from the
-				// enchantment map: without this branch every good match would look
-				// "gone" and be reverted right after it was found
-				GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
-				if (good != null) {
-					if (!good.enabled() || !goodMatchable(good)) return true;
-					continue;
-				}
-				return true;
+				EnchantmentTarget target = config.enchantments.get(id);
+				if (target == null || !target.enabled()) return true;
+				if (config.isAirItem(config.specFor(id).result())) return true;
+				if (!registryTradeable(id)) return true;
 			}
 			return false;
 		}

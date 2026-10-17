@@ -466,9 +466,12 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		// basis: hunt marks were recorded in the old basis (the screen rows already
 		// refuse this, but load() is a separate maLiLib entry point)
 		boolean basis = TradeMasterConfig.INSTANCE.basePriceAsSalePrice;
+		boolean hunt = TradeMasterConfig.INSTANCE.huntCheaper;
 		ConfigPersistence.load(TradeMasterConfig.INSTANCE);
 		if (RerollController.isRunning()) {
+			// run-locked settings must not change under a live needs table
 			TradeMasterConfig.INSTANCE.basePriceAsSalePrice = basis;
+			TradeMasterConfig.INSTANCE.huntCheaper = hunt;
 		}
 	}
 

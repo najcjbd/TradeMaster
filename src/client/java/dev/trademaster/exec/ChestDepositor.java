@@ -481,7 +481,9 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DROP_WAIT -> {
 				if (!droppable(player.getInventory().getItem(this.dropSlot))) {
-					// the drop landed: the allowance shrinks on its own next tick
+					// the drop landed: the allowance shrinks on its own next tick, and
+					// the NEXT stack gets its own one-shot retry budget
+					this.dropResent = false;
 					this.state = State.DROP_STAGE;
 					return StepResult.RUNNING;
 				}
@@ -571,19 +573,22 @@ public class ChestDepositor implements BookDisposal {
 		int slot = this.stagedHotbarSlot;
 		ItemStack displaced = this.stagedDisplaced;
 		ItemStack book = this.stagedBook;
+		// NOT gated on offhandSwapped: advance() resets that per chest, while the
+		// displacement it describes outlives the chest it was made for
+		if (slot < 0) {
+			this.stagedHotbarSlot = -1;
+			this.stagedDisplaced = ItemStack.EMPTY;
+			this.stagedBook = ItemStack.EMPTY;
+			return;
+		}
+		ItemStack inSlot = player.getInventory().getItem(slot);
+		// keep the record when the guards fail: a late sync may still make the undo
+		// valid on the next attempt; clearing first lost it forever
+		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return;
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
 		this.stagedBook = ItemStack.EMPTY;
-		// NOT gated on offhandSwapped: advance() resets that per chest, while the
-		// displacement it describes outlives the chest it was made for
-		if (slot < 0) return;
-		ItemStack inSlot = player.getInventory().getItem(slot);
-		// a book still sitting there means the deposit never took it (all chests refused):
-		// swapping it back is exactly the pre-staging state, not theft
-		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return;
-		// the offhand must still carry exactly what the swap displaced: anything else
-		// means the player changed it, and moving it now would be theft
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
 		if (player.getInventory().getSelectedSlot() != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}

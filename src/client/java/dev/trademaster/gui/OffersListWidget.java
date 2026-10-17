@@ -59,9 +59,12 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		super(client, width, height, top, itemHeight);
 		this.rebuild = rebuild;
 
-		this.airField = new EditBox(client.font, 8, AIR_Y,
-				Math.max(60, this.width - 140), 14, Component.literal("air items"));
-		this.airField.setMaxLength(256);
+		// leave room for the "Air items" caption at x=8: the field used to cover it
+		int airFieldX = 8 + client.font.width(Component.translatable("trademaster.column.air_items")) + 4;
+		this.airField = new EditBox(client.font, airFieldX, AIR_Y,
+				Math.max(60, this.width - airFieldX - 140), 14, Component.literal("air items"));
+		// a realistic air list can exceed 256 chars; truncation would silently drop ids
+		this.airField.setMaxLength(4096);
 		this.airField.setValue(String.join(", ", TradeMasterConfig.INSTANCE.airItems));
 		for (var entry : TradeMasterConfig.INSTANCE.enchantments.entrySet()) {
 			this.addEntry(new OfferRow(entry.getKey()));
@@ -692,9 +695,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				this.errorKey = "trademaster.offer.invalid_item";
 				return true;
 			}
-			if (namesEnchantment(result)) {
+			if (namesEnchantment(result) || config.enchantments.containsKey(result)) {
 				// a good's id keys the spec / price / display name / budget slot, so a
-				// same-id enchantment would be shadowed by it
+				// same-id enchantment would be shadowed by it. Stored targets absent from
+				// the registry still win (target-first rule).
 				this.errorKey = "trademaster.offer.good_is_enchantment";
 				return true;
 			}
