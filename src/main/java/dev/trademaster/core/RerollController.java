@@ -577,9 +577,9 @@ public final class RerollController {
 			// region coords were completed mid-run: the staging search already uses
 			// them again. Treat this run as region-based from here on, so losing them
 			// again stops the run (as documented) instead of silently reverting to
-			// the sphere. NOTE: regionFallbackConfirmed is deliberately NOT touched —
-			// it is a persistent acknowledgement and stop() does not reset it, so
-			// setting it here would let a later start skip the /tm goon gate.
+			// the sphere. A real region also revokes the earlier sphere acknowledgement
+			// (same rule as start): if these coords are lost later, ask again.
+			regionFallbackConfirmed = false;
 			snapRegionConfigured = true;
 		}
 		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
@@ -708,7 +708,8 @@ public final class RerollController {
 				RunSession locked = session;
 				Map<Item, java.util.List<net.minecraft.world.item.ItemStack>> results =
 						locked == null ? Map.of() : Map.copyOf(locked.lockedResults);
-				return new ChestDepositor(chests, disposalBaseline(disposerHolder), results, goodsOnly);
+				return new ChestDepositor(chests, disposalBaseline(disposerHolder), results, goodsOnly,
+						nonBookDisposal, dropYaw, dropPitch, finishing);
 			}
 			// no chest and no drop option: the produced goods cannot leave the inventory
 			// here, but the ordinary path may still free space (grinding books), so fall
@@ -716,10 +717,11 @@ public final class RerollController {
 		}
 		if (grindstoneEnabled && grindstonePos != null
 				&& dropYaw != null && dropPitch != null) {
-			return new GrindstoneRecycler(grindstonePos, dropYaw, dropPitch, chests);
+			return new GrindstoneRecycler(grindstonePos, dropYaw, dropPitch, chests, finishing);
 		}
 		if (chests.isEmpty()) return null;
-		return new ChestDepositor(chests);
+		return new ChestDepositor(chests, java.util.Map.of(), java.util.Map.of(), false,
+				nonBookDisposal, dropYaw, dropPitch, finishing);
 	}
 
 	/** How many of each good's result item this run PRODUCED (carried now minus the
@@ -2663,6 +2665,15 @@ public final class RerollController {
 					.withStyle(ChatFormatting.RED));
 			return;
 		}
+		// the pending request belongs to the world it was raised in: a respawn or
+		// dimension change invalidates it even when no start() ran in between
+		Object level = Minecraft.getInstance().level;
+		if (level != null && regionFallbackLevel != null && regionFallbackLevel.get() != level) {
+			regionFallbackPending = false;
+			chat(McText.translatable("trademaster.message.goon_nothing_pending")
+					.withStyle(ChatFormatting.RED));
+			return;
+		}
 		regionFallbackPending = false;
 		regionFallbackConfirmed = true;
 		regionFallbackLevel = new java.lang.ref.WeakReference<>(Minecraft.getInstance().level);
@@ -2836,15 +2847,16 @@ public final class RerollController {
 		return -1;
 	}
 
-	/** Cheapest enchanted-book offer the player can actually pay for, or -1. */
+	/** Cheapest enchanted-book offer the player can actually pay for, or -1. The cost
+	 * SHAPE is not hardcoded: custom specs (another price item, no second slot) are
+	 * valid alternatives too, and the executor fingerprints the offer it picks. */
 	private static int cheapestAffordableBookSlot(MerchantOffers offers, LocalPlayer player) {
 		int bestSlot = -1;
 		int bestPrice = Integer.MAX_VALUE;
 		for (int i = 0; i < offers.size(); i++) {
 			MerchantOffer offer = offers.get(i);
 			if (offer.isOutOfStock()) continue;
-			if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
-					|| !offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
+			if (!offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
 			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
 			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) continue;

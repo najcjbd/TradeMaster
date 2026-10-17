@@ -128,6 +128,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			// switching mid-run would reinterpret them (duplicate buys / stalled hunt)
 			if (RerollController.isRunning()) {
 				chatRed("trademaster.message.price_basis_locked");
+				McSound.playDeny();
 				return;
 			}
 			c.basePriceAsSalePrice = v;
@@ -1126,11 +1127,14 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			}
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				if (this.slot != null && this.clickInValueText(click.x())) {
-					playClick();
 					// a refused pick (run in progress) must keep the settings screen
 					// open: closing it would strand the user in-game with no pick armed
-					if (PositionPicker.begin(this.slot, this.setter)) {
+					boolean began = PositionPicker.begin(this.slot, this.setter);
+					if (began) {
+						playClick();
 						McClient.setScreen(Minecraft.getInstance(), null);
+					} else {
+						McSound.playDeny();
 					}
 					return true;
 				}

@@ -340,6 +340,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			if (!onField) row.commit();
 		}
+		// a click anywhere else deliberately leaves the air field: commit it BEFORE the
+		// row action runs (AddGood validates against the live air list)
+		this.applyAirField();
 		this.airField.setFocused(false);
 		this.suppressFocusClear = true;
 		try {
@@ -389,8 +392,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		// FIRST: its band can overlap a stale row rect (rows are drawn by last-frame
 		// geometry), which used to leave that row's field focused as well (two focuses).
 		if (this.airField.isMouseOver(mouseX, mouseY)) {
+			// a deliberate focus change commits the drafts the air-field click leaves
 			for (Row row : this.children()) {
 				for (EditBox field : row.fields()) field.setFocused(false);
+				row.commit();
 			}
 			this.airField.setFocused(true);
 			return McInput.mouseClicked(this.airField, mouseX, mouseY, button, false);

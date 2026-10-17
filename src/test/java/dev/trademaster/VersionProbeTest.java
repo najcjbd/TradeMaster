@@ -2,6 +2,7 @@ package dev.trademaster;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -45,6 +46,23 @@ class VersionProbeTest {
 		dev.trademaster.testutil.McTest.boot();
 		assertNotNull(dev.trademaster.compat.McEnchantTags.tradeable());
 		assertNotNull(dev.trademaster.compat.McEnchantTags.doubleTradePrice());
+	}
+
+	@Test
+	void offerCostSlotsExcludeTheTradeResultOnOldVersions() {
+		//? if <1.21 {
+		/*// before 1.21 both cost fields and the result are ItemStacks: type-based slot
+		// detection must not count the result as a third cost
+		dev.trademaster.testutil.McTest.boot();
+		var offer = new net.minecraft.world.item.trading.MerchantOffer(
+				new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.EMERALD, 5),
+				new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.ENCHANTED_BOOK), 12, 2, 0.05f);
+		assertEquals(2, dev.trademaster.matching.OfferCosts.slots(offer).size(),
+				"the trade result must not be counted as a cost slot");*/
+		//?} else {
+		// 1.21+ costs are ItemCost, so the reflective scan cannot include the result
+		assertNotNull(net.minecraft.world.item.trading.MerchantOffer.class);
+		//?}
 	}
 
 	@Test

@@ -32,6 +32,9 @@ public final class OfferCosts {
 	private static final Map<Class<?>, List<Field>> SLOT_FIELDS = new ConcurrentHashMap<>();
 
 	public static List<ItemStack> slots(MerchantOffer offer) {
+		//? if >=1.21 {
+		// ItemCost distinguishes the two COST fields from the ItemStack RESULT, so the
+		// reflective scan below is safe there (and supports mod-added cost slots).
 		List<Field> fields = SLOT_FIELDS.computeIfAbsent(offer.getClass(), OfferCosts::findSlotFields);
 		if (fields.size() < 2) {
 			// no usable field shape (unexpected): fall back to the vanilla accessors
@@ -46,6 +49,12 @@ public final class OfferCosts {
 			slots.add(stack == null ? ItemStack.EMPTY : stack);
 		}
 		return slots;
+		//?} else {
+		/*// Before 1.21 both cost fields and the RESULT are ItemStacks: scanning by type
+		// would count the result as a third cost slot and reject every offer. Use the
+		// two known cost accessors (mod-added extra cost slots are not supported here).
+		return List.of(offer.getBaseCostA(), offer.getCostB());*/
+		//?}
 	}
 
 	/** The cost slots used for PRICE / AFFORDABILITY decisions: identical to

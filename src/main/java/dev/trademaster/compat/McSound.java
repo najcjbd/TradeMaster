@@ -19,5 +19,11 @@ public final class McSound {
 		//?}
 	}
 
+	/** A lower-pitched click for a refused action (e.g. a setting locked by a run). */
+	public static void playDeny() {
+		Minecraft.getInstance().getSoundManager().play(
+				SimpleSoundInstance.forUI(SoundEvents.UI_BUTTON_CLICK, 0.5F));
+	}
+
 	private McSound() {}
 }
