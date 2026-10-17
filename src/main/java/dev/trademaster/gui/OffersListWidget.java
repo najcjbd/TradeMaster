@@ -323,6 +323,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		if (this.airField.isMouseOver(click.x(), click.y())) {
 			for (Row row : this.children()) {
 				for (EditBox field : row.fields()) field.setFocused(false);
@@ -380,6 +382,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
 		// the air field lives in the fixed header, outside the rows, so this list owns
 		// its clicks (an EditBox does not take focus on its own). Handle the air field
 		// FIRST: its band can overlap a stale row rect (rows are drawn by last-frame

@@ -279,6 +279,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	//? if >=26.1 {
 	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		beginMouseClick(click.x(), click.y());
 		try {
 			return super.mouseClicked(click, doubled);
@@ -289,6 +291,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	//?} else {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// right-click is not an edit gesture: do not reconcile/blur/commit drafts
+		if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
 		beginMouseClick(mouseX, mouseY);
 		try {
 			return super.mouseClicked(mouseX, mouseY, button);

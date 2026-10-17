@@ -231,7 +231,7 @@ public final class RerollController {
 			// priceOf/specOf and admission already resolve it that way, so the hunt
 			// floor must too or the precheck under-demands emeralds
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
-			if (target != null) {
+			if (target != null && target.enabled()) {
 				int budget = Math.min(entry.getValue() - 1, target.maxPrice());
 				if (budget > max) max = budget;
 				continue;
@@ -301,7 +301,10 @@ public final class RerollController {
 		// another world must ask again instead of silently using that world's sphere
 		Object level = Minecraft.getInstance().level;
 		if (level != null && (regionFallbackLevel == null || regionFallbackLevel.get() != level)) {
+			// the acknowledgement (and any pending request to grant it) is scoped to the
+			// world it was made in; a respawn/dimension change must ask again
 			regionFallbackConfirmed = false;
+			regionFallbackPending = false;
 		}
 		// a SECOND start request (GUI button, command or hotkey) confirms the sphere
 		// fallback the first one asked for; without this only the hotkey could ever
@@ -660,6 +663,15 @@ public final class RerollController {
 	 */
 	private static @Nullable BookDisposal createBookDisposal() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// a FINISHING run is exempt from the mid-run grindstone guard, so it must also
+		// read the disposal definition it STARTED with: the live config may already
+		// point somewhere else (the naming-path deposit would silently switch rigs)
+		boolean grindstoneEnabled = config.grindstoneEnabled;
+		BlockPos grindstonePos = config.grindstonePos;
+		if (finalizingRun()) {
+			grindstoneEnabled = snapGrindstoneEnabled;
+			grindstonePos = snapGrindstonePos;
+		}
 		// a bought GOOD cannot be disenchanted: while one sits in the inventory the
 		// chest/drop path must run, whatever the book-disposal mode says. Only the
 		// EXCESS over the run's baseline is touched, so the player's own items that
@@ -672,7 +684,7 @@ public final class RerollController {
 				// in grindstone mode the books are still the recycler's business, so this
 				// pass takes the produced goods only — but only when the grindstone path
 				// will really be available for them (it needs its drop direction)
-				boolean goodsOnly = config.grindstoneEnabled && config.grindstonePos != null
+				boolean goodsOnly = grindstoneEnabled && grindstonePos != null
 						&& config.curseDropYaw != null && config.curseDropPitch != null;
 				// the BASELINE goes in, not the produced snapshot: the depositor derives
 				// the allowance from the live inventory every tick, so a click the server
@@ -687,7 +699,7 @@ public final class RerollController {
 			// here, but the ordinary path may still free space (grinding books), so fall
 			// through instead of refusing to dispose anything at all
 		}
-		if (config.grindstoneEnabled && config.grindstonePos != null
+		if (grindstoneEnabled && grindstonePos != null
 				&& config.curseDropYaw != null && config.curseDropPitch != null) {
 			return new GrindstoneRecycler();
 		}
@@ -1613,14 +1625,14 @@ public final class RerollController {
 				Component reason = McText.translatable("trademaster.message.material_short");
 				if (s.matchedTrade != null && s.matchedTrade.offerIndex() < offers.size()) {
 					Component lack = Preconditions.shortfall(player,
-							OfferCosts.slots(offers.get(s.matchedTrade.offerIndex())));
+							OfferCosts.pricingSlots(offers.get(s.matchedTrade.offerIndex())));
 					if (lack != null) reason = lack;
 				}
 				stop(reason, ChatFormatting.RED);
 				return;
 			}
 			MerchantOffer offer = offers.get(slot);
-			if (!Preconditions.checkLockMaterials(player, OfferCosts.slots(offer))) {
+			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) {
 				// the matched offer became unaffordable (emeralds spent manually):
 				// the villager is still unlocked, so treat it like a drift — give the
 				// budget back and re-detect. The affordability gate in handleOffers
@@ -2178,7 +2190,7 @@ public final class RerollController {
 			LocalPlayer player = Minecraft.getInstance().player;
 			MerchantOffer matchedOffer = snapshot.offers().get(hit.offerIndex());
 			boolean payable = player != null
-					&& Preconditions.checkLockMaterials(player, OfferCosts.slots(matchedOffer));
+					&& Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(matchedOffer));
 			if (!payable) {
 				// The matched book cannot be paid for. Locking the villager is what the
 				// run is after and a single purchase does it, so buy the cheapest OTHER
@@ -2216,7 +2228,7 @@ public final class RerollController {
 					// name the slot that cannot be paid; the emerald wording stays as the
 					// fallback when the offer vanished before we could look at it
 					Component lack = hit.offerIndex() < snapshot.offers().size()
-							? Preconditions.shortfall(player, OfferCosts.slots(snapshot.offers().get(hit.offerIndex())))
+							? Preconditions.shortfall(player, OfferCosts.pricingSlots(snapshot.offers().get(hit.offerIndex())))
 							: null;
 					stop(lack != null ? lack
 							: McText.translatable("trademaster.message.material_short"),
@@ -2736,7 +2748,7 @@ public final class RerollController {
 				// uncapped (it was disabled/removed mid-run).
 				// target id wins over a same-id good, matching priceOf/specOf
 				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-				if (markedTarget != null) {
+				if (markedTarget != null && markedTarget.enabled()) {
 					budget += Math.min(marked - 1, markedTarget.maxPrice());
 					continue;
 				}
@@ -2750,7 +2762,7 @@ public final class RerollController {
 				continue;
 			}
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-			if (target != null) {
+			if (target != null && target.enabled()) {
 				budget += target.maxPrice();
 				continue;
 			}
@@ -2784,7 +2796,7 @@ public final class RerollController {
 		TradeMatcher.MatchedTrade hit = s.matchedTrade;
 		LocalPlayer player = Minecraft.getInstance().player;
 		boolean matchedPayable = hit != null && player != null && hit.offerIndex() < offers.size()
-				&& Preconditions.checkLockMaterials(player, OfferCosts.slots(offers.get(hit.offerIndex())));
+				&& Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offers.get(hit.offerIndex())));
 		if (!matchedPayable && player != null) {
 			// the matched book is unaffordable (emeralds spent, or a combo priced
 			// above what the player carries while every single target still fits):
@@ -2816,7 +2828,7 @@ public final class RerollController {
 					|| !offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
 			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
-			if (!Preconditions.checkLockMaterials(player, OfferCosts.slots(offer))) continue;
+			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) continue;
 			bestSlot = i;
 			bestPrice = price;
 		}

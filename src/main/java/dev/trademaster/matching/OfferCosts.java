@@ -48,6 +48,20 @@ public final class OfferCosts {
 		return slots;
 	}
 
+	/** The cost slots used for PRICE / AFFORDABILITY decisions: identical to
+	 * {@link #slots} except that the price slot (slot 0) is replaced by the actually
+	 * charged stack when {@code basePriceAsSalePrice} is off. Identity checks (LOCK
+	 * fingerprints, channel comparison) must keep using {@link #slots}: the charged
+	 * count can legitimately change with demand while the offer stays the same. */
+	public static List<ItemStack> pricingSlots(MerchantOffer offer) {
+		List<ItemStack> slots = new ArrayList<>(slots(offer));
+		if (!dev.trademaster.config.TradeMasterConfig.INSTANCE.basePriceAsSalePrice && !slots.isEmpty()) {
+			ItemStack charged = offer.getCostA();
+			if (!charged.isEmpty()) slots.set(0, charged);
+		}
+		return slots;
+	}
+
 	/** Declared ItemCost / Optional&lt;ItemCost&gt; fields, in declaration order, walking
 	 * the whole class hierarchy: a mod that extends the trade object may add slots, and
 	 * the parent's slots must come FIRST or the extra ones would be read as slot 1. */

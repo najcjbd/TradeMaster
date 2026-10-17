@@ -199,6 +199,10 @@ public final class DetectionHub {
 
 	private void tryDeliverEvent() {
 		if (this.gotEvent || this.eventMask != 3 || this.eventMenu == null) return;
+		// the same 3s wall-clock window the packet channel enforces: an answer that
+		// arrives later is a foreign/stale menu. tick() enforces it too, but tick is
+		// skipped while paused or sneaking, so the event path must check it itself.
+		if (System.nanoTime() - this.armedAtNanos > 3_000_000_000L) return;
 		// NOTE: the event channel only exposes the MENU, and a client merchant menu wraps a
 		// ClientSideMerchant (which holds no villager reference), so the opening cannot be tied
 		// to the villager this check armed for: any menu that arrives is accepted. A foreign
