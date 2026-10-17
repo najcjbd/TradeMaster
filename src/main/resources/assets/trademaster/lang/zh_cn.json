@@ -113,7 +113,7 @@
   "trademaster.message.grind_state_invalid": "内部错误：砂轮回收器进入了未处理的状态，回收中止",
   "trademaster.message.deposit_state_invalid": "内部错误：箱子存放流程进入了未处理的状态，存放中止",
   "trademaster.message.grindstone_config_changed": "砂轮模式的启用状态或砂轮坐标在运行中被修改，已按正常流程停止",
-  "trademaster.message.emergency_purchase": "目标书买不起，已应急买下 %s @%s 绿宝石以锁定村民（这本不是你的目标书）",
+  "trademaster.message.emergency_purchase": "目标书买不起，已应急买下 %s @%s 以锁定村民（这本不是你的目标书）",
   "trademaster.message.combo_shortage_hint": "材料不足：组合书的总价可能高于资金底线。可开启「单书多附魔保障」把底线提高到 64，避免此类停线",
   "trademaster.message.region_fallback_prompt": "暂存区坐标不完整：将使用「讲台为原点、半径 %s 的球形范围」作为暂存区。输入 /trademaster goon（或再次启动）确认；其它时候该指令无效",
   "trademaster.message.region_fallback_active": "暂存区使用「讲台为原点、半径 %s 的球形范围」",

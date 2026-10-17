@@ -881,8 +881,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				int delta = click.x() > this.x + this.entryWidth / 2.0 ? 1 : -1;
-				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
-				playClick();
+				int before = this.getter.get();
+				int next = Mth.clamp(before + delta, this.min, this.max);
+				this.setter.accept(next);
+				if (next != before) playClick();
 				return true;
 			}
 			return false;
@@ -893,8 +895,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (button != 0) return false;
 			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
 				int delta = mouseX > this.x + this.entryWidth / 2.0 ? 1 : -1;
-				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
-				playClick();
+				int before = this.getter.get();
+				int next = Mth.clamp(before + delta, this.min, this.max);
+				this.setter.accept(next);
+				if (next != before) playClick();
 				return true;
 			}
 			return false;
@@ -1152,11 +1156,14 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			}
 			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
 				if (this.slot != null && this.clickInValueText(mouseX)) {
-					playClick();
 					// a refused pick (run in progress) must keep the settings screen
 					// open: closing it would strand the user in-game with no pick armed
-					if (PositionPicker.begin(this.slot, this.setter)) {
+					boolean began = PositionPicker.begin(this.slot, this.setter);
+					if (began) {
+						playClick();
 						McClient.setScreen(Minecraft.getInstance(), null);
+					} else {
+						McSound.playDeny();
 					}
 					return true;
 				}
@@ -1972,6 +1979,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				// active): only sound when it actually ran, like BoolRow does
 				boolean ran = this.action.getAsBoolean();
 				if (ran) playClick();
+				else McSound.playDeny();
 				return true;
 			}
 			return false;
@@ -1985,6 +1993,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				// active): only sound when it actually ran, like BoolRow does
 				boolean ran = this.action.getAsBoolean();
 				if (ran) playClick();
+				else McSound.playDeny();
 				return true;
 			}
 			return false;
