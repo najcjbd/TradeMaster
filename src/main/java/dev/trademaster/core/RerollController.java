@@ -119,6 +119,11 @@ public final class RerollController {
 	 * grindstoneConfigChanged). */
 	private static boolean grindstoneSnapshotValid = false;
 	private static boolean snapGrindstoneEnabled = false;
+	private static java.util.List<BlockPos> snapChestPositions = java.util.List.of();
+	private static dev.trademaster.config.NonBookDisposal snapNonBookDisposal =
+			dev.trademaster.config.NonBookDisposal.CHEST_THEN_STOP;
+	private static @Nullable Float snapCurseDropYaw = null;
+	private static @Nullable Float snapCurseDropPitch = null;
 	private static @Nullable BlockPos snapGrindstonePos = null;
 	/** Whether the double-coordinate staging region was complete when the run
 	 * started: losing it mid-run stops the run (see the check in tick()). */
@@ -300,9 +305,10 @@ public final class RerollController {
 		// the confirmation is only valid for the world it was granted in: entering
 		// another world must ask again instead of silently using that world's sphere
 		Object level = Minecraft.getInstance().level;
-		if (level != null && (regionFallbackLevel == null || regionFallbackLevel.get() != level)) {
-			// the acknowledgement (and any pending request to grant it) is scoped to the
-			// world it was made in; a respawn/dimension change must ask again
+		// regionFallbackLevel is also stamped when the prompt is raised (below), so a
+		// null value means "nothing to invalidate yet". Only a stored level that
+		// DIFFERS can be a respawn/dimension change.
+		if (level != null && regionFallbackLevel != null && regionFallbackLevel.get() != level) {
 			regionFallbackConfirmed = false;
 			regionFallbackPending = false;
 		}
@@ -319,6 +325,9 @@ public final class RerollController {
 		// with /trademaster goon or a second start
 		if (!regionConfigured() && !regionFallbackConfirmed) {
 			regionFallbackPending = true;
+			// scope the pending request to this world too: a respawn/dimension change
+			// must invalidate it together with the acknowledgement
+			regionFallbackLevel = new java.lang.ref.WeakReference<>(level);
 			chat(McText.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
 					.withStyle(ChatFormatting.YELLOW));
 			return false;
@@ -338,6 +347,10 @@ public final class RerollController {
 		snapRigTarget = rigTargetDefinition(config);
 		snapGrindstoneEnabled = config.grindstoneEnabled;
 		snapGrindstonePos = config.grindstonePos;
+		snapChestPositions = java.util.List.copyOf(config.chestPositions);
+		snapNonBookDisposal = config.nonBookDisposal;
+		snapCurseDropYaw = config.curseDropYaw;
+		snapCurseDropPitch = config.curseDropPitch;
 		grindstoneSnapshotValid = true;
 		snapRegionConfigured = regionConfigured();
 		huntMarkedPrices.clear();
@@ -663,15 +676,17 @@ public final class RerollController {
 	 */
 	private static @Nullable BookDisposal createBookDisposal() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		// a FINISHING run is exempt from the mid-run grindstone guard, so it must also
-		// read the disposal definition it STARTED with: the live config may already
-		// point somewhere else (the naming-path deposit would silently switch rigs)
-		boolean grindstoneEnabled = config.grindstoneEnabled;
-		BlockPos grindstonePos = config.grindstonePos;
-		if (finalizingRun()) {
-			grindstoneEnabled = snapGrindstoneEnabled;
-			grindstonePos = snapGrindstonePos;
-		}
+		// a FINISHING run is exempt from the mid-run rig guards, so it must read the
+		// whole disposal definition it STARTED with: the live config may already point
+		// somewhere else (the naming-path deposit would silently switch rigs)
+		boolean finishing = finalizingRun();
+		boolean grindstoneEnabled = finishing ? snapGrindstoneEnabled : config.grindstoneEnabled;
+		BlockPos grindstonePos = finishing ? snapGrindstonePos : config.grindstonePos;
+		java.util.List<BlockPos> chests = finishing ? snapChestPositions : config.chestPositions;
+		dev.trademaster.config.NonBookDisposal nonBookDisposal =
+				finishing ? snapNonBookDisposal : config.nonBookDisposal;
+		Float dropYaw = finishing ? snapCurseDropYaw : config.curseDropYaw;
+		Float dropPitch = finishing ? snapCurseDropPitch : config.curseDropPitch;
 		// a bought GOOD cannot be disenchanted: while one sits in the inventory the
 		// chest/drop path must run, whatever the book-disposal mode says. Only the
 		// EXCESS over the run's baseline is touched, so the player's own items that
@@ -679,13 +694,13 @@ public final class RerollController {
 		LocalPlayer disposerHolder = Minecraft.getInstance().player;
 		Map<Item, Integer> produced = producedGoods(disposerHolder);
 		if (!produced.isEmpty()) {
-			if (!config.chestPositions.isEmpty()
-					|| config.nonBookDisposal == dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP) {
+			if (!chests.isEmpty()
+					|| nonBookDisposal == dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP) {
 				// in grindstone mode the books are still the recycler's business, so this
 				// pass takes the produced goods only — but only when the grindstone path
 				// will really be available for them (it needs its drop direction)
 				boolean goodsOnly = grindstoneEnabled && grindstonePos != null
-						&& config.curseDropYaw != null && config.curseDropPitch != null;
+						&& dropYaw != null && dropPitch != null;
 				// the BASELINE goes in, not the produced snapshot: the depositor derives
 				// the allowance from the live inventory every tick, so a click the server
 				// refuses can never spend it. The locked RESULTS go in too, so only a
@@ -693,18 +708,18 @@ public final class RerollController {
 				RunSession locked = session;
 				Map<Item, java.util.List<net.minecraft.world.item.ItemStack>> results =
 						locked == null ? Map.of() : Map.copyOf(locked.lockedResults);
-				return new ChestDepositor(config.chestPositions, disposalBaseline(disposerHolder), results, goodsOnly);
+				return new ChestDepositor(chests, disposalBaseline(disposerHolder), results, goodsOnly);
 			}
 			// no chest and no drop option: the produced goods cannot leave the inventory
 			// here, but the ordinary path may still free space (grinding books), so fall
 			// through instead of refusing to dispose anything at all
 		}
 		if (grindstoneEnabled && grindstonePos != null
-				&& config.curseDropYaw != null && config.curseDropPitch != null) {
-			return new GrindstoneRecycler();
+				&& dropYaw != null && dropPitch != null) {
+			return new GrindstoneRecycler(grindstonePos, dropYaw, dropPitch, chests);
 		}
-		if (config.chestPositions.isEmpty()) return null;
-		return new ChestDepositor(config.chestPositions);
+		if (chests.isEmpty()) return null;
+		return new ChestDepositor(chests);
 	}
 
 	/** How many of each good's result item this run PRODUCED (carried now minus the
@@ -2789,6 +2804,10 @@ public final class RerollController {
 		// enchanted book": a custom spec (or a custom good, whose result is any item)
 		// must be judged against what was actually matched
 		if (!trade.purchase().costsMatch(OfferCosts.slots(offer))) return false;
+		// with the charged-price basis the base slots can stay identical while the
+		// actual price (cure/demand) changed: never lock at a price the budget never saw
+		if (!TradeMasterConfig.INSTANCE.basePriceAsSalePrice
+				&& TradeMatcher.offerPrice(offer) != trade.purchase().price()) return false;
 		return trade.purchase().resultMatches(offer.getResult());
 	}
 
@@ -2932,6 +2951,10 @@ public final class RerollController {
 		grindstoneSnapshotValid = false;
 		snapRegionConfigured = false;
 		snapRigTarget = null;
+		snapChestPositions = java.util.List.of();
+		snapNonBookDisposal = dev.trademaster.config.NonBookDisposal.CHEST_THEN_STOP;
+		snapCurseDropYaw = null;
+		snapCurseDropPitch = null;
 		sessionDimension = null;
 		regionFallbackPending = false;
 		// a stopped pipeline sends no more interacts: the residual suppression

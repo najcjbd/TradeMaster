@@ -371,11 +371,15 @@ public class TradeMasterScreen extends Screen {
 	//? if >=26.1 {
 	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not clear deferrals or blur drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		return handleMouseClicked(click.x(), click.y(), click.button(), doubled) || super.mouseClicked(click, doubled);
 	}*/
 	//?} else {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// right-click is not an edit gesture: do not clear deferrals or blur drafts
+		if (button != 0) return super.mouseClicked(mouseX, mouseY, button);
 		return handleMouseClicked(mouseX, mouseY, button, false) || super.mouseClicked(mouseX, mouseY, button);
 	}
 	//?}

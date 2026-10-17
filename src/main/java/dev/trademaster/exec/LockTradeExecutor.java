@@ -268,6 +268,11 @@ public class LockTradeExecutor {
 		// the whole cost shape AND the result: a custom spec may pay in another item or
 		// need no second slot, and a custom good's result is not a book at all
 		if (!this.expected.purchase().costsMatch(OfferCosts.slots(offer))) return false;
+		// the charged price can change without touching the base slots (cure/demand)
+		if (!dev.trademaster.config.TradeMasterConfig.INSTANCE.basePriceAsSalePrice
+				&& dev.trademaster.matching.TradeMatcher.offerPrice(offer) != this.expected.purchase().price()) {
+			return false;
+		}
 		return resultMatches(this.expected, offer.getResult());
 	}
 

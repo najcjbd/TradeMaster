@@ -586,11 +586,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			return handleMouseClicked(click.x(), click.y(), click.button(), doubled);
 		}*/
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			return handleMouseClicked(mouseX, mouseY, button, false);
 		}
 		//?}

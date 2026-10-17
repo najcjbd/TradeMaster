@@ -441,6 +441,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -460,6 +461,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;

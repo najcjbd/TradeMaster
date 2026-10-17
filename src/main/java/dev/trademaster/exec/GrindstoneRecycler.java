@@ -66,8 +66,12 @@ public class GrindstoneRecycler implements BookDisposal {
 		DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT
 	}
 
-	private final BlockPos grindstone;
+	private final @Nullable BlockPos grindstone;
 	private final List<BlockPos> chests;
+	/** Drop direction captured when this disposer was created (a finishing run passes
+	 * the run's start-of-run snapshot, not the live config). */
+	private final @Nullable Float dropYaw;
+	private final @Nullable Float dropPitch;
 	private final LookStep look = new LookStep();
 	private State state = State.SEEK;
 	private int ticks = 0;
@@ -94,10 +98,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** One staging resend for the cursed-book drop: reset at the start of every
 	 * staging attempt (both sources), spent once. */
 	private boolean dropStageResent = false;
-	/** Menu state id before the staging SWAP click: an on-1.21+ accepted slot packet
-	 * echoes it, which proves the server (not just the local prediction) applied the
-	 * move. Pre-1.21 slot packets carry no state id, so a longer quiet wait is used. */
-	private int dropStageStateId = -1;
+
 	/** Which staging action the current drop used — the resend must replay the
 	 * same one: the raw offhand swap, or the inventory SWAP click. */
 	private boolean dropStageOffhand = false;
@@ -122,10 +123,19 @@ public class GrindstoneRecycler implements BookDisposal {
 	private ItemStack stagedDisplaced = ItemStack.EMPTY;
 
 	public GrindstoneRecycler() {
-		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		this.grindstone = config.grindstonePos;
-		this.chests = List.copyOf(config.chestPositions);
-		this.delay = config.interactDelay;
+		this(TradeMasterConfig.INSTANCE.grindstonePos,
+				TradeMasterConfig.INSTANCE.curseDropYaw,
+				TradeMasterConfig.INSTANCE.curseDropPitch,
+				TradeMasterConfig.INSTANCE.chestPositions);
+	}
+
+	public GrindstoneRecycler(@Nullable BlockPos grindstone, @Nullable Float dropYaw,
+			@Nullable Float dropPitch, List<BlockPos> chests) {
+		this.grindstone = grindstone;
+		this.dropYaw = dropYaw;
+		this.dropPitch = dropPitch;
+		this.chests = List.copyOf(chests);
+		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
 	}
 
 	@Override
@@ -135,6 +145,11 @@ public class GrindstoneRecycler implements BookDisposal {
 		if (player == null || mc.level == null || mc.gameMode == null) {
 			if (player != null) restoreHotbarSelection(player);
 			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
+		}
+		if (this.grindstone == null) {
+			// the configured position vanished before this disposer was built; fail
+			// cleanly instead of calling getBlockState(null)
+			return fail(player, "trademaster.message.grindstone_missing");
 		}
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 180) {
@@ -517,7 +532,6 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageResent = false;
 					// the destination is an EMPTY hotbar slot (a full hotbar fails above),
 					// so the SWAP is a plain move: the source slot simply empties
-					this.dropStageStateId = player.containerMenu.getStateId();
 					McClicks.click(mc.gameMode, player.containerMenu.containerId,
 							inventoryMenuSlot(invSlot), target, McClicks.Click.SWAP, player);
 				}
@@ -527,7 +541,7 @@ public class GrindstoneRecycler implements BookDisposal {
 			case DROP_STAGE_WAIT -> {
 				// an inventory SWAP click IS applied locally first, so the target slot
 				// already shows the book even when the server REJECTS the click: wait a
-				// round trip (waitTicks >= 10) and confirm the WHOLE move — the target holds
+				// fixed grace and confirm the WHOLE move — the target holds
 				// the book AND the source slot is now empty. The destination is always an
 				// EMPTY hotbar slot (a full hotbar fails in DROP_STAGE), so the source
 				// emptying is proof the click landed, not just the client prediction.
@@ -537,22 +551,23 @@ public class GrindstoneRecycler implements BookDisposal {
 						&& (this.dropStageSource < 0
 								|| (player.containerMenu == player.inventoryMenu
 										&& player.getInventory().getItem(this.dropStageSource).isEmpty()));
-				// an inventory SWAP click applies its result locally, so the content
-				// check alone can pass on a prediction. Require a server echo (a changed
-				// menu state id) or a long quiet wait for versions whose slot packets
-				// carry no state id. The offhand raw swap has no prediction at all.
-				boolean serverProof = this.dropStageSource < 0
-						|| player.containerMenu.getStateId() != this.dropStageStateId
-						|| this.waitTicks >= 40;
-				if (this.waitTicks >= 10 && staged && serverProof) {
+				// An inventory SWAP click applies its result locally and an ACCEPTED
+				// predicted click is not echoed back (the server adopts the predicted
+				// slots), so the contents alone can be a prediction. Give the server a
+				// fixed 2s grace before believing the predicted staging; the offhand raw
+				// swap has no prediction and only needs a round trip.
+				int neededTicks = this.dropStageSource < 0 ? 10 : 40;
+				if (this.waitTicks >= neededTicks && staged) {
 					this.waitTicks = 0;
 					this.dropStagedBook = player.getInventory().getItem(this.dropSlot).copy();
 					this.state = State.DROP_AIM;
-				} else if (++this.waitTicks > 60) {
+				} else if (++this.waitTicks > (this.dropStageOffhand ? 100 : 60)) {
 					// replay the SAME staging action, and only while it provably never
 					// landed: an offhand swap while the book is still in the offhand,
 					// an inventory SWAP click while the book is still in its source
-					// slot. Replaying one that did land would swap the book straight back
+					// slot. Replaying one that did land would swap the book straight back.
+					// The raw offhand swap has no prediction, so a delayed SYNC of a
+					// landed swap is indistinguishable from a lost packet: wait longer.
 					if (!this.dropStageResent) {
 						if (this.dropStageOffhand && isCursed(player.getOffhandItem())) {
 							this.dropStageResent = true;
@@ -574,7 +589,6 @@ public class GrindstoneRecycler implements BookDisposal {
 							}
 							this.dropStageResent = true;
 							this.waitTicks = 0;
-							this.dropStageStateId = player.containerMenu.getStateId();
 							McClicks.click(mc.gameMode, player.containerMenu.containerId,
 									inventoryMenuSlot(this.dropStageSource), this.dropSlot, McClicks.Click.SWAP, player);
 							return StepResult.RUNNING;
@@ -585,20 +599,20 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 			case DROP_AIM -> {
 				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-				if (config.curseDropYaw == null || config.curseDropPitch == null) {
+				if (this.dropYaw == null || this.dropPitch == null) {
 					// the direction vanished mid-run: dropping blind is never allowed
 					return fail(player, "trademaster.message.curse_drop_failed");
 				}
 				// aim by looking at a far point along the configured direction:
 				// LookStep covers both legit modes, the explicit set covers the rest
 				Vec3 target = player.getEyePosition().add(
-						Vec3.directionFromRotation(config.curseDropPitch, config.curseDropYaw).scale(100.0));
+						Vec3.directionFromRotation(this.dropPitch, this.dropYaw).scale(100.0));
 				if (!this.look.tick(player, target)) {
 					return StepResult.RUNNING;
 				}
 				if (!config.legitMode) {
-					player.setYRot(config.curseDropYaw);
-					player.setXRot(config.curseDropPitch);
+					player.setYRot(this.dropYaw);
+					player.setXRot(this.dropPitch);
 				}
 				// give the rotation a few ticks to reach the server before the drop
 				// packet, or the book flies in the old direction
