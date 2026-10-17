@@ -109,6 +109,11 @@ public class ChestDepositor implements BookDisposal {
 	/** When true the pass takes only those produced goods: used in grindstone mode,
 	 * where the books are still the recycler's business. */
 	private final boolean goodsOnly;
+	/** Disposal-definition snapshot used while a FINISHING run deposits. */
+	private final boolean snapshotDefinition;
+	private final dev.trademaster.config.NonBookDisposal snapshotNonBookDisposal;
+	private final @Nullable Float snapshotDropYaw;
+	private final @Nullable Float snapshotDropPitch;
 
 	public ChestDepositor(List<BlockPos> chests) {
 		this(chests, Map.of(), Map.of(), false);
@@ -116,11 +121,38 @@ public class ChestDepositor implements BookDisposal {
 
 	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline,
 			Map<Item, List<ItemStack>> expectedResults, boolean goodsOnly) {
+		this(chests, goodsBaseline, expectedResults, goodsOnly,
+				TradeMasterConfig.INSTANCE.nonBookDisposal,
+				TradeMasterConfig.INSTANCE.curseDropYaw,
+				TradeMasterConfig.INSTANCE.curseDropPitch, false);
+	}
+
+	public ChestDepositor(List<BlockPos> chests, Map<Item, Integer> goodsBaseline,
+			Map<Item, List<ItemStack>> expectedResults, boolean goodsOnly,
+			dev.trademaster.config.NonBookDisposal nonBookDisposal,
+			@Nullable Float dropYaw, @Nullable Float dropPitch, boolean snapshotDefinition) {
 		this.chests = List.copyOf(chests);
 		this.goodsBaseline = Map.copyOf(goodsBaseline);
 		this.expectedResults = Map.copyOf(expectedResults);
 		this.goodsOnly = goodsOnly;
+		this.snapshotDefinition = snapshotDefinition;
+		this.snapshotNonBookDisposal = nonBookDisposal;
+		this.snapshotDropYaw = dropYaw;
+		this.snapshotDropPitch = dropPitch;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
+	}
+
+	private dev.trademaster.config.NonBookDisposal nonBookDisposal() {
+		return this.snapshotDefinition ? this.snapshotNonBookDisposal
+				: TradeMasterConfig.INSTANCE.nonBookDisposal;
+	}
+
+	private @Nullable Float dropYaw() {
+		return this.snapshotDefinition ? this.snapshotDropYaw : TradeMasterConfig.INSTANCE.curseDropYaw;
+	}
+
+	private @Nullable Float dropPitch() {
+		return this.snapshotDefinition ? this.snapshotDropPitch : TradeMasterConfig.INSTANCE.curseDropPitch;
 	}
 
 	public StepResult tick() {
@@ -207,34 +239,24 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DEPOSIT -> {
 				if (this.swapRetryPending) {
-					// a rejected swap scheduled for resend: space the attempts so a
-					// laggy server gets time to catch up before the next packet
+					// the swap timed out with no visible sync. NEVER resend the raw swap:
+					// if the first one landed but its sync is merely slow, a resend swaps
+					// the book straight back and the following deposit acts on the
+					// displaced stack. Reopen the same chest instead: the fresh menu is a
+					// full server sync, so the next DEPOSIT pass either deposits the
+					// staged book or re-stages from the offhand (offhandSwapped cleared).
 					if (this.swapRetryDelay > 0) {
 						this.swapRetryDelay--;
 						return StepResult.RUNNING;
 					}
 					this.swapRetryPending = false;
-					// a late sync may already have landed the first swap; resending then
-					// would swap the book straight back out of the offhand
-					if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), this.stagedBook)) {
-						this.swapWaitTicks = -1;
-						return StepResult.RUNNING;
-					}
-					// the stage slot changed under us (player moved an item): the raw
-					// swap would exchange the offhand with an arbitrary slot
-					if (!ItemStack.isSameItemSameComponents(
-							player.getInventory().getItem(this.stagedHotbarSlot), this.stagedDisplaced)) {
-						return StepResult.failed(Component.translatable("trademaster.message.swap_rejected"));
-					}
-					// the raw swap always uses the SELECTED slot: re-select the stage
-					// slot (a 1-9/wheel change during the retry delay moves it)
-					if (player.getInventory().getSelectedSlot() != this.stagedHotbarSlot) {
-						Interactions.selectHotbarSlot(player, this.stagedHotbarSlot);
-					}
-					player.connection.send(new ServerboundPlayerActionPacket(
-							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
-							BlockPos.ZERO, Direction.DOWN));
-					this.swapWaitTicks = 0;
+					this.offhandSwapped = false;
+					this.swapWaitTicks = -1;
+					this.lastBookCount = -1;
+					this.noProgressTicks = 0;
+					this.switchedSlot = false;
+					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
 				if (this.swapWaitTicks >= 0) {
@@ -432,24 +454,27 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DROP_AIM -> {
 				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-				if (config.curseDropYaw == null || config.curseDropPitch == null) {
+				Float dropYaw = this.dropYaw();
+				Float dropPitch = this.dropPitch();
+				if (dropYaw == null || dropPitch == null) {
 					// dropping blind is never allowed
 					return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
 				}
 				Vec3 target = player.getEyePosition().add(
-						Vec3.directionFromRotation(config.curseDropPitch, config.curseDropYaw).scale(100.0));
+						Vec3.directionFromRotation(dropPitch, dropYaw).scale(100.0));
 				if (!this.look.tick(player, target)) return StepResult.RUNNING;
 				// LookStep does nothing outside legit mode: without this the item is
 				// dropped facing wherever the player happened to look, not the configured
 				// direction (the recycler sets it explicitly for the same reason)
 				if (!config.legitMode) {
-					player.setYRot(config.curseDropYaw);
-					player.setXRot(config.curseDropPitch);
+					player.setYRot(dropYaw);
+					player.setXRot(dropPitch);
 				}
 				// give the rotation a few ticks to reach the server before the drop
 				if (++this.dropAimTicks >= 3) {
 					this.dropSent = false;
-					this.dropResent = false;
+					// do NOT clear dropResent here: a re-aim retry returns to this state
+					// with the flag set, and clearing it would allow unlimited resends
 					this.dropWaitTicks = 0;
 					this.state = State.DROP_WAIT;
 				}
@@ -477,11 +502,15 @@ public class ChestDepositor implements BookDisposal {
 					this.dropWaitTicks = 0;
 				} else if (++this.dropWaitTicks > 60) {
 					if (!this.dropResent) {
-						// one resend: idempotent — if the first packet landed, the selected
-						// slot is empty server-side and this does nothing
+						// one retry: re-aim first — the player may have turned since the
+						// first attempt, and the drop must follow the configured direction
 						this.dropResent = true;
 						this.dropSent = false;
 						this.dropWaitTicks = 0;
+						this.dropAimTicks = 0;
+						this.look.reset();
+						this.state = State.DROP_AIM;
+						return StepResult.RUNNING;
 					} else {
 						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
 					}
@@ -653,7 +682,7 @@ public class ChestDepositor implements BookDisposal {
 	 * the disposal option says so, otherwise report the chests as full — books are never
 	 * dropped, only stored, so the option cannot throw a player's books away. */
 	private StepResult startDropOrFail(LocalPlayer player) {
-		if (TradeMasterConfig.INSTANCE.nonBookDisposal
+		if (this.nonBookDisposal()
 						== dev.trademaster.config.NonBookDisposal.CHEST_THEN_DROP
 				&& countDroppables(player) > 0) {
 			this.state = State.DROP_STAGE;

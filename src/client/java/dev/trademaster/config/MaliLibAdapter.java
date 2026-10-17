@@ -462,7 +462,14 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 
 	@Override
 	public void load() {
+		// a config reload while a run is active must not silently switch the price
+		// basis: hunt marks were recorded in the old basis (the screen rows already
+		// refuse this, but load() is a separate maLiLib entry point)
+		boolean basis = TradeMasterConfig.INSTANCE.basePriceAsSalePrice;
 		ConfigPersistence.load(TradeMasterConfig.INSTANCE);
+		if (RerollController.isRunning()) {
+			TradeMasterConfig.INSTANCE.basePriceAsSalePrice = basis;
+		}
 	}
 
 	@Override
