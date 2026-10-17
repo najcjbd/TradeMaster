@@ -94,7 +94,22 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		//? if >=26.1 {
 		/*return this.isOverScrollbar(x, y);*/
 		//?} else {
-		return false;
+		// the bar is drawn at the widget's right edge (scrollBarX), outside the
+		// bounds the Screen uses to route clicks: claim that 6px strip explicitly,
+		// or a scrollbar click never reaches this widget (the wheel still works)
+		if (!McList.scrollable(this)) return false;
+		int barX = this.scrollBarPosition();
+		return x >= barX && x <= barX + 6
+				&& y >= this.listTop() && y < this.listTop() + this.height;
+		//?}
+	}
+
+	/** The scrollbar's x position under this version's API name. */
+	private int scrollBarPosition() {
+		//? if >=1.21.2 {
+		return this.scrollBarX();
+		//?} else {
+		/*return this.getScrollbarPosition();*/
 		//?}
 	}
 
@@ -218,9 +233,19 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
+	/** First row's offset from the widget top: 26.1 places entries at getY()+2, while
+	 * earlier lists' own getRowTop adds a 4px padding (header height is 0 here). */
+	private int firstEntryOffset() {
+		//? if >=26.1 {
+		/*return 2;*/
+		//?} else {
+		return 4;
+		//?}
+	}
+
 	@Override
 	public int getRowTop(int index) {
-		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
+		return this.listTop() + this.firstEntryOffset() - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override

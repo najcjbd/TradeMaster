@@ -195,6 +195,7 @@ public final class ConfigPersistence {
 		mechanism.addProperty("detection", c.detectionMode.name());
 		mechanism.addProperty("reserveCheaperTraders", c.reserveCheaperTraders);
 		mechanism.addProperty("minLockEmeralds", c.minLockEmeralds);
+		mechanism.addProperty("basePriceAsSalePrice", c.basePriceAsSalePrice);
 		mechanism.addProperty("timeoutEnabled", c.timeoutEnabled);
 		mechanism.addProperty("timeoutTicks", DurationParser.format(c.timeoutTicks));
 		mechanism.addProperty("phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);
@@ -336,6 +337,7 @@ public final class ConfigPersistence {
 			c.detectionMode = readEnum(mechanism, "detection", c.detectionMode);
 			c.reserveCheaperTraders = readBool(mechanism, "reserveCheaperTraders", c.reserveCheaperTraders);
 			c.minLockEmeralds = readInt(mechanism, "minLockEmeralds", c.minLockEmeralds);
+			c.basePriceAsSalePrice = readBool(mechanism, "basePriceAsSalePrice", c.basePriceAsSalePrice);
 			c.timeoutEnabled = readBool(mechanism, "timeoutEnabled", c.timeoutEnabled);
 			c.timeoutTicks = readDuration(mechanism, "timeoutTicks", c.timeoutTicks);
 			c.phaseTimeoutsEnabled = readBool(mechanism, "phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);

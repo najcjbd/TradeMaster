@@ -51,7 +51,22 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 		//? if >=26.1 {
 		/*return this.isOverScrollbar(x, y);*/
 		//?} else {
-		return false;
+		// the bar is drawn at the widget's right edge (scrollBarX), outside the
+		// bounds the Screen uses to route clicks: claim that 6px strip explicitly,
+		// or a scrollbar click never reaches this widget (the wheel still works)
+		if (!McList.scrollable(this)) return false;
+		int barX = this.scrollBarPosition();
+		return x >= barX && x <= barX + 6
+				&& y >= this.listTop() && y < this.listTop() + this.height;
+		//?}
+	}
+
+	/** The scrollbar's x position under this version's API name. */
+	private int scrollBarPosition() {
+		//? if >=1.21.2 {
+		return this.scrollBarX();
+		//?} else {
+		/*return this.getScrollbarPosition();*/
 		//?}
 	}
 
@@ -172,11 +187,21 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
+	/** First row's offset from the widget top: 26.1 places entries at getY()+2, while
+	 * earlier lists' own getRowTop adds a 4px padding (header height is 0 here). */
+	private int firstEntryOffset() {
+		//? if >=26.1 {
+		/*return 2;*/
+		//?} else {
+		return 4;
+		//?}
+	}
+
 	@Override
 	public int getRowTop(int index) {
 		// +2 matches the list's getFirstEntryY(); without it each row is placed
 		// 2px too high and entryAt misattributes the bottom 2px of every row
-		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
+		return this.listTop() + this.firstEntryOffset() - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override
@@ -272,7 +297,7 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 	//? if >=26.1 {
 	/*@Override
 	public boolean mouseClicked(net.minecraft.client.input.MouseButtonEvent click, boolean doubled) {
-		beginMouseClick();
+		beginMouseClick(click.x(), click.y());
 		try {
 			return super.mouseClicked(click, doubled);
 		} finally {
@@ -282,7 +307,7 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 	//?} else {
 	@Override
 	public boolean mouseClicked(double mouseX, double mouseY, int button) {
-		beginMouseClick();
+		beginMouseClick(mouseX, mouseY);
 		try {
 			return super.mouseClicked(mouseX, mouseY, button);
 		} finally {
@@ -291,11 +316,19 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 	}
 	//?}
 
-	private void beginMouseClick() {
+	private void beginMouseClick(double mouseX, double mouseY) {
 		this.suppressFocusClear = true;
 		// a deliberate click ends the scroll-deferral: the render commit may now
 		// apply the drafts a wheel scroll only blurred
-		for (EnchantmentEntry e : this.children()) e.clearDeferCommit();
+		for (EnchantmentEntry e : this.children()) {
+			e.clearDeferCommit();
+			// ONE focused field per click: a field the pointer is not on loses focus,
+			// or two rows stay focused and keyPressed edits whichever row comes first
+			// (charTyped would even feed both drafts).
+			if (!e.maxPriceField.isMouseOver(mouseX, mouseY) && !e.levelField.isMouseOver(mouseX, mouseY)) {
+				e.blurForClick();
+			}
+		}
 	}
 
 	@Override

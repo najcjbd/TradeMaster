@@ -45,14 +45,14 @@ public final class McEnchantments {
 		//?}
 	}
 
-	/** Whether the enchantment can appear on a villager trade. Before 1.21 the tradeable
-	 * tag does not exist; every registered enchantment is treated as tradeable (the
-	 * pre-1.21 behaviour, where the tag was not part of the offer pool). */
+	/** Whether the enchantment can appear on a villager trade. From 1.21 this is the
+	 * {@code minecraft:tradeable} tag; before the tags existed the enchantment's own
+	 * {@code isTradeable()} flag is the same source vanilla generated the tag from. */
 	public static boolean isTradeable(Holder<Enchantment> holder) {
 		//? if >=1.21 {
 		return holder.is(net.minecraft.tags.EnchantmentTags.TRADEABLE);
 		//?} else {
-		/*return true;*/
+		/*return holder.value().isTradeable();*/
 		//?}
 	}
 

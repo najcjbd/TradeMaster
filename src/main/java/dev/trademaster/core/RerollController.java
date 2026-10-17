@@ -227,18 +227,25 @@ public final class RerollController {
 	public static int maxHuntBudget() {
 		int max = 0;
 		for (Map.Entry<ResourceLocation, Integer> entry : huntMarkedPrices.entrySet()) {
-			// a custom good's hunt is capped by its own price, exactly like a target's
+			// a target id wins over a same-id good (the round-30 precedence rule):
+			// priceOf/specOf and admission already resolve it that way, so the hunt
+			// floor must too or the precheck under-demands emeralds
+			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
+			if (target != null) {
+				int budget = Math.min(entry.getValue() - 1, target.maxPrice());
+				if (budget > max) max = budget;
+				continue;
+			}
+			// a custom good's hunt is capped by its own price
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
 			if (good != null) {
 				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
 				if (goodBudget > max) max = goodBudget;
 				continue;
 			}
-			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
-			// the mark-1 budget; an unknown target (disabled/removed mid-run) is left
-			// uncapped rather than pretending a 64 cap
-			int budget = target == null ? entry.getValue() - 1
-					: Math.min(entry.getValue() - 1, target.maxPrice());
+			// an unknown target (disabled/removed mid-run) is left uncapped rather
+			// than pretending a 64 cap
+			int budget = entry.getValue() - 1;
 			if (budget > max) max = budget;
 		}
 		return max;
@@ -246,10 +253,8 @@ public final class RerollController {
 
 	public static void toggle() {
 		if (isRunning()) stopManual();
-		// a refused start asks for the lectern-sphere fallback to be confirmed: pressing
-		// start again confirms it. 1.18.2 has no client command API, so the second press
-		// is the only way to accept the fallback there.
-		else if (regionFallbackPending) confirmRegionFallback();
+		// start() itself consumes a pending sphere-fallback confirmation, so the
+		// hotkey, the GUI Start button and /trademaster start all behave the same
 		else start();
 	}
 
@@ -298,9 +303,17 @@ public final class RerollController {
 		if (level != null && (regionFallbackLevel == null || regionFallbackLevel.get() != level)) {
 			regionFallbackConfirmed = false;
 		}
+		// a SECOND start request (GUI button, command or hotkey) confirms the sphere
+		// fallback the first one asked for; without this only the hotkey could ever
+		// accept it, leaving GUI users (and 1.18.2, which has no command) stuck
+		if (!regionConfigured() && regionFallbackPending) {
+			regionFallbackPending = false;
+			regionFallbackConfirmed = true;
+			regionFallbackLevel = new java.lang.ref.WeakReference<>(Minecraft.getInstance().level);
+		}
 		// the staging area always exists: the configured region, or the lectern
 		// sphere when its coords are not set. The fallback must be confirmed once
-		// with /trademaster goon
+		// with /trademaster goon or a second start
 		if (!regionConfigured() && !regionFallbackConfirmed) {
 			regionFallbackPending = true;
 			chat(McText.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
@@ -519,7 +532,10 @@ public final class RerollController {
 		// the sand-wheel mode definition belongs to the running rig: the deposit
 		// factory only re-reads it at deposit time, so a mid-run change would
 		// silently switch how books are disposed of — stop the normal way instead
-		if (grindstoneSnapshotValid && grindstoneConfigChanged(config)) {
+		// a FINISHING run (naming / dispatching / a purchase in flight) keeps its own
+		// rig definition; stopping here would strand the locked villager and discard
+		// this run's lockedIds/lockedResults vouchers (see finalizingRun)
+		if (!finalizingRun() && grindstoneSnapshotValid && grindstoneConfigChanged(config)) {
 			stop(McText.translatable("trademaster.message.grindstone_config_changed"), ChatFormatting.RED);
 			return;
 		}
@@ -537,7 +553,7 @@ public final class RerollController {
 			stop(McText.translatable("trademaster.message.rig_target_config_changed"), ChatFormatting.RED);
 			return;
 		}
-		if (snapRegionConfigured && !regionConfigured()) {
+		if (!finalizingRun() && snapRegionConfigured && !regionConfigured()) {
 			stop(McText.translatable("trademaster.message.region_broken"), ChatFormatting.RED);
 			return;
 		}
@@ -2173,7 +2189,7 @@ public final class RerollController {
 					MerchantOffer altOffer = snapshot.offers().get(alt);
 					debug("offers: matched " + hit.price() + " emeralds, unaffordable; emergency buy at slot " + alt);
 					chat(McText.translatable("trademaster.message.emergency_purchase",
-									describeBook(bookFingerprint(altOffer, alt)), altOffer.getBaseCostA().getCount())
+									describeBook(bookFingerprint(altOffer, alt)), TradeMatcher.offerPrice(altOffer))
 							.withStyle(ChatFormatting.YELLOW));
 					// keep the match: LOCK re-picks the affordable slot and fingerprints the
 					// offer it actually buys, while locked ids / auto-disable / hunt marks still
@@ -2272,6 +2288,17 @@ public final class RerollController {
 	/** Rebuilds the matcher's needs list, counting named villagers as obtained. */
 	private static void refreshNeeds(Minecraft client, RunSession s) {
 		if (client.level == null) return;
+		// a good added mid-run has no start-of-run baseline. Capture it HERE, before
+		// the matcher can lock one: disposal otherwise falls back to a baseline of 0
+		// and treats the player's own copies as this run's output.
+		if (client.player != null) {
+			for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
+				net.minecraft.world.item.Item item = good.resultItem();
+				if (item != null && !s.goodBaseline.containsKey(item)) {
+					s.goodBaseline.put(item, Preconditions.countItem(client.player, item));
+				}
+			}
+		}
 		List<Villager> villagers = client.level.getEntitiesOfClass(Villager.class,
 				AABB.ofSize(Vec3.atCenterOf(s.lecternPos), 256, 128, 256));
 		s.matcher.buildNeeds();
@@ -2612,8 +2639,7 @@ public final class RerollController {
 		regionFallbackPending = false;
 		regionFallbackConfirmed = true;
 		regionFallbackLevel = new java.lang.ref.WeakReference<>(Minecraft.getInstance().level);
-		chat(McText.translatable("trademaster.message.region_fallback_active", sphereRadius())
-				.withStyle(ChatFormatting.YELLOW));
+		// start() announces the active sphere itself; printing here would duplicate it
 		start();
 	}
 
@@ -2708,23 +2734,30 @@ public final class RerollController {
 				// the configured max price caps it, so a mid-run maxPrice drop also
 				// invalidates an already-pending match. An unknown target is left
 				// uncapped (it was disabled/removed mid-run).
+				// target id wins over a same-id good, matching priceOf/specOf
+				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
+				if (markedTarget != null) {
+					budget += Math.min(marked - 1, markedTarget.maxPrice());
+					continue;
+				}
 				GoodSpec markedGood = TradeMasterConfig.INSTANCE.goodFor(part.id());
 				if (markedGood != null) {
 					budget += Math.min(marked - 1, markedGood.maxPrice());
 					continue;
 				}
-				EnchantmentTarget markedTarget = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-				budget += markedTarget == null ? marked - 1
-						: Math.min(marked - 1, markedTarget.maxPrice());
+				// an unknown target (disabled/removed mid-run) is left uncapped
+				budget += marked - 1;
+				continue;
+			}
+			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
+			if (target != null) {
+				budget += target.maxPrice();
 				continue;
 			}
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(part.id());
 			if (good != null) {
 				budget += good.maxPrice();
-				continue;
 			}
-			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(part.id());
-			if (target != null) budget += target.maxPrice();
 		}
 		return purchase.price() > Math.min(budget, 64);
 	}
@@ -2781,7 +2814,7 @@ public final class RerollController {
 			if (offer.isOutOfStock()) continue;
 			if (offer.getBaseCostA().getItem() != Items.EMERALD || offer.getCostB().getItem() != Items.BOOK
 					|| !offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
-			int price = offer.getBaseCostA().getCount();
+			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
 			if (!Preconditions.checkLockMaterials(player, OfferCosts.slots(offer))) continue;
 			bestSlot = i;
@@ -2802,7 +2835,7 @@ public final class RerollController {
 			if (id != null) parts.add(new TradeMatcher.MatchPart(id, entry.getValue()));
 		}
 		return new TradeMatcher.MatchedBook(List.copyOf(parts), List.copyOf(parts),
-				offer.getBaseCostA().getCount(), slot,
+				TradeMatcher.offerPrice(offer), slot,
 				TradeMatcher.MatchedBook.fingerprintCosts(OfferCosts.slots(offer)),
 				offer.getResult().copy());
 	}

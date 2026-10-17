@@ -265,15 +265,17 @@ public final class DetectionHub {
 		DetectionHub hub = armed;
 		if (hub == null) return;
 		hub.ticksArmed++;
-		if (!TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled) return;
 		// the SAME window the packet feed enforces (3s wall clock): a packet arriving
 		// after it is discarded there, so the check can never succeed any more — end it
 		// now instead of making the controller wait for its own tick counter, which
-		// stalls exactly when the wall clock ran ahead (main-thread hitch)
+		// stalls exactly when the wall clock ran ahead (main-thread hitch). This is NOT
+		// a configurable phase timeout: with phase timeouts off the alternative would
+		// be a permanently hung CHECK_TRADE.
 		if (System.nanoTime() - hub.armedAtNanos > 3_000_000_000L) {
 			hub.fail("detection window expired");
 			return;
 		}
+		if (!TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled) return;
 		if (hub.ticksArmed > DEFAULT_TIMEOUT_TICKS) {
 			hub.fail("detection timed out");
 		}
@@ -292,7 +294,11 @@ public final class DetectionHub {
 			MerchantOffer oa = a.get(i);
 			MerchantOffer ob = b.get(i);
 
-			if (!McItem.sameItem(oa.getResult(), ob.getResult())) return false;
+			// the result COUNT is part of the offer's identity everywhere else in the
+			// pipeline (goods match on result.getCount()), so a channel disagreement
+			// on it must be rejected here too
+			if (!McItem.sameItem(oa.getResult(), ob.getResult())
+					|| oa.getResult().getCount() != ob.getResult().getCount()) return false;
 
 			if (oa.getResult().is(Items.ENCHANTED_BOOK)) {
 				var enchantmentsA = McEnchantments.of(oa.getResult());

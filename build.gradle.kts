@@ -132,7 +132,15 @@ if (modstitch.isLoom && nodeLoaderVersion != null && nodeLoaderVersion.startsWit
                 ZipOutputStream(tmp.outputStream()).use { zout ->
                     for (entry in zin.entries()) {
                         val data = zin.getInputStream(entry).use { it.readBytes() }
-                        zout.putNextEntry(ZipEntry(entry.name))
+                        // keep the original timestamp/extra/comment (but not size/CRC:
+                        // the AW entry's bytes change, and stale sizes make the rewrite
+                        // fail) — a bare new ZipEntry(name) stamps "now" and makes every
+                        // rebuild of a Loader-0.16 target produce a different jar hash
+                        val out = ZipEntry(entry.name)
+                        out.time = entry.time
+                        out.comment = entry.comment
+                        out.extra = entry.extra
+                        zout.putNextEntry(out)
                         if (entry.name == "trade-master.accesswidener") {
                             val text = String(data, Charsets.UTF_8)
                             zout.write(text.replaceFirst(Regex("^classTweaker\\s+v1\\s+"), "accessWidener v2 ")

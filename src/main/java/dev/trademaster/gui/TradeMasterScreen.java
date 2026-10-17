@@ -273,8 +273,15 @@ public class TradeMasterScreen extends Screen {
 	//? if >=1.20 {
 	@Override
 	public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
-		// no extractBackground call here: the Screen render path already draws it
-		// before extractRenderState — calling it again paints the overlay twice
+		// 1.21.8+ and 26.x draw the background BEFORE render/ extractRenderState; on
+		// 1.18.2..1.21.5 this override REPLACES the vanilla render that would draw
+		// it, so the dim/panorama must be painted here or the screen floats over the
+		// world undimmed.
+		//? if >=1.21 && <1.21.8 {
+		this.renderBackground(context, mouseX, mouseY, delta);
+		//?} elif >=1.20 && <1.21 {
+		/*this.renderBackground(context);*/
+		//?}
 		for (Renderable drawable : this.renderables) {
 			drawable.render(context, mouseX, mouseY, delta);
 		}
@@ -288,6 +295,8 @@ public class TradeMasterScreen extends Screen {
 	//?} else {
 	/*@Override
 	public void render(com.mojang.blaze3d.vertex.PoseStack context, int mouseX, int mouseY, float delta) {
+		// 1.18/1.19's Screen.render does not draw the background for us
+		this.renderBackground(context);
 		McGraphics graphics = new McGraphics(context);
 		for (var drawable : this.renderables) {
 			graphics.renderWidget(drawable, mouseX, mouseY, delta);

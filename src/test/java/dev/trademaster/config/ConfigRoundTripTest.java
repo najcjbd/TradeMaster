@@ -51,8 +51,22 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
-	void villagersSectionIsWrittenAndRead() {
-		c().workBlockId = "minecraft:composter";
+	void basePriceAsSalePriceRoundTripsAndDefaultsToBase() {
+		c().basePriceAsSalePrice = false;
+		JsonObject root = ConfigTest.write(c());
+		assertFalse(root.getAsJsonObject("mechanism").get("basePriceAsSalePrice").getAsBoolean());
+
+		// absent key (older file) keeps the default: base price
+		c().basePriceAsSalePrice = true;
+		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
+		assertTrue(c().basePriceAsSalePrice);
+
+		ConfigTest.read(c(), root);
+		assertFalse(c().basePriceAsSalePrice);
+	}
+
+	@Test
+	void villagersSectionIsWrittenAndRead() {		c().workBlockId = "minecraft:composter";
 		c().professionId = "minecraft:farmer";
 
 		JsonObject root = ConfigTest.write(c());

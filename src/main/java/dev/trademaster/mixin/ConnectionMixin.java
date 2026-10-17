@@ -2,7 +2,6 @@ package dev.trademaster.mixin;
 
 import dev.trademaster.detection.DetectionHub;
 import io.netty.channel.ChannelHandlerContext;
-import net.fabricmc.api.Environment;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.Connection;
@@ -21,7 +20,6 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * packet into the {@link DetectionHub} and suppresses the merchant screen
  * while the PACKET channel is authoritative.
  */
-@Environment(net.fabricmc.api.EnvType.CLIENT)
 @Mixin(Connection.class)
 public class ConnectionMixin {
 

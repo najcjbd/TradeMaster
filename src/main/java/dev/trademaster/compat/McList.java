@@ -20,5 +20,14 @@ public final class McList {
 		//?}
 	}
 
+	/** Whether the list has off-screen content (a non-zero maximum scroll). */
+	public static boolean scrollable(AbstractSelectionList<?> list) {
+		//? if >=1.21.2 {
+		return list.maxScrollAmount() > 0;
+		//?} else {
+		/*return list.getMaxScroll() > 0;*/
+		//?}
+	}
+
 	private McList() {}
 }

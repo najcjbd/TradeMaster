@@ -88,7 +88,22 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		//? if >=26.1 {
 		/*return this.isOverScrollbar(x, y);*/
 		//?} else {
-		return false;
+		// the bar is drawn at the widget's right edge (scrollBarX), outside the
+		// bounds the Screen uses to route clicks: claim that 6px strip explicitly,
+		// or a scrollbar click never reaches this widget (the wheel still works)
+		if (!McList.scrollable(this)) return false;
+		int barX = this.scrollBarPosition();
+		return x >= barX && x <= barX + 6
+				&& y >= this.listTop() && y < this.listTop() + this.height;
+		//?}
+	}
+
+	/** The scrollbar's x position under this version's API name. */
+	private int scrollBarPosition() {
+		//? if >=1.21.2 {
+		return this.scrollBarX();
+		//?} else {
+		/*return this.getScrollbarPosition();*/
 		//?}
 	}
 
@@ -213,9 +228,19 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 						&& y >= AIR_Y - 1 && y <= AIR_Y + 15);
 	}
 
+	/** First row's offset from the widget top: 26.1 places entries at getY()+2, while
+	 * earlier lists' own getRowTop adds a 4px padding (header height is 0 here). */
+	private int firstEntryOffset() {
+		//? if >=26.1 {
+		/*return 2;*/
+		//?} else {
+		return 4;
+		//?}
+	}
+
 	@Override
 	public int getRowTop(int index) {
-		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
+		return this.listTop() + this.firstEntryOffset() - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override
@@ -769,11 +794,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			return super.mouseClicked(click, doubled) || handleMouseClicked(click.x(), click.y());
 		}*/
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			return super.mouseClicked(mouseX, mouseY, button) || handleMouseClicked(mouseX, mouseY);
 		}
 		//?}
@@ -866,11 +893,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			return super.mouseClicked(click, doubled) || handleMouseClicked(click.x(), click.y());
 		}*/
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			return super.mouseClicked(mouseX, mouseY, button) || handleMouseClicked(mouseX, mouseY);
 		}
 		//?}

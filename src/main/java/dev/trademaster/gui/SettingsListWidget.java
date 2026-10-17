@@ -71,7 +71,22 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//? if >=26.1 {
 		/*return this.isOverScrollbar(x, y);*/
 		//?} else {
-		return false;
+		// the bar is drawn at the widget's right edge (scrollBarX), outside the
+		// bounds the Screen uses to route clicks: claim that 6px strip explicitly,
+		// or a scrollbar click never reaches this widget (the wheel still works)
+		if (!McList.scrollable(this)) return false;
+		int barX = this.scrollBarPosition();
+		return x >= barX && x <= barX + 6
+				&& y >= this.listTop() && y < this.listTop() + this.height;
+		//?}
+	}
+
+	/** The scrollbar's x position under this version's API name. */
+	private int scrollBarPosition() {
+		//? if >=1.21.2 {
+		return this.scrollBarX();
+		//?} else {
+		/*return this.getScrollbarPosition();*/
 		//?}
 	}
 
@@ -99,6 +114,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
 		addEntry(new IntRow("trademaster.settings.minLockEmeralds", () -> c.minLockEmeralds, v -> c.minLockEmeralds = v, 1, 64));
+		addEntry(new BoolRow("trademaster.settings.basePriceAsSalePrice", () -> c.basePriceAsSalePrice, v -> c.basePriceAsSalePrice = v));
 		addEntry(new BoolRow("trademaster.settings.multiEnchantProtection", () -> c.multiEnchantProtection, v -> c.multiEnchantProtection = v));
 		addEntry(new BoolRow("trademaster.settings.timeoutEnabled", () -> c.timeoutEnabled, v -> c.timeoutEnabled = v));
 		addEntry(new DurationRow("trademaster.settings.timeoutTicks", () -> c.timeoutTicks, v -> c.timeoutTicks = v, 1200));
@@ -114,9 +130,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//? if >=26.1 {
 		/*addEntry(new HuntRow(), 44);*/
 		//?} else {
-		HuntRow huntRow = new HuntRow();
-		huntRow.ownHeight = 44;
-		addEntry(huntRow);
+		addEntry(new HuntRow());
+		// the 44px hunt row cannot be used before 26.1: those lists locate a click
+		// arithmetically from itemHeight, so a taller row shifts every later click
+		// one entry down. Uniform 22px caption rows keep the layout clickable.
+		addHuntCaptionRows();
 		//?}
 		addEntry(new IntRow("trademaster.settings.lockMaxRetries", () -> c.lockMaxRetries, v -> c.lockMaxRetries = v, -1, 999));
 		addEntry(new IntRow("trademaster.settings.offhandSwapRetries", () -> c.offhandSwapRetries, v -> c.offhandSwapRetries = v, -1, 999));
@@ -278,11 +296,22 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
+	/** First row's offset from the widget top: 26.1 places entries at getY()+2, while
+	 * earlier lists' own getRowTop adds a 4px padding (header height is 0 here). A
+	 * wrong value leaves a 2px dead strip at the top of every row on old targets. */
+	private int firstEntryOffset() {
+		//? if >=26.1 {
+		/*return 2;*/
+		//?} else {
+		return 4;
+		//?}
+	}
+
 	@Override
 	public int getRowTop(int index) {
-		// +2 matches the list's getFirstEntryY(); heights are summed per row
-		// because the hunt row is taller than the default 22px
-		int top = this.listTop() + 2 - (int) McList.scrollAmount(this);
+		// heights are summed per row because the hunt row is taller than the default
+		// 22px (on 26.1; before that the caption lives in its own uniform rows)
+		int top = this.listTop() + this.firstEntryOffset() - (int) McList.scrollAmount(this);
 		java.util.List<Row> rows = this.children();
 		for (int i = 0; i < index && i < rows.size(); i++) {
 			top += rows.get(i).rowHeight();
@@ -673,6 +702,35 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	}
 
+	/** Hunt-cheaper warning as uniform 22px rows. Used before 26.1 only: a 44px row
+	 * would desync that version's arithmetic click hit-testing (see the constructor). */
+	private void addHuntCaptionRows() {
+		Font font = Minecraft.getInstance().font;
+		int wrap = Math.max(40, this.getRowWidth() - 12);
+		java.util.List<net.minecraft.util.FormattedCharSequence> lines = font.split(
+				McText.translatable("trademaster.settings.huntCheaper.caption"), wrap);
+		for (int start = 0; start < lines.size(); start += 2) {
+			addEntry(new HuntCaptionRow(new java.util.ArrayList<>(
+					lines.subList(start, Math.min(start + 2, lines.size())))));
+		}
+	}
+
+	private static class HuntCaptionRow extends Row {
+		private final java.util.List<net.minecraft.util.FormattedCharSequence> lines;
+
+		HuntCaptionRow(java.util.List<net.minecraft.util.FormattedCharSequence> lines) {
+			this.lines = lines;
+		}
+
+		@Override
+		protected void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			Font font = Minecraft.getInstance().font;
+			for (int i = 0; i < this.lines.size(); i++) {
+				context.drawString(font, this.lines.get(i), this.x + 6, this.y + 3 + i * 9, 0xFF909090);
+			}
+		}
+	}
+
 	/** Hunt-cheaper row: the BoolRow toggle plus a small always-visible warning
 	 * caption below the label — the native GUI's stand-in for the maLiLib
 	 * hover tooltip. Enabling is refused while a run is active (the needs table
@@ -714,6 +772,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			super.drawRow(context, mouseX, mouseY, hovered, deltaTicks);
+			//? if >=26.1 {
+			/*// the caption lives inside this 44px row on 26.1+; older lists draw it
+			// in separate uniform-height rows instead (see addHuntCaptionRows)
 			Font font = Minecraft.getInstance().font;
 			int wrap = Math.max(40, this.entryWidth - 12);
 			if (wrap != this.cachedCaptionWidth) {
@@ -724,7 +785,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			java.util.List<net.minecraft.util.FormattedCharSequence> lines = this.cachedCaptionLines;
 			for (int i = 0; i < lines.size() && i < 3; i++) {
 				context.drawString(font, lines.get(i), this.x + 6, this.y + 14 + i * 9, 0xFF909090);
-			}
+			}*/
+			//?}
 		}
 	}
 
@@ -746,6 +808,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				boolean forward = click.x() > this.x + this.entryWidth / 2.0;
 				this.setter.accept(forward);
@@ -757,6 +820,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
 				boolean forward = mouseX > this.x + this.entryWidth / 2.0;
 				this.setter.accept(forward);
@@ -790,6 +854,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				int delta = click.x() > this.x + this.entryWidth / 2.0 ? 1 : -1;
 				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
@@ -801,6 +866,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
 				int delta = mouseX > this.x + this.entryWidth / 2.0 ? 1 : -1;
 				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
@@ -869,6 +935,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -878,6 +945,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;
@@ -1028,6 +1096,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1049,6 +1118,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;
@@ -1244,6 +1314,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1253,6 +1324,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;
@@ -1416,6 +1488,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1425,6 +1498,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;
@@ -1553,6 +1627,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1562,6 +1637,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
 				return true;
@@ -1717,6 +1793,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.removed) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
@@ -1747,6 +1824,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (this.removed) return false;
 			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
 				this.field.setFocused(true);
@@ -1861,6 +1939,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				//? if >=26.1 {
 		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				// the action itself may refuse (the picker rejects while a run is
 				// active): only sound when it actually ran, like BoolRow does
@@ -1873,6 +1952,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		//?} else {
 		@Override
 		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (button != 0) return false;
 			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
 				// the action itself may refuse (the picker rejects while a run is
 				// active): only sound when it actually ran, like BoolRow does
