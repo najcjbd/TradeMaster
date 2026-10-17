@@ -83,6 +83,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	private int chestIndex = 0;
 	/** Hotbar slot the staged curse book sits in for the directional drop. */
 	private int dropSlot = -1;
+	/** The exact stack the drop may take: DROP_ALL_ITEMS names no slot, so the selected
+	 * slot is re-verified against this right before every send. */
+	private ItemStack dropStagedBook = ItemStack.EMPTY;
 	private boolean dropSent = false;
 	private boolean dropResent = false;
 	/** One staging resend for the cursed-book drop: reset at the start of every
@@ -487,6 +490,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					// already in the hotbar: straight to aiming (the SET_CARRIED_ITEM
 					// packet precedes the drop packet on the wire — order guaranteed)
 					this.waitTicks = 0;
+					this.dropStagedBook = player.getInventory().getItem(this.dropSlot).copy();
 					this.state = State.DROP_AIM;
 					return StepResult.RUNNING;
 				} else {
@@ -529,6 +533,7 @@ public class GrindstoneRecycler implements BookDisposal {
 										&& player.getInventory().getItem(this.dropStageSource).isEmpty()));
 				if (this.waitTicks >= 10 && staged) {
 					this.waitTicks = 0;
+					this.dropStagedBook = player.getInventory().getItem(this.dropSlot).copy();
 					this.state = State.DROP_AIM;
 				} else if (++this.waitTicks > 60) {
 					// replay the SAME staging action, and only while it provably never
@@ -593,10 +598,29 @@ public class GrindstoneRecycler implements BookDisposal {
 				if (player.getInventory().getItem(this.dropSlot).isEmpty()) {
 					// server sync confirms the drop — never move on before this
 					this.dropSlot = -1;
+					this.dropStagedBook = ItemStack.EMPTY;
 					this.dropResent = false;
 					return toGrindstone(player);
 				}
 				if (!this.dropSent) {
+					// the packet names no slot: the server drops the SELECTED one. A 1-9/
+					// wheel change during the aim would otherwise drop a foreign stack,
+					// and the resend after a timeout would do it again.
+					if (player.getInventory().getSelectedSlot() != this.dropSlot
+							|| !ItemStack.isSameItemSameComponents(
+									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+						if (player.getInventory().getSelectedSlot() != this.dropSlot
+								&& ItemStack.isSameItemSameComponents(
+										player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+							// only the selection moved: re-select the staged slot and send
+							// on the next tick (SET_CARRIED_ITEM precedes the action packet)
+							Interactions.selectHotbarSlot(player, this.dropSlot);
+							return StepResult.RUNNING;
+						}
+						// the staged book is gone or its slot now holds something else:
+						// dropping blind is never allowed
+						return fail(player, "trademaster.message.curse_drop_failed");
+					}
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.DROP_ALL_ITEMS,
 							BlockPos.ZERO, Direction.DOWN));

@@ -176,7 +176,16 @@ public class EnchantmentsListWidget extends AbstractSelectionList<EnchantmentEnt
 		try {
 			// a deliberate click ends the scroll-deferral: the render commit may now
 			// apply the drafts a wheel scroll only blurred
-			for (EnchantmentEntry e : this.children()) e.clearDeferCommit();
+			for (EnchantmentEntry e : this.children()) {
+				e.clearDeferCommit();
+				// ONE focused field per click: a field the pointer is not on loses
+				// focus, or two rows stay focused and keyPressed edits whichever row
+				// comes first (charTyped would even feed both drafts)
+				if (!e.maxPriceField.isMouseOver(click.x(), click.y())
+						&& !e.levelField.isMouseOver(click.x(), click.y())) {
+					e.blurForClick();
+				}
+			}
 			return super.mouseClicked(click, doubled);
 		} finally {
 			this.suppressFocusClear = false;

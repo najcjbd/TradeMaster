@@ -214,6 +214,23 @@ public class ChestDepositor implements BookDisposal {
 						return StepResult.RUNNING;
 					}
 					this.swapRetryPending = false;
+					// a late sync may already have landed the first swap; resending then
+					// would swap the book straight back out of the offhand
+					if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), this.stagedBook)) {
+						this.swapWaitTicks = -1;
+						return StepResult.RUNNING;
+					}
+					// the stage slot changed under us (player moved an item): the raw
+					// swap would exchange the offhand with an arbitrary slot
+					if (!ItemStack.isSameItemSameComponents(
+							player.getInventory().getItem(this.stagedHotbarSlot), this.stagedDisplaced)) {
+						return StepResult.failed(Component.translatable("trademaster.message.swap_rejected"));
+					}
+					// the raw swap always uses the SELECTED slot: re-select the stage
+					// slot (a 1-9/wheel change during the retry delay moves it)
+					if (player.getInventory().getSelectedSlot() != this.stagedHotbarSlot) {
+						Interactions.selectHotbarSlot(player, this.stagedHotbarSlot);
+					}
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));

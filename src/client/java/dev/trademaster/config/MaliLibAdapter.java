@@ -54,6 +54,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 	// mirrors of the model, kept in sync on open/apply
 	private ConfigOptionList optReroll, optDetection, optNonBookDisposal;
 	private ConfigBoolean optReserveCheaper, optDisplayRolls, optDebugLog;
+	private ConfigBoolean optBasePriceAsSalePrice;
 	private ConfigBoolean optNaming, optForceNamePriceOne;
 	private ConfigBoolean optTimeoutEnabled, optPhaseTimeouts, optAutoDisable, optHuntCheaper;
 	private ConfigInteger optMinLockEmeralds, optTimeout, optVillagerCheckInterval, optLecternHealGrace;
@@ -154,6 +155,8 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 				"trademaster.settings.reserveCheaperTraders");
 		this.optMinLockEmeralds = labeled(new ConfigInteger("minLockEmeralds", c.minLockEmeralds, 1, 64, "", ""),
 				"trademaster.settings.minLockEmeralds");
+		this.optBasePriceAsSalePrice = labeled(new ConfigBoolean("basePriceAsSalePrice", c.basePriceAsSalePrice, "", ""),
+				"trademaster.settings.basePriceAsSalePrice");
 		this.optTimeoutEnabled = labeled(new ConfigBoolean("timeoutEnabled", c.timeoutEnabled, "", ""),
 				"trademaster.settings.timeoutEnabled");
 		this.optTimeout = labeled(new ConfigInteger("timeoutTicks", c.timeoutTicks, 1200, Integer.MAX_VALUE, "", ""),
@@ -232,7 +235,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 
 		this.genericOptions.addAll(List.of(
 				this.optReroll, this.optDetection, this.optNonBookDisposal,
-				this.optReserveCheaper, this.optMinLockEmeralds,
+				this.optReserveCheaper, this.optMinLockEmeralds, this.optBasePriceAsSalePrice,
 				this.optTimeoutEnabled, this.optTimeout, this.optPhaseTimeouts,
 				this.optVillagerCheckInterval, this.optLecternHealGrace, this.optProfessionHealCapEnabled, this.optProfessionHealCap,
 				this.optAutoDisable, this.optHuntCheaper, this.optLockMaxRetries, this.optOffhandSwapRetries,
@@ -253,6 +256,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		this.optNonBookDisposal.setOptionListValue(c.nonBookDisposal);
 		this.optReserveCheaper.setBooleanValue(c.reserveCheaperTraders);
 		this.optMinLockEmeralds.setIntegerValue(c.minLockEmeralds);
+		this.optBasePriceAsSalePrice.setBooleanValue(c.basePriceAsSalePrice);
 		this.optTimeoutEnabled.setBooleanValue(c.timeoutEnabled);
 		this.optTimeout.setIntegerValue(c.timeoutTicks);
 		this.optPhaseTimeouts.setBooleanValue(c.phaseTimeoutsEnabled);
@@ -307,6 +311,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		c.nonBookDisposal = (NonBookDisposal) this.optNonBookDisposal.getOptionListValue();
 		c.reserveCheaperTraders = this.optReserveCheaper.getBooleanValue();
 		c.minLockEmeralds = this.optMinLockEmeralds.getIntegerValue();
+		c.basePriceAsSalePrice = this.optBasePriceAsSalePrice.getBooleanValue();
 		c.timeoutEnabled = this.optTimeoutEnabled.getBooleanValue();
 		c.timeoutTicks = this.optTimeout.getIntegerValue();
 		c.phaseTimeoutsEnabled = this.optPhaseTimeouts.getBooleanValue();

@@ -139,6 +139,13 @@ public class TradeMatcher {
 		 * the match (a mid-run edit that invalidates the combo). */
 		public boolean anyTargetGone() {
 			for (Identifier id : matchedIds()) {
+				// target id wins over a same-id good, matching priceOf/specOf: a
+				// same-id disabled good must not make a still-enabled target look gone
+				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
+				if (target != null) {
+					if (!target.enabled()) return true;
+					continue;
+				}
 				// a good is switched off in its own list, and is absent from the
 				// enchantment map: without this branch every good match would look
 				// "gone" and be reverted right after it was found
@@ -147,8 +154,7 @@ public class TradeMatcher {
 					if (!good.enabled()) return true;
 					continue;
 				}
-				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
-				if (target == null || !target.enabled()) return true;
+				return true;
 			}
 			return false;
 		}
@@ -224,6 +230,15 @@ public class TradeMatcher {
 		if (this.targets.containsKey(id)) return TradeMasterConfig.INSTANCE.specFor(id);
 		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 		return good != null ? good.spec() : TradeMasterConfig.INSTANCE.specFor(id);
+	}
+
+	/** The price the program treats as this offer's sale price: the BASE cost by
+	 * default (historic behaviour, before discounts/demand), or the actually charged
+	 * cost when {@code basePriceAsSalePrice} is off. */
+	public static int offerPrice(MerchantOffer offer) {
+		return TradeMasterConfig.INSTANCE.basePriceAsSalePrice
+				? offer.getBaseCostA().getCount()
+				: offer.getCostA().getCount();
 	}
 
 	/** Whether the enchantment currently exists in the live registry and carries
@@ -334,7 +349,7 @@ public class TradeMatcher {
 				if (result.getCount() < good.resultCount()) continue;
 				IntHeapPriorityQueue goodQueue = this.needs.get(good.id());
 				if (goodQueue == null) continue;
-				int goodPrice = offer.getBaseCostA().getCount();
+				int goodPrice = offerPrice(offer);
 				if (goodPrice > Math.min(goodQueue.firstInt(), 64)) continue;
 				List<MatchPart> itemParts = List.of(new MatchPart(good.id(), 0));
 				if (!costsAllowed(offer, itemParts)) continue;
@@ -374,7 +389,7 @@ public class TradeMatcher {
 			// the price is slot 1's amount: for the default spec that is exactly the old
 			// emerald price, and the spec rules keep it in that same scale otherwise, so
 			// the budget / hunt / reserve machinery below is untouched
-			int price = offer.getBaseCostA().getCount();
+			int price = offerPrice(offer);
 			// recorded combo need (hunt): the same qualifying set only matches
 			// strictly cheaper than last paid, ratcheting like a single book —
 			// regardless of whether its targets are still in the needs table
@@ -564,31 +579,33 @@ public class TradeMatcher {
 	 * the needs table while hunt mode is on. */
 	public void applyHuntOverrides() {
 		for (Map.Entry<Identifier, Integer> entry : this.huntPrices.entrySet()) {
-			// a hunt-marked custom good is kept alive on the same terms
-			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
-			if (good != null) {
-				if (!good.enabled()) continue;   // disabled mid-run: the hunt pauses
-				// a good that can no longer be offered must not keep a hunt alive
-				if (!goodMatchable(good)) continue;
-				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
-				if (goodBudget < 1) continue;
-				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
-				goodQueue.enqueue(goodBudget);
-				this.needs.put(entry.getKey(), goodQueue);
+			// target id wins over a same-id good (round-30 precedence): the live
+			// target set decides first, exactly like priceOf/specOf and admission
+			EnchantmentTarget target = this.targets.get(entry.getKey());
+			if (target != null) {
+				int budget = budgetFor(entry.getKey(), target);
+				// villager trades have a price floor of 1 emerald + 1 book: once the
+				// budget reaches 0 no cheaper copy can ever exist — the hunt for this book
+				// simply stops (the 1→0 ratchet is deliberate). A config price below the
+				// vanilla minimum never reaches here: buildNeeds drops such a target, so
+				// target is null above and the hunt pauses instead of spinning.
+				if (budget < 1) continue;
+				IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
+				queue.enqueue(budget);
+				this.needs.put(entry.getKey(), queue);
 				continue;
 			}
-			EnchantmentTarget target = this.targets.get(entry.getKey());
-			if (target == null) continue; // disabled mid-run: the hunt pauses
-			int budget = budgetFor(entry.getKey(), target);
-			// villager trades have a price floor of 1 emerald + 1 book: once the
-			// budget reaches 0 no cheaper copy can ever exist — the hunt for this book
-			// simply stops (the 1→0 ratchet is deliberate). A config price below the
-			// vanilla minimum never reaches here: buildNeeds drops such a target, so
-			// target is null above and the hunt pauses instead of spinning.
-			if (budget < 1) continue;
-			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
-			queue.enqueue(budget);
-			this.needs.put(entry.getKey(), queue);
+			// a hunt-marked custom good is kept alive on the same terms
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
+			if (good == null) continue;
+			if (!good.enabled()) continue;
+			// a good that can no longer be offered must not keep a hunt alive
+			if (!goodMatchable(good)) continue;
+			int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
+			if (goodBudget < 1) continue;
+			IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
+			goodQueue.enqueue(goodBudget);
+			this.needs.put(entry.getKey(), goodQueue);
 		}
 	}
 

@@ -572,6 +572,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (super.mouseClicked(click, doubled)) return true;
 			if (click.y() <= this.y || click.y() >= this.y + this.entryHeight - 4) return false;
 			int removeX = this.x + this.entryWidth - 2 - 16;
@@ -660,6 +661,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (super.mouseClicked(click, doubled)) return true;
 			int plusX = this.x + this.entryWidth - 2 - 14;
 			if (click.y() > this.y && click.y() < this.y + this.entryHeight - 4

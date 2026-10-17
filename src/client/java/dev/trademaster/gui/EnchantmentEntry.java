@@ -168,6 +168,14 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		this.deferCommit = true;
 	}
 
+	/** A deliberate click outside this entry's fields drops their focus. Unlike
+	 * {@link #clearFieldFocus()} this does NOT set deferCommit: the draft is
+	 * committed by the next render pass, as for any normal focus change. */
+	void blurForClick() {
+		this.levelField.setFocused(false);
+		this.maxPriceField.setFocused(false);
+	}
+
 	/** A deliberate interaction (a click in the list) ends the scroll-deferral, so the
 	 * render commit may apply the draft again. */
 	void clearDeferCommit() {
@@ -314,6 +322,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		if (click.button() != 0) return false;
 		double mouseX = click.x();
 		double mouseY = click.y();
 		boolean inRowY = mouseY > this.y && mouseY < this.y + this.entryHeight - 4;

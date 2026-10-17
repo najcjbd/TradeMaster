@@ -43,6 +43,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
 		addEntry(new IntRow("trademaster.settings.minLockEmeralds", () -> c.minLockEmeralds, v -> c.minLockEmeralds = v, 1, 64));
+		addEntry(new BoolRow("trademaster.settings.basePriceAsSalePrice", () -> c.basePriceAsSalePrice, v -> c.basePriceAsSalePrice = v));
 		addEntry(new BoolRow("trademaster.settings.multiEnchantProtection", () -> c.multiEnchantProtection, v -> c.multiEnchantProtection = v));
 		addEntry(new BoolRow("trademaster.settings.timeoutEnabled", () -> c.timeoutEnabled, v -> c.timeoutEnabled = v));
 		addEntry(new DurationRow("trademaster.settings.timeoutTicks", () -> c.timeoutTicks, v -> c.timeoutTicks = v, 1200));
@@ -559,6 +560,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				boolean forward = click.x() > this.x + this.entryWidth / 2.0;
 				this.setter.accept(forward);
@@ -590,6 +592,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				int delta = click.x() > this.x + this.entryWidth / 2.0 ? 1 : -1;
 				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
@@ -656,6 +659,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -792,6 +796,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -975,6 +980,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1126,6 +1132,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1242,6 +1249,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
@@ -1385,6 +1393,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (this.removed) return false;
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
@@ -1487,6 +1496,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			if (click.button() != 0) return false;
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				// the action itself may refuse (the picker rejects while a run is
 				// active): only sound when it actually ran, like BoolRow does
