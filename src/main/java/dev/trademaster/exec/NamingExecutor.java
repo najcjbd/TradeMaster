@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.GoodSpec;
@@ -9,7 +10,6 @@ import dev.trademaster.core.RunSession;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.Holder;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -19,7 +19,12 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.StringUtil;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.AnvilMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import dev.trademaster.compat.McClicks;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McText;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McInteract;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -192,7 +197,8 @@ public class NamingExecutor {
 	private static String itemDisplayName(ResourceLocation id) {
 		GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 		if (good != null) return good.displayName();
-		Item item = BuiltInRegistries.ITEM.get(id).map(Holder::value).orElse(Items.AIR);
+		Item item = McRegistry.value(McBuiltIn.items(), id);
+		if (item == null) item = Items.AIR;
 		return new ItemStack(item).getHoverName().getString();
 	}
 
@@ -216,7 +222,7 @@ public class NamingExecutor {
 			case "apply-hand", "apply-villager", "verify-timeout" -> "apply";
 			default -> "other";
 		};
-		return net.minecraft.network.chat.Component.translatable("trademaster.naming_fail." + key);
+		return McText.translatable("trademaster.naming_fail." + key);
 	}
 
 	/** True while the swap-back runs; the phase timeout must not discard it mid-flight. */
@@ -254,8 +260,8 @@ public class NamingExecutor {
 			return;
 		}
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
-		mc.gameMode.handleContainerInput(0, this.equipSwapSlot,
-				player.getInventory().getSelectedSlot(), ContainerInput.SWAP, player);
+		McClicks.click(mc.gameMode, 0, this.equipSwapSlot,
+				McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
 	}
 
 	private void next(Stage stage) {
@@ -317,7 +323,7 @@ public class NamingExecutor {
 		if (!this.look.tick(player, aim)) return Result.RUNNING;
 		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
-		mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
+		McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
 		return Result.RUNNING;
 	}
 
@@ -334,16 +340,16 @@ public class NamingExecutor {
 		// ticks apart and verify generously; retry the whole sequence a few
 		// times before giving up.
 		if (this.stageTicks == 1) {
-			mc.gameMode.handleContainerInput(menu.containerId, menuSlot, 1, ContainerInput.PICKUP, player);
+			McClicks.click(mc.gameMode, menu.containerId, menuSlot, 1, McClicks.Click.PICKUP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks == 4) {
-			mc.gameMode.handleContainerInput(menu.containerId, 0, 1, ContainerInput.PICKUP, player);
+			McClicks.click(mc.gameMode, menu.containerId, 0, 1, McClicks.Click.PICKUP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks == 7) {
 			if (!menu.getCarried().isEmpty()) {
-				mc.gameMode.handleContainerInput(menu.containerId, menuSlot, 0, ContainerInput.PICKUP, player);
+				McClicks.click(mc.gameMode, menu.containerId, menuSlot, 0, McClicks.Click.PICKUP, player);
 			}
 			return Result.RUNNING;
 		}
@@ -361,9 +367,9 @@ public class NamingExecutor {
 		// otherwise the next attempt stacks onto the residue and the count==1
 		// check below fails forever
 		if (!menu.getCarried().isEmpty()) {
-			mc.gameMode.handleContainerInput(menu.containerId, menuSlot, 0, ContainerInput.PICKUP, player);
+			McClicks.click(mc.gameMode, menu.containerId, menuSlot, 0, McClicks.Click.PICKUP, player);
 		} else if (!menu.getSlot(0).getItem().isEmpty()) {
-			mc.gameMode.handleContainerInput(menu.containerId, 0, 0, ContainerInput.QUICK_MOVE, player);
+			McClicks.click(mc.gameMode, menu.containerId, 0, 0, McClicks.Click.QUICK_MOVE, player);
 		}
 		this.stageTicks = -2; // let the cleanup click settle before the retry starts
 		return Result.RUNNING;
@@ -393,9 +399,9 @@ public class NamingExecutor {
 		// the result slot fills even without enough XP, but mayPickup would reject
 		// the take on both sides: report the real reason instead of a dead 20-tick
 		// wait ending in a misleading "take-tag"
-		if (!player.hasInfiniteMaterials() && player.experienceLevel < menu.getCost()) return failed("xp-cost");
+		if (!McPlayer.hasInfiniteMaterials(player) && player.experienceLevel < menu.getCost()) return failed("xp-cost");
 		if (this.stageTicks == 1) {
-			mc.gameMode.handleContainerInput(menu.containerId, 2, 0, ContainerInput.QUICK_MOVE, player);
+			McClicks.click(mc.gameMode, menu.containerId, 2, 0, McClicks.Click.QUICK_MOVE, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
@@ -428,8 +434,8 @@ public class NamingExecutor {
 		if (player.containerMenu != player.inventoryMenu) return failed("equip-menu");
 		if (this.resultInvSlot < 9) {
 			// Already in the hotbar: just select it.
-			if (player.getInventory().getSelectedSlot() != this.resultInvSlot) {
-				this.equipOriginalSlot = player.getInventory().getSelectedSlot();
+			if (McPlayer.selectedSlot(player) != this.resultInvSlot) {
+				this.equipOriginalSlot = McPlayer.selectedSlot(player);
 				Interactions.selectHotbarSlot(player, this.resultInvSlot);
 			}
 			this.equipSwapSlot = -1;
@@ -444,8 +450,8 @@ public class NamingExecutor {
 			// the previous item lands in the tag's old slot and is swapped back
 			// after naming.
 			this.equipSwapSlot = this.resultInvSlot;
-			mc.gameMode.handleContainerInput(0, this.resultInvSlot,
-					player.getInventory().getSelectedSlot(), ContainerInput.SWAP, player);
+			McClicks.click(mc.gameMode, 0, this.resultInvSlot,
+					McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
@@ -523,8 +529,8 @@ public class NamingExecutor {
 			this.restoreSwapped = true;
 			// the tag was consumed by the naming interact; swap the previous
 			// item (e.g. the axe) back into the selected hotbar slot
-			mc.gameMode.handleContainerInput(0, this.equipSwapSlot,
-					player.getInventory().getSelectedSlot(), ContainerInput.SWAP, player);
+			McClicks.click(mc.gameMode, 0, this.equipSwapSlot,
+					McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
@@ -544,7 +550,7 @@ public class NamingExecutor {
 			ItemStack stack = player.getInventory().getItem(i);
 			// skip tags that already carry a name: renaming a renamed tag accrues
 			// anvil penalty and the cost climbs with every failed cycle
-			if (stack.is(Items.NAME_TAG) && stack.getCustomName() == null) return i;
+			if (stack.is(Items.NAME_TAG) && McItem.customName(stack) == null) return i;
 		}
 		return -1;
 	}
@@ -557,15 +563,15 @@ public class NamingExecutor {
 	private int findNamedTag(LocalPlayer player) {
 		for (int i = 0; i < 36; i++) {
 			ItemStack stack = player.getInventory().getItem(i);
-			if (stack.is(Items.NAME_TAG) && stack.getCustomName() != null
-					&& this.name.equals(stack.getCustomName().getString())) return i;
+			if (stack.is(Items.NAME_TAG) && McItem.customName(stack) != null
+					&& this.name.equals(McItem.customName(stack).getString())) return i;
 		}
 		return -1;
 	}
 
 	/** Mirrors vanilla AnvilMenu.validateName: filterText strips format codes, 50 char cap. */
 	private static boolean isAnvilSafeName(String name) {
-		String filtered = StringUtil.filterText(name);
+		String filtered = McText.filterText(name);
 		return !filtered.isEmpty() && filtered.length() <= 50 && filtered.equals(name);
 	}
 }

@@ -1,6 +1,8 @@
 package dev.trademaster.exec;
 
-import dev.trademaster.anticheat.LookStep;
+
+import dev.trademaster.compat.McPackets;import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.compat.McInteract;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -84,8 +86,8 @@ public final class DispenserCheck {
 					return Result.RUNNING;
 				}
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.pos), Direction.UP, this.pos, false);
-				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-				player.swing(InteractionHand.MAIN_HAND, true);
+				McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+				McPackets.swingOnly(player, InteractionHand.MAIN_HAND);
 				enter(State.WAIT_MENU);
 			}
 			case WAIT_MENU -> {

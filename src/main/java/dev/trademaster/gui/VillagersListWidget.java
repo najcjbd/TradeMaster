@@ -1,20 +1,30 @@
 package dev.trademaster.gui;
 
+//? if >=26.1 {
+/*import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;*/
+//?}
+import dev.trademaster.compat.McList;
+import dev.trademaster.compat.McInput;
+import dev.trademaster.compat.McRender;
 import dev.trademaster.compat.McIds;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McGraphics;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McWidget;
+import dev.trademaster.compat.McText;
 
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.strategy.RigTarget;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+//? if >=1.20 {
+import net.minecraft.client.gui.GuiGraphics;
+//?}
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
@@ -35,6 +45,59 @@ import java.util.function.Consumer;
  */
 public class VillagersListWidget extends AbstractSelectionList<VillagersListWidget.Row> {
 
+	/** The list's left edge: 1.20.1 exposes protected x0/y0; 1.20.2+ inherits
+	 * AbstractContainerWidget's getX/getY. */
+	private int listLeft() {
+		//? if >=1.20.2 {
+		return this.getX();
+		//?} else {
+		/*return this.x0;*/
+		//?}
+	}
+
+	private int listTop() {
+		//? if >=1.20.2 {
+		return this.getY();
+		//?} else {
+		/*return this.y0;*/
+		//?}
+	}
+
+	private int listWidth() {
+		//? if >=1.20.2 {
+		return this.getWidth();
+		//?} else {
+		/*return this.width;*/
+		//?}
+	}
+
+	private int listHeight() {
+		//? if >=1.20.2 {
+		return this.getHeight();
+		//?} else {
+		/*return this.height;*/
+		//?}
+	}
+
+	/** Row height: 26.1 renamed AbstractSelectionList.itemHeight to defaultEntryHeight. */
+	private int entryRowHeight() {
+		//? if >=26.1 {
+		/*return this.defaultEntryHeight;*/
+		//?} else {
+		return this.itemHeight;
+		//?}
+	}
+
+	/** Claims the scrollbar area for mouse routing. 26.1 exposes a hit helper; earlier
+	 * versions draw the bar inside the list bounds, so the base isMouseOver covers it. */
+	private boolean overScrollbar(double x, double y) {
+		//? if >=26.1 {
+		/*return this.isOverScrollbar(x, y);*/
+		//?} else {
+		return false;
+		//?}
+	}
+
 	private static final int FIELD_WIDTH = 150;
 	private static final int FIELD_GAP = 6;
 	private static final int ID_MAX_LENGTH = 128;
@@ -46,7 +109,11 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	private boolean suppressFocusClear = false;
 
 	public VillagersListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
+		//? if >=1.20.2 {
 		super(client, width, height, top, itemHeight);
+		//?} else {
+		/*super(client, width, height, top, top + height, itemHeight);*/
+		//?}
 		this.addEntry(new IdRow("trademaster.column.workBlock", TradeMasterConfig.INSTANCE.workBlockId,
 				ID_MAX_LENGTH, "trademaster.villagers.unknown_block", VillagersListWidget::workBlockError,
 				() -> TradeMasterConfig.INSTANCE.workBlockId, VillagersListWidget::commitWorkBlock));
@@ -85,8 +152,18 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		config.save();
 	}
 
+		//? if >=1.20.2 {
 	@Override
-	protected void extractListBackground(GuiGraphicsExtractor context) {
+	protected void renderListBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }
+	//?} elif >=1.20 {
+	/*@Override
+	protected void renderBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }*/
+	//?} else {
+	/*@Override
+	protected void renderBackground(com.mojang.blaze3d.vertex.PoseStack context) { drawListBackground(new McGraphics(context)); }*/
+	//?}
+
+	private void drawListBackground(McGraphics context) {
 		this.setSelected(null);
 		// the tab's one constraint, shown once under the rows: only the profession id is
 		// configurable, the trade shape is not
@@ -95,44 +172,60 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		if (rows == 0) return;
 		// just under the last row: the vanilla background pass runs BEFORE the rows, so a
 		// hint at the widget's bottom could be painted over by a row on a short screen
-		int y = this.getRowTop(rows - 1) + this.defaultEntryHeight + 2;
-		if (y + 9 > this.getY() + this.getHeight()) return;
-		String hint = Component.translatable("trademaster.villagers.hint").getString();
-		context.text(font, Component.literal(fit(font, hint, this.getWidth() - 6)),
-				this.getX() + 3, y, 0xFF9A9A9A);
-	}
+		int y = this.getRowTop(rows - 1) + this.entryRowHeight() + 2;
+		if (y + 9 > this.listTop() + this.listHeight()) return;
+		String hint = McText.translatable("trademaster.villagers.hint").getString();
+		context.drawString(font, McText.literal(fit(font, hint, this.listWidth() - 6)),
+				this.listLeft() + 3, y, 0xFF9A9A9A);
+		}
 
+
+	//? if >=1.20.2 {
 	@Override
-	protected void extractListSeparators(GuiGraphicsExtractor context) {
+	protected void renderListSeparators(GuiGraphics context) {
 	}
+	//?}
 
+	//? if >=1.20.2 {
 	@Override
 	protected void updateWidgetNarration(NarrationElementOutput builder) {
 	}
+	//?} else {
+	/*@Override
+	public void updateNarration(NarrationElementOutput builder) {
+	}*/
+	//?}
 
 	@Override
 	public int getRowWidth() {
 		return this.width - 12;
 	}
 
+	//? if >=1.21.2 {
 	@Override
 	protected int scrollBarX() {
 		return this.width;
 	}
+	//?} else {
+	/*@Override
+	protected int getScrollbarPosition() {
+		return this.width;
+	}*/
+	//?}
 
 	@Override
 	public boolean isMouseOver(double x, double y) {
-		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y);
+		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
 	@Override
 	public int getRowTop(int index) {
-		return this.getY() + 2 - (int) this.scrollAmount() + index * this.defaultEntryHeight;
+		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override
 	public int getRowLeft() {
-		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
+		return this.listLeft() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
 	/** Commits every row's in-flight draft (screen close / tab switch / save / start). */
@@ -140,12 +233,33 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		for (Row row : this.children()) row.flushEdits();
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		beginMouseClick(click.x(), click.y());
+		try {
+			return super.mouseClicked(click, doubled);
+		} finally {
+			this.suppressFocusClear = false;
+		}
+	}*/
+	//?} else {
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		beginMouseClick(mouseX, mouseY);
+		try {
+			return super.mouseClicked(mouseX, mouseY, button);
+		} finally {
+			this.suppressFocusClear = false;
+		}
+	}
+	//?}
+
+	private void beginMouseClick(double mouseX, double mouseY) {
 		// a field the pointer is NOT on commits its draft and loses focus; the field under
 		// the pointer is left alone (the pointer's own click focuses it)
 		for (Row row : this.children()) {
-			if (!row.field.isMouseOver(click.x(), click.y())) {
+			if (!row.field.isMouseOver(mouseX, mouseY)) {
 				row.reconcileOnFocusLoss();
 				row.field.setFocused(false);
 			}
@@ -153,51 +267,76 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		// vanilla moves focus to the clicked entry AFTER this, which can scroll and blur
 		// the field the click just focused: suppress the blur for the duration
 		this.suppressFocusClear = true;
-		try {
-			return super.mouseClicked(click, doubled);
-		} finally {
-			this.suppressFocusClear = false;
-		}
 	}
 
 	@Override
 	public void setScrollAmount(double amount) {
-		double before = this.scrollAmount();
+		double before = McList.scrollAmount(this);
 		super.setScrollAmount(amount);
-		if (this.scrollAmount() == before || this.suppressFocusClear) return;
+		if (McList.scrollAmount(this) == before || this.suppressFocusClear) return;
 		// scroll only drops focus: an involuntary blur must not COMMIT a half-typed id
 		for (Row row : this.children()) row.clearFieldFocus();
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean keyPressed(KeyEvent input) {
-		for (Row row : this.children()) {
-			if (row.field.isFocused()) return row.field.keyPressed(input);
-		}
-		return super.keyPressed(input);
+		return handleKeyPressed(input.key(), McInput.scancode(input), input.modifiers()) || super.keyPressed(input);
 	}
 
 	@Override
 	public boolean keyReleased(KeyEvent input) {
-		for (Row row : this.children()) {
-			if (row.field.isFocused()) row.field.keyReleased(input);
-		}
-		return super.keyReleased(input);
+		return handleKeyReleased(input.key(), McInput.scancode(input), input.modifiers()) || super.keyReleased(input);
 	}
 
 	@Override
 	public boolean charTyped(CharacterEvent input) {
 		if (!input.isAllowedChatCharacter()) return false;
-		for (Row row : this.children()) {
-			if (row.field.isFocused() && row.field.charTyped(input)) return true;
-		}
-		return super.charTyped(input);
+		return handleCharTyped((char) input.codepoint()) || super.charTyped(input);
 	}
 
 	@Override
 	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
 		for (Row row : this.children()) {
 			if (row.field.isFocused()) return row.field.preeditUpdated(input);
+		}
+		return false;
+	}*/
+	//?} else {
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		return handleKeyPressed(keyCode, scanCode, modifiers) || super.keyPressed(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		return handleKeyReleased(keyCode, scanCode, modifiers) || super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char c, int modifiers) {
+		if (!McInput.isAllowedChatCharacter(c)) return false;
+		return handleCharTyped(c) || super.charTyped(c, modifiers);
+	}
+	//?}
+
+	private boolean handleKeyPressed(int keyCode, int scanCode, int modifiers) {
+		for (Row row : this.children()) {
+			if (row.field.isFocused()) return McInput.keyPressed(row.field, keyCode, scanCode, modifiers);
+		}
+		return false;
+	}
+
+	private boolean handleKeyReleased(int keyCode, int scanCode, int modifiers) {
+		for (Row row : this.children()) {
+			if (row.field.isFocused()) McInput.keyReleased(row.field, keyCode, scanCode, modifiers);
+		}
+		return false;
+	}
+
+	private boolean handleCharTyped(char c) {
+		for (Row row : this.children()) {
+			if (row.field.isFocused() && McInput.charTyped(row.field, c, 0)) return true;
 		}
 		return false;
 	}
@@ -212,7 +351,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 
 		Row(String value, int maxLength, Consumer<String> setter) {
 			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, FIELD_WIDTH, 14,
-					Component.literal("villager id"));
+					McText.literal("villager id"));
 			this.field.setMaxLength(maxLength);
 			this.field.setValue(value);
 			this.field.setResponder(text -> this.dirty = true);
@@ -270,7 +409,8 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		 * all — the list's own handler only BLURS fields — so the tab would be uneditable.
 		 * Every other row in this mod (Settings / Alias / Offers / Enchantments) does the
 		 * same. */
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
@@ -279,8 +419,6 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 			return super.mouseClicked(click, doubled);
 		}
 
-		/** The drag lands on the row (the list's focused child), not the nested field:
-		 * forward it so EditBox's onDrag text selection works, as the sibling rows do. */
 		@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
@@ -289,40 +427,87 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		@Override
 		public boolean mouseReleased(MouseButtonEvent click) {
 			return this.field.mouseReleased(click);
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return super.mouseClicked(mouseX, mouseY, button);
 		}
 
 		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+		}
+
+		@Override
+		public boolean mouseReleased(double mouseX, double mouseY, int button) {
+			return McInput.mouseReleased(this.field, mouseX, mouseY, button);
+		}
+		//?}
+
+		// 26.1 replaced Entry.render(GuiGraphics,int,int,int,int,int,int,int,boolean,float) with
+		// Entry.extractContent(...): the row geometry is passed as render() arguments on
+		// <=1.21.11 but read from the entry on 26.1+. Both stash it and delegate to drawRow.
+		//? if >=26.1 {
+		/*@Override
+		public void extractContent(GuiGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			this.x = this.getX();
 			this.y = this.getY();
 			this.entryWidth = this.getWidth();
 			this.entryHeight = this.getHeight();
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}*/
+		//?} elif >=1.20 {
+		@Override
+		public void render(GuiGraphics context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}
+		//?} else {
+		/*@Override
+		public void render(com.mojang.blaze3d.vertex.PoseStack context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+				}*/
+		//?}
+
+		private void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			Font font = Minecraft.getInstance().font;
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
-			context.text(font, Component.translatable(this.labelKey()), this.x + 4, this.y + 6, 0xFFE0E000);
+			context.drawString(font, McText.translatable(this.labelKey()), this.x + 4, this.y + 6, 0xFFE0E000);
 			// clamp the field to what the row can actually hold: a fixed 150px wide field
 			// would overflow a narrow (Android/FCL) screen and collide with the label
-			int labelWidth = font.width(Component.translatable(this.labelKey()));
+			int labelWidth = font.width(McText.translatable(this.labelKey()));
 			int available = this.entryWidth - 4 - labelWidth - FIELD_GAP - 10;
 			int fieldWidth = Math.max(40, Math.min(FIELD_WIDTH, available));
 			this.field.setWidth(fieldWidth);
 			int fieldX = this.x + this.entryWidth - fieldWidth - 10;
 			this.field.setX(Math.max(this.x + 4, fieldX));
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 			String error = hintFor(this.field.getValue());
 			if (error != null) {
-				int errorX = this.field.getX() - 4;
-				String text = Component.translatable(error).getString();
-				context.text(font, Component.literal(fit(font, text, errorX - this.boxLeft())),
+				int errorX = McWidget.getX(this.field) - 4;
+				String text = McText.translatable(error).getString();
+				context.drawString(font, McText.literal(fit(font, text, errorX - this.boxLeft())),
 						this.boxLeft(), this.y + 6, 0xFFFF5555);
 			}
 		}
 
 		private int boxLeft() {
-			return this.x + 4 + Minecraft.getInstance().font.width(Component.translatable(this.labelKey()).getString()) + 6;
+			return this.x + 4 + Minecraft.getInstance().font.width(McText.translatable(this.labelKey()).getString()) + 6;
 		}
 	}
 
@@ -439,7 +624,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	 * Package-private so a test can exercise the decision without building a widget. */
 	static @Nullable String nonTradeableEntryError(String id) {
 		ResourceLocation parsed = McIds.tryParse(id);
-		if (parsed == null || BuiltInRegistries.VILLAGER_PROFESSION.getOptional(parsed).isEmpty()) {
+		if (parsed == null || McBuiltIn.villagerProfessions().getOptional(parsed).isEmpty()) {
 			return "trademaster.villagers.unknown_profession";
 		}
 		// unemployment is the state that lets a villager TAKE the job: listing it would leave
@@ -453,7 +638,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		// appearing here would break the rig.
 		ResourceLocation raw = TradeMasterConfig.INSTANCE.professionIdentifier();
 		if (raw != null && parsed.equals(raw)) return "trademaster.villagers.list_target";
-		if (parsed.equals(RigTarget.professionKey().identifier())) {
+		if (parsed.equals(McRegistry.keyId(RigTarget.professionKey()))) {
 			return "trademaster.villagers.list_target";
 		}
 		return null;
@@ -466,7 +651,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		// BLOCK is a DefaultedRegistry: getValue() returns AIR for an unknown id and would
 		// never report one. getOptional does not default; air is unusable either way.
 		if (parsed == null
-				|| BuiltInRegistries.BLOCK.getOptional(parsed).filter(b -> b != net.minecraft.world.level.block.Blocks.AIR).isEmpty()) {
+				|| McBuiltIn.blocks().getOptional(parsed).filter(b -> b != net.minecraft.world.level.block.Blocks.AIR).isEmpty()) {
 			return "trademaster.villagers.unknown_block";
 		}
 		return null;
@@ -478,7 +663,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		ResourceLocation parsed = McIds.tryParse(id);
 		// see workBlockError: VILLAGER_PROFESSION defaults to none, so getValue() would
 		// report every typo as known
-		if (parsed == null || BuiltInRegistries.VILLAGER_PROFESSION.getOptional(parsed).isEmpty()) {
+		if (parsed == null || McBuiltIn.villagerProfessions().getOptional(parsed).isEmpty()) {
 			return "trademaster.villagers.unknown_profession";
 		}
 		// unemployed sells no trade: as a TARGET it could never be satisfied (the villager
@@ -486,7 +671,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 		if (parsed.equals(McIds.mc("none"))) {
 			return "trademaster.villagers.profession_unemployed";
 		}
-		if (RigTarget.isNonTradeable(ResourceKey.create(Registries.VILLAGER_PROFESSION, parsed))) {
+		if (RigTarget.isNonTradeable(ResourceKey.create(McBuiltIn.villagerProfessionKey(), parsed))) {
 			return "trademaster.villagers.not_tradeable";
 		}
 		return null;

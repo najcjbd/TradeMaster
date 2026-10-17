@@ -6,7 +6,6 @@ import dev.trademaster.TradeMasterClient;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import dev.trademaster.TradeMaster;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import net.minecraft.client.Minecraft;
@@ -174,10 +173,11 @@ public final class EnchantmentNamer {
 		// cannot spam the log from the per-frame displayName path.
 		if (fallbackLoaded || fallbackAttempts >= 3) return;
 		fallbackAttempts++;
-		try (InputStream in = Minecraft.getInstance().getResourceManager()
-				// the file lives under assets/trademaster/, not the "trade-master"
-				// mod-id namespace — the two must not be conflated
-				.open(McIds.of("trademaster", "enchant_names_zh.json"))) {
+		// the file lives under assets/trademaster/, not the "trade-master"
+		// mod-id namespace — the two must not be conflated
+		try (InputStream in = dev.trademaster.compat.McResource.open(
+				Minecraft.getInstance().getResourceManager(),
+				McIds.of("trademaster", "enchant_names_zh.json"))) {
 			JsonObject root = JsonParser.parseReader(new InputStreamReader(in, StandardCharsets.UTF_8)).getAsJsonObject();
 			for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
 				FALLBACK_ZH.put(entry.getKey(), entry.getValue().getAsString());

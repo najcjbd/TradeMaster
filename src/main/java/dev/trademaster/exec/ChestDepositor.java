@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
@@ -12,10 +13,13 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import dev.trademaster.compat.McClicks;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McText;
+import dev.trademaster.compat.McInteract;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -131,13 +135,13 @@ public class ChestDepositor implements BookDisposal {
 			// are already gone (disconnect window), or the hand stays on the
 			// depositor's temporary empty slot
 			if (player != null) restoreHotbarSelection(player);
-			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.ticks++;
 		refreshAllowance(player);
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 120) {
 			restoreHotbarSelection(player);
-			return StepResult.failed(Component.translatable("trademaster.error.deposit-timeout"));
+			return StepResult.failed(McText.translatable("trademaster.error.deposit-timeout"));
 		}
 
 		// Every chest has been tried (or there are none at all): either drop what is
@@ -169,7 +173,7 @@ public class ChestDepositor implements BookDisposal {
 				if (!this.switchedSlot) {
 					this.switchedSlot = true;
 					if (this.originalSlot < 0) {
-						this.originalSlot = player.getInventory().getSelectedSlot();
+						this.originalSlot = McPlayer.selectedSlot(player);
 					}
 					selectEmptyHotbarSlot(player);
 					return StepResult.RUNNING;
@@ -181,9 +185,8 @@ public class ChestDepositor implements BookDisposal {
 				}
 				BlockPos chest = this.chests.get(this.index);
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(chest), Direction.UP, chest, false);
-				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-				player.swing(InteractionHand.MAIN_HAND, true);
-				player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+				McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+				McPackets.swing(player, InteractionHand.MAIN_HAND);
 				this.openWait = 0;
 				this.state = State.AWAIT_OPEN;
 			}
@@ -246,7 +249,7 @@ public class ChestDepositor implements BookDisposal {
 							}
 							// attempts exhausted: stop through the normal failure flow
 							// (stop() tears the depositor down via abortCleanly)
-							return StepResult.failed(Component.translatable("trademaster.message.swap_rejected"));
+							return StepResult.failed(McText.translatable("trademaster.message.swap_rejected"));
 						}
 						// chest has no space: fall through to the old path
 						// (close + EVALUATE + advance to the next chest)
@@ -279,7 +282,7 @@ public class ChestDepositor implements BookDisposal {
 							this.stagedHotbarSlot = swapSlot;
 							this.stagedBook = player.getOffhandItem().copy();
 							this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
-							if (player.getInventory().getSelectedSlot() != swapSlot) {
+							if (McPlayer.selectedSlot(player) != swapSlot) {
 								Interactions.selectHotbarSlot(player, swapSlot);
 							}
 							player.connection.send(new ServerboundPlayerActionPacket(
@@ -311,8 +314,8 @@ public class ChestDepositor implements BookDisposal {
 				// the allowance is NOT booked from this click: handleContainerInput applies
 				// the move locally first, so a booking would count a click the server may
 				// refuse. It is re-derived from the inventory every tick instead.
-				mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-						scan.firstSlot().index, 0, ContainerInput.QUICK_MOVE, player);
+				McClicks.click(mc.gameMode, player.containerMenu.containerId,
+						scan.firstSlot().index, 0, McClicks.Click.QUICK_MOVE, player);
 			}
 			case EVALUATE -> {
 				if (player.containerMenu != player.inventoryMenu) {
@@ -340,7 +343,7 @@ public class ChestDepositor implements BookDisposal {
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
 				}
-				int selected = player.getInventory().getSelectedSlot();
+				int selected = McPlayer.selectedSlot(player);
 				// the drop packet drops the SELECTED slot. If the droppable already sits in
 				// a hotbar slot, select THAT one: no swap is needed, so there is no staging
 				// prediction to get wrong (this is also the full-inventory case, where no
@@ -361,7 +364,7 @@ public class ChestDepositor implements BookDisposal {
 						// nothing safe to stage into. FAILED_FULL, not FAILED: a full HOTBAR
 						// says nothing about the main inventory, so let the caller decide
 						// (it re-checks a free slot) instead of hard-stopping the run
-						return StepResult.failedFull(Component.translatable("trademaster.message.drop_no_slot"));
+						return StepResult.failedFull(McText.translatable("trademaster.message.drop_no_slot"));
 					}
 					if (this.originalSlot < 0) this.originalSlot = selected;
 					Interactions.selectHotbarSlot(player, empty);
@@ -382,8 +385,8 @@ public class ChestDepositor implements BookDisposal {
 				this.dropSourceSlot = slot.index;
 				this.dropStagedBook = slot.getItem().copy();
 				this.dropDisplaced = player.getInventory().getItem(selected).copy();
-				mc.gameMode.handleContainerInput(player.containerMenu.containerId, slot.index,
-						selected, ContainerInput.SWAP, player);
+				McClicks.click(mc.gameMode, player.containerMenu.containerId, slot.index,
+						selected, McClicks.Click.SWAP, player);
 				this.state = State.DROP_STAGE_WAIT;
 			}
 			case DROP_STAGE_WAIT -> {
@@ -395,16 +398,16 @@ public class ChestDepositor implements BookDisposal {
 				if (++this.dropWaitTicks >= 10) {
 					boolean landed = this.dropSourceSlot < 0
 							|| (player.containerMenu == player.inventoryMenu
-									&& ItemStack.isSameItemSameComponents(
+									&& McItem.sameItemSameComponents(
 											player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
-									&& ItemStack.isSameItemSameComponents(
+									&& McItem.sameItemSameComponents(
 											player.containerMenu.slots.get(this.dropSourceSlot).getItem(),
 											this.dropDisplaced));
 					if (landed) {
 						this.state = State.DROP_AIM;
 						this.dropAimTicks = 0;
 					} else if (this.dropWaitTicks > 60) {
-						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+						return StepResult.failed(McText.translatable("trademaster.message.curse_drop_failed"));
 					}
 				}
 			}
@@ -412,7 +415,7 @@ public class ChestDepositor implements BookDisposal {
 				TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 				if (config.curseDropYaw == null || config.curseDropPitch == null) {
 					// dropping blind is never allowed
-					return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+					return StepResult.failed(McText.translatable("trademaster.message.curse_drop_failed"));
 				}
 				Vec3 target = player.getEyePosition().add(
 						Vec3.directionFromRotation(config.curseDropPitch, config.curseDropYaw).scale(100.0));
@@ -442,8 +445,8 @@ public class ChestDepositor implements BookDisposal {
 					// the packet names no slot: the server drops the SELECTED one. Re-verify
 					// it right before sending — a 1-9/wheel hotbar change since the staging
 					// would otherwise drop whatever else is selected (the player's item)
-					if (player.getInventory().getSelectedSlot() != this.dropSlot
-							|| !ItemStack.isSameItemSameComponents(
+					if (McPlayer.selectedSlot(player) != this.dropSlot
+							|| !McItem.sameItemSameComponents(
 									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
 						this.state = State.DROP_STAGE;
 						return StepResult.RUNNING;
@@ -461,13 +464,13 @@ public class ChestDepositor implements BookDisposal {
 						this.dropSent = false;
 						this.dropWaitTicks = 0;
 					} else {
-						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
+						return StepResult.failed(McText.translatable("trademaster.message.curse_drop_failed"));
 					}
 				}
 			}
 			default -> {
 				// a state that is wired up but has no case would otherwise spin here
-				return StepResult.failed(Component.translatable("trademaster.message.deposit_state_invalid"));
+				return StepResult.failed(McText.translatable("trademaster.message.deposit_state_invalid"));
 			}
 		}
 		return StepResult.RUNNING;
@@ -529,11 +532,11 @@ public class ChestDepositor implements BookDisposal {
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		// a book still sitting there means the deposit never took it (all chests refused):
 		// swapping it back is exactly the pre-staging state, not theft
-		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return;
+		if (!inSlot.isEmpty() && !McItem.sameItemSameComponents(inSlot, book)) return;
 		// the offhand must still carry exactly what the swap displaced: anything else
 		// means the player changed it, and moving it now would be theft
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
-		if (player.getInventory().getSelectedSlot() != slot) {
+		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		if (McPlayer.selectedSlot(player) != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}
 		player.connection.send(new ServerboundPlayerActionPacket(
@@ -544,7 +547,7 @@ public class ChestDepositor implements BookDisposal {
 	/** Puts the player's hand back where it was before the deposit started
 	 * (hotbar selection and offhand swaps both go through hotbar slots). */
 	private void restoreHotbarSelection(LocalPlayer player) {
-		if (this.originalSlot >= 0 && player.getInventory().getSelectedSlot() != this.originalSlot) {
+		if (this.originalSlot >= 0 && McPlayer.selectedSlot(player) != this.originalSlot) {
 			Interactions.selectHotbarSlot(player, this.originalSlot);
 		}
 		this.originalSlot = -1;
@@ -647,7 +650,7 @@ public class ChestDepositor implements BookDisposal {
 			return StepResult.RUNNING;
 		}
 		restoreHotbarSelection(player);
-		return StepResult.failedFull(Component.translatable("trademaster.message.chests_full"));
+		return StepResult.failedFull(McText.translatable("trademaster.message.chests_full"));
 	}
 
 	/** Things this pass may DROP when no chest takes them: the goods this run produced,
@@ -666,7 +669,7 @@ public class ChestDepositor implements BookDisposal {
 			if (expected == null) return false;
 			boolean produced = false;
 			for (ItemStack candidate : expected) {
-				if (ItemStack.isSameItemSameComponents(stack, candidate)) {
+				if (McItem.sameItemSameComponents(stack, candidate)) {
 					produced = true;
 					break;
 				}
@@ -707,7 +710,7 @@ public class ChestDepositor implements BookDisposal {
 
 	private static void selectEmptyHotbarSlot(LocalPlayer player) {
 		for (int i = 0; i < 9; i++) {
-			if (player.getInventory().getItem(i).isEmpty() && i != player.getInventory().getSelectedSlot()) {
+			if (player.getInventory().getItem(i).isEmpty() && i != McPlayer.selectedSlot(player)) {
 				Interactions.selectHotbarSlot(player, i);
 				return;
 			}
@@ -726,7 +729,7 @@ public class ChestDepositor implements BookDisposal {
 	/** First hotbar slot not holding a book (the selected one first: no extra
 	 * switch needed), or -1 when every hotbar slot is a book. */
 	private int findNonBookHotbarSlot(LocalPlayer player) {
-		int selected = player.getInventory().getSelectedSlot();
+		int selected = McPlayer.selectedSlot(player);
 		if (!disposable(player.getInventory().getItem(selected))) return selected;
 		for (int i = 0; i < 9; i++) {
 			if (!disposable(player.getInventory().getItem(i))) return i;

@@ -1,16 +1,19 @@
 package dev.trademaster.strategy;
 
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McVillager;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McPoi;
+import dev.trademaster.compat.McRandom;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.resources.ResourceKey;
-import net.minecraft.util.RandomSource;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
-import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -55,7 +58,7 @@ public final class RigTarget {
 	 * block resolves to air, which would wedge the break/place loop). */
 	public static Block workBlock() {
 		ResourceLocation id = TradeMasterConfig.INSTANCE.workBlockIdentifier();
-		Block block = id == null ? null : BuiltInRegistries.BLOCK.getValue(id);
+		Block block = id == null ? null : McRegistry.value(McBuiltIn.blocks(), id);
 		return block == null || block == Blocks.AIR ? Blocks.LECTERN : block;
 	}
 
@@ -80,9 +83,8 @@ public final class RigTarget {
 	/** Whether {@code block} is a job site some villager profession can work at. */
 	public static boolean isJobSiteBlock(Block block) {
 		for (PoiType poi : matchingPois(block)) {
-			Holder<PoiType> holder = BuiltInRegistries.POINT_OF_INTEREST_TYPE.wrapAsHolder(poi);
-			for (VillagerProfession profession : BuiltInRegistries.VILLAGER_PROFESSION) {
-				if (profession.heldJobSite().test(holder)) return true;
+			for (VillagerProfession profession : McBuiltIn.villagerProfessions()) {
+				if (McVillager.worksAt(profession, poi)) return true;
 			}
 		}
 		return false;
@@ -92,14 +94,10 @@ public final class RigTarget {
 	 * only asks whether some profession uses it — a composter is a job site, but never for a
 	 * librarian, and such a pairing makes the run wait for a profession for ever. */
 	public static boolean isJobSiteBlockFor(Block block, ResourceKey<VillagerProfession> professionKey) {
-		VillagerProfession profession = BuiltInRegistries.VILLAGER_PROFESSION.get(professionKey)
-				.map(holder -> holder.value()).orElse(null);
+		VillagerProfession profession = McRegistry.value(McBuiltIn.villagerProfessions(), professionKey);
 		if (profession == null) return false;
 		for (PoiType poi : matchingPois(block)) {
-			if (profession.heldJobSite()
-					.test(BuiltInRegistries.POINT_OF_INTEREST_TYPE.wrapAsHolder(poi))) {
-				return true;
-			}
+			if (McVillager.worksAt(profession, poi)) return true;
 		}
 		return false;
 	}
@@ -108,10 +106,8 @@ public final class RigTarget {
 	private static List<PoiType> matchingPois(Block block) {
 		List<PoiType> matched = new ArrayList<>();
 		if (block == null || block == Blocks.AIR) return matched;
-		for (PoiType poi : BuiltInRegistries.POINT_OF_INTEREST_TYPE) {
-			for (BlockState state : poi.matchingStates()) {
-				if (state.is(block)) { matched.add(poi); break; }
-			}
+		for (PoiType poi : McBuiltIn.poiTypes()) {
+			if (McPoi.matchesBlock(poi, block)) matched.add(poi);
 		}
 		return matched;
 	}
@@ -127,23 +123,23 @@ public final class RigTarget {
 	 * warns. */
 	public static ResourceKey<VillagerProfession> professionKey() {
 		ResourceLocation id = TradeMasterConfig.INSTANCE.professionIdentifier();
-		if (id == null) return VillagerProfession.LIBRARIAN;
-		ResourceKey<VillagerProfession> key = ResourceKey.create(Registries.VILLAGER_PROFESSION, id);
-		return isNonTradeable(key) ? VillagerProfession.LIBRARIAN : key;
+		if (id == null) return McVillager.librarian();
+		ResourceKey<VillagerProfession> key = ResourceKey.create(McBuiltIn.villagerProfessionKey(), id);
+		return isNonTradeable(key) ? McVillager.librarian() : key;
 	}
 
 	public static boolean professionKnown() {
 		ResourceLocation id = TradeMasterConfig.INSTANCE.professionIdentifier();
 		// VILLAGER_PROFESSION is a DefaultedRegistry: getValue() returns the DEFAULT (none)
 		// for an unknown id and so can never report "unknown". getOptional does not default.
-		return id != null && BuiltInRegistries.VILLAGER_PROFESSION.getOptional(id).isPresent();
+		return id != null && McBuiltIn.villagerProfessions().getOptional(id).isPresent();
 	}
 
 	/** Whether the CONFIGURED profession id is a non-tradeable one: {@link #professionKey()}
 	 * then degrades to the librarian, and start() warns about it. */
 	public static boolean professionConfiguredNonTradeable() {
 		ResourceLocation id = TradeMasterConfig.INSTANCE.professionIdentifier();
-		return id != null && isNonTradeable(ResourceKey.create(Registries.VILLAGER_PROFESSION, id));
+		return id != null && isNonTradeable(ResourceKey.create(McBuiltIn.villagerProfessionKey(), id));
 	}
 
 	/** A profession that can never sell the target trade: the built-in NITWIT plus every id
@@ -152,11 +148,11 @@ public final class RigTarget {
 	 * non-tradeable: it is the very state that lets a villager TAKE the configured job, so
 	 * listing it must not make the candidate unusable. */
 	public static boolean isNonTradeable(ResourceKey<VillagerProfession> key) {
-		if (key.equals(VillagerProfession.NONE)) return false;
-		if (key.equals(VillagerProfession.NITWIT)) return true;
+		if (key.equals(McVillager.none())) return false;
+		if (key.equals(McVillager.nitwit())) return true;
 		for (String raw : TradeMasterConfig.INSTANCE.nonTradeableProfessions) {
 			ResourceLocation id = TradeMasterConfig.parseId(raw);
-			if (id != null && key.identifier().equals(id)) return true;
+			if (id != null && McRegistry.keyId(key).equals(id)) return true;
 		}
 		return false;
 	}
@@ -182,7 +178,7 @@ public final class RigTarget {
 	public static boolean isUnusable(Holder<VillagerProfession> profession) {
 		if (isTarget(profession)) return false;
 		if (isNonTradeable(profession)) return true;
-		if (profession.is(VillagerProfession.NONE)) return false;
+		if (profession.is(McVillager.none())) return false;
 		return true;
 	}
 
@@ -230,7 +226,7 @@ public final class RigTarget {
 	 * used (destroyed — or, with the guard on, down to its last few points), so the mod
 	 * moves on to the NEXT tool and only fails when none is left. It is cleared by
 	 * {@link #clearToolLock()} at run start / when the block changes. */
-	public static @Nullable Item chooseTool(BlockState state, List<ItemStack> carried, RandomSource random) {
+	public static @Nullable Item chooseTool(BlockState state, List<ItemStack> carried, Object random) {
 		Block block = workBlock();
 		if (lockedTool != null && lockedBlock == block && hasUsable(carried, lockedTool)) {
 			return lockedTool;
@@ -248,7 +244,7 @@ public final class RigTarget {
 	}
 
 	/** The best tool with the tie-break RNG applied once (see {@link #chooseTool}). */
-	private static @Nullable Item pickTool(BlockState state, List<ItemStack> carried, RandomSource random) {
+	private static @Nullable Item pickTool(BlockState state, List<ItemStack> carried, Object random) {
 		List<ItemStack> best = new ArrayList<>();
 		float top = HAND_SPEED;
 		for (ItemStack stack : rankable(carried, state)) {
@@ -281,7 +277,7 @@ public final class RigTarget {
 				winners.add(stack);
 			}
 		}
-		return winners.get(random.nextInt(winners.size())).getItem();
+		return winners.get(McRandom.nextInt(random, winners.size())).getItem();
 	}
 
 	/** The player's raw tool pool: slots 0..35 plus the offhand (empties dropped). */
@@ -339,9 +335,9 @@ public final class RigTarget {
 	/** The Unbreaking level of a stack, 0 when it has none. Read from the stack's own
 	 * enchantment component, so it needs no registry lookup. */
 	public static int unbreakingLevel(ItemStack stack) {
-		for (var entry : stack.getEnchantments().entrySet()) {
+		for (var entry : McEnchantments.of(stack).entrySet()) {
 			if (entry.getKey().unwrapKey().map(key -> key.equals(Enchantments.UNBREAKING)).orElse(false)) {
-				return entry.getIntValue();
+				return entry.getValue();
 			}
 		}
 		return 0;

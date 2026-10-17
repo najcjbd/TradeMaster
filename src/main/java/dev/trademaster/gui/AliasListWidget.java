@@ -1,5 +1,16 @@
 package dev.trademaster.gui;
 
+//? if >=26.1 {
+/*import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;*/
+//?}
+import dev.trademaster.compat.McList;
+import dev.trademaster.compat.McInput;
+import dev.trademaster.compat.McRender;
+import dev.trademaster.compat.McGraphics;
+import dev.trademaster.compat.McWidget;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
@@ -7,13 +18,12 @@ import dev.trademaster.exec.EnchantmentNamer;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+//? if >=1.20 {
+import net.minecraft.client.gui.GuiGraphics;
+//?}
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -33,8 +43,49 @@ import java.util.Map;
  */
 public class AliasListWidget extends AbstractSelectionList<AliasListWidget.AliasRow> {
 
+	/** The list's left edge: 1.20.1 exposes protected x0/y0; 1.20.2+ inherits
+	 * AbstractContainerWidget's getX/getY. */
+	private int listLeft() {
+		//? if >=1.20.2 {
+		return this.getX();
+		//?} else {
+		/*return this.x0;*/
+		//?}
+	}
+
+	private int listTop() {
+		//? if >=1.20.2 {
+		return this.getY();
+		//?} else {
+		/*return this.y0;*/
+		//?}
+	}
+
+	/** Row height: 26.1 renamed AbstractSelectionList.itemHeight to defaultEntryHeight. */
+	private int entryRowHeight() {
+		//? if >=26.1 {
+		/*return this.defaultEntryHeight;*/
+		//?} else {
+		return this.itemHeight;
+		//?}
+	}
+
+	/** Claims the scrollbar area for mouse routing. 26.1 exposes a hit helper; earlier
+	 * versions draw the bar inside the list bounds, so the base isMouseOver covers it. */
+	private boolean overScrollbar(double x, double y) {
+		//? if >=26.1 {
+		/*return this.isOverScrollbar(x, y);*/
+		//?} else {
+		return false;
+		//?}
+	}
+
 	public AliasListWidget(Minecraft client, int width, int height, int top, int itemHeight) {
+		//? if >=1.20.2 {
 		super(client, width, height, top, itemHeight);
+		//?} else {
+		/*super(client, width, height, top, top + height, itemHeight);*/
+		//?}
 		TradeMasterConfig.INSTANCE.enchantments.keySet().stream()
 				.sorted(Comparator.comparing(ResourceLocation::toString))
 				.forEach(id -> this.addEntry(new AliasRow(id)));
@@ -46,55 +97,82 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				.forEach(id -> this.addEntry(new AliasRow(id)));
 	}
 
+		//? if >=1.20.2 {
 	@Override
-	protected void extractListBackground(GuiGraphicsExtractor context) {
+	protected void renderListBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }
+	//?} elif >=1.20 {
+	/*@Override
+	protected void renderBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }*/
+	//?} else {
+	/*@Override
+	protected void renderBackground(com.mojang.blaze3d.vertex.PoseStack context) { drawListBackground(new McGraphics(context)); }*/
+	//?}
+
+	private void drawListBackground(McGraphics context) {
 		this.setSelected(null);
 		// clamp: on a narrow list these fixed offsets fall left of the 5px margin
 		// (the enchantments page already guards its own fill the same way)
 		context.fill(5, 27, Math.max(8, this.width - 14), 44, 0xAFC7C0C0);
 		Font font = Minecraft.getInstance().font;
-		context.text(font, Component.translatable("trademaster.column.enchantment"), 9, 32, 0xFF202020);
-		context.text(font, Component.translatable("trademaster.column.alias"),
+		context.drawString(font, McText.translatable("trademaster.column.enchantment"), 9, 32, 0xFF202020);
+		context.drawString(font, McText.translatable("trademaster.column.alias"),
 				Math.max(8, this.width - 122), 32, 0xFF202020);
-	}
+		}
 
+
+	//? if >=1.20.2 {
 	@Override
-	protected void extractListSeparators(GuiGraphicsExtractor context) {
+	protected void renderListSeparators(GuiGraphics context) {
 	}
+	//?}
 
+	//? if >=1.20.2 {
 	@Override
 	protected void updateWidgetNarration(NarrationElementOutput builder) {
 	}
+	//?} else {
+	/*@Override
+	public void updateNarration(NarrationElementOutput builder) {
+	}*/
+	//?}
 
 	@Override
 	public int getRowWidth() {
 		return this.width - 12;
 	}
 
+	//? if >=1.21.2 {
 	@Override
 	protected int scrollBarX() {
 		return this.width;
 	}
+	//?} else {
+	/*@Override
+	protected int getScrollbarPosition() {
+		return this.width;
+	}*/
+	//?}
 
 	@Override
 	public boolean isMouseOver(double x, double y) {
 		// the scrollbar sits on the widget's right edge, outside the bounds the
 		// Screen uses to route mouse events: claim it explicitly (same as the
 		// enchantments list)
-		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y);
+		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
 	@Override
 	public int getRowTop(int index) {
-		return this.getY() + 2 - (int) this.scrollAmount() + index * this.defaultEntryHeight;
+		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override
 	public int getRowLeft() {
-		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
+		return this.listLeft() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean keyPressed(KeyEvent input) {
 		AliasRow editing = this.editing();
 		if (editing != null) return editing.field.keyPressed(input);
@@ -118,12 +196,36 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		return editing.field.charTyped(input) || super.charTyped(input);
 	}
 
-	/** IME preedit for the row being edited (see EnchantmentsListWidget). */
 	@Override
 	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
 		AliasRow editing = this.editing();
 		return editing != null && editing.field.preeditUpdated(input);
+	}*/
+	//?} else {
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		AliasRow editing = this.editing();
+		if (editing != null) return McInput.keyPressed(editing.field, keyCode, scanCode, modifiers);
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
+
+	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		AliasRow editing = this.editing();
+		if (editing != null) McInput.keyReleased(editing.field, keyCode, scanCode, modifiers);
+		return super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char c, int modifiers) {
+		AliasRow editing = this.editing();
+		// consuming matters: the screen would otherwise deliver the same character a
+		// second time to the screen-level focused widget (this list)
+		if (editing == null) return super.charTyped(c, modifiers);
+		if (!McInput.isAllowedChatCharacter(c)) return false;
+		return McInput.charTyped(editing.field, c, modifiers) || super.charTyped(c, modifiers);
+	}
+	//?}
 
 	private @Nullable AliasRow editing() {
 		for (AliasRow row : this.children()) {
@@ -149,30 +251,46 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 
 	private boolean suppressFocusClear = false;
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-		this.suppressFocusClear = true;
+		beginMouseClick(click.x(), click.y());
 		try {
-			// Commit + unfocus every row the click did NOT land in. Without this two
-			// fields can hold focus at once, and editing() would route the keystrokes
-			// to whichever row comes first — i.e. the wrong enchantment's alias.
-			for (AliasRow row : this.children()) {
-				if (!row.field.isMouseOver(click.x(), click.y())) {
-					row.field.setFocused(false);
-					row.applyDraft();
-				}
-			}
 			return super.mouseClicked(click, doubled);
 		} finally {
 			this.suppressFocusClear = false;
+		}
+	}*/
+	//?} else {
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		beginMouseClick(mouseX, mouseY);
+		try {
+			return super.mouseClicked(mouseX, mouseY, button);
+		} finally {
+			this.suppressFocusClear = false;
+		}
+	}
+	//?}
+
+	private void beginMouseClick(double mouseX, double mouseY) {
+		this.suppressFocusClear = true;
+		// Commit + unfocus every row the click did NOT land in. Without this two
+		// fields can hold focus at once, and editing() would route the keystrokes
+		// to whichever row comes first — i.e. the wrong enchantment's alias.
+		for (AliasRow row : this.children()) {
+			if (!row.field.isMouseOver(mouseX, mouseY)) {
+				row.field.setFocused(false);
+				row.applyDraft();
+			}
 		}
 	}
 
 	@Override
 	public void setScrollAmount(double amount) {
-		double before = this.scrollAmount();
+		double before = McList.scrollAmount(this);
 		super.setScrollAmount(amount);
-		if (this.scrollAmount() == before || this.suppressFocusClear) return;
+		if (McList.scrollAmount(this) == before || this.suppressFocusClear) return;
 		// a focused field scrolled off-screen would keep swallowing keystrokes: drop
 		// focus WITHOUT committing — an involuntary scroll must not write a half-typed
 		// alias draft (it still commits at the documented points: a deliberate focus
@@ -200,7 +318,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		public AliasRow(ResourceLocation id) {
 			this.id = id;
 			this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("alias"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("alias"));
 			this.field.setMaxLength(40);
 			this.field.setValue(TradeMasterConfig.INSTANCE.customEnchantNames.getOrDefault(id, ""));
 			this.field.setResponder(text -> {
@@ -323,34 +441,61 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			return null;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		// 26.1 replaced Entry.render(GuiGraphics,int,int,int,int,int,int,int,boolean,float) with
+		// Entry.extractContent(...): the row geometry is passed as render() arguments on
+		// <=1.21.11 but read from the entry on 26.1+. Both stash it and delegate to drawRow.
+		//? if >=26.1 {
+		/*@Override
+		public void extractContent(GuiGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			this.x = this.getX();
 			this.y = this.getY();
 			this.entryWidth = this.getWidth();
 			this.entryHeight = this.getHeight();
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}*/
+		//?} elif >=1.20 {
+		@Override
+		public void render(GuiGraphics context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}
+		//?} else {
+		/*@Override
+		public void render(com.mojang.blaze3d.vertex.PoseStack context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+				}*/
+		//?}
 
+		private void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			Font font = Minecraft.getInstance().font;
 			boolean aliased = TradeMasterConfig.INSTANCE.customEnchantNames.containsKey(this.id);
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4,
 					aliased ? 0x3F00FF00 : 0x1AC7C0C0);
 			String name = EnchantmentNamer.demandDisplayName(this.id);
-			context.text(font, Component.literal(name), this.x + 4, this.y + 4, 0xFFFFFFFF);
+			context.drawString(font, McText.literal(name), this.x + 4, this.y + 4, 0xFFFFFFFF);
 			if (this.conflictKey != null) {
 				// refuse reason instead of the id: the row is red, nothing was stored
-				context.text(font, Component.translatable(this.conflictKey), this.x + 4, this.y + 12, 0xFFFF5555);
+				context.drawString(font, McText.translatable(this.conflictKey), this.x + 4, this.y + 12, 0xFFFF5555);
 			} else {
-				context.text(font, Component.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
+				context.drawString(font, McText.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
 			}
 
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
@@ -367,6 +512,26 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		@Override
 		public boolean mouseReleased(MouseButtonEvent click) {
 			return this.field.mouseReleased(click);
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return false;
 		}
+
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+		}
+
+		@Override
+		public boolean mouseReleased(double mouseX, double mouseY, int button) {
+			return McInput.mouseReleased(this.field, mouseX, mouseY, button);
+		}
+		//?}
 	}
 }

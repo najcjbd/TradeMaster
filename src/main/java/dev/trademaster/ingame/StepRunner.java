@@ -1,6 +1,7 @@
 package dev.trademaster.ingame;
 
-import dev.trademaster.core.RunSession;
+
+import dev.trademaster.compat.McText;import dev.trademaster.core.RunSession;
 import dev.trademaster.strategy.RerollStrategy.StepResult;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
@@ -35,7 +36,7 @@ public class StepRunner {
 		// an aborted chain must never report DONE: consumers treat DONE as
 		// success and would advance the phase on work that was never finished
 		if (this.aborted) {
-			return StepResult.failed(Component.literal("TradeMaster: step chain aborted"));
+			return StepResult.failed(McText.literal("TradeMaster: step chain aborted"));
 		}
 		if (this.finished) return StepResult.DONE;
 		if (this.failure != null) return StepResult.failed(this.failure);
@@ -61,7 +62,7 @@ public class StepRunner {
 			// step forever on the next pass
 			case FAILED, FAILED_FULL -> this.failure = result.reason() != null
 					? result.reason()
-					: Component.literal("TradeMaster: step failed");
+					: McText.literal("TradeMaster: step failed");
 			case RUNNING -> {}
 		}
 		return result;

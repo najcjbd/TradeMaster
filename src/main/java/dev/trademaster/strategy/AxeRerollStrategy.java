@@ -1,5 +1,8 @@
 package dev.trademaster.strategy;
 
+import dev.trademaster.compat.McLevel;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McText;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
@@ -72,12 +75,12 @@ public class AxeRerollStrategy implements RerollStrategy {
 		Minecraft mc = Minecraft.getInstance();
 		RunSession session = this.session;
 		if (mc.player == null || mc.level == null || mc.gameMode == null || session == null) {
-			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.phaseTicks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.phaseTicks > PHASE_TIMEOUT_TICKS) {
 			if (this.phase == Phase.PLACE) this.placementBlocked = true;
-			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			return StepResult.failed(McText.translatable("trademaster.error.reroll-timeout"));
 		}
 		return switch (this.phase) {
 			case BREAK -> tickBreak(mc, session);
@@ -104,7 +107,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// Never break empty-handed: put an axe into the main hand first.
 		switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 			case NONE -> {
-				return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+				return StepResult.failed(McText.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 			case WORKING -> {
 				return StepResult.RUNNING;
@@ -112,7 +115,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 			case READY -> {}
 		}
 		if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
-			return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+			return StepResult.failed(McText.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 		}
 
 		// update the break gate EVERY tick so a present reading resets it; only a
@@ -142,8 +145,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 				&& session.villager.position().distanceTo(Vec3.atCenterOf(lecternPos)) <= 2) {
 			this.tpReturnPos = player.position();
 			session.movementGuard.permitTp(new Vec3(session.villager.getX(), session.villager.getY(), session.villager.getZ()));
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					session.villager.getX(), session.villager.getY(), session.villager.getZ(), true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), session.villager.getX(), session.villager.getY(), session.villager.getZ(), true, false);
 		}
 		if (config.tpToItem) {
 			this.phase = Phase.PICKUP;
@@ -199,8 +201,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 			this.lastPickupTarget = nearest;
 			Vec3 target = nearest.position();
 			session.movementGuard.permitTp(target);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					target.x, target.y, target.z, true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), target.x, target.y, target.z, true, false);
 		}
 		// fresh drops have a short pickup delay; standing on them is enough, the
 		// phase timeout (or no remaining drops) ends the loop
@@ -212,15 +213,14 @@ public class AxeRerollStrategy implements RerollStrategy {
 		LocalPlayer player = mc.player;
 		BlockPos lecternPos = session.lecternPos;
 
-		if (lecternPos.getY() >= mc.level.getMaxY()) {
-			return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));
+		if (lecternPos.getY() >= McLevel.maxY(mc.level)) {
+			return StepResult.failed(McText.translatable("trademaster.message.out_of_bounds"));
 		}
 
 		// Teleport back immediately, like LTF does at the start of PLACE.
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
 			session.movementGuard.permitTp(this.tpReturnPos);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			this.tpReturnPos = null;
 		}
 
@@ -249,7 +249,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// empty-hand click that places nothing.
 		if (!LecternRestock.offhandHasWorkItem(player)) {
 			if (!LecternRestock.restock(player)) {
-				return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
+				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}
 			return StepResult.RUNNING;
 		}
@@ -264,7 +264,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 			// most often the villager keeps occupying the spot: recoverable by
 			// dispatching it, like the guardian ENSURE path does
 			this.placementBlocked = true;
-			return StepResult.failed(Component.translatable("trademaster.message.place_failed"));
+			return StepResult.failed(McText.translatable("trademaster.message.place_failed"));
 		}
 
 		LecternRestock.placeLectern(mc, player, lecternPos);
@@ -282,8 +282,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.getConnection() != null && this.session != null) {
 				this.session.movementGuard.permitTp(this.tpReturnPos);
-				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-						this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+				McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			}
 			this.tpReturnPos = null;
 		}

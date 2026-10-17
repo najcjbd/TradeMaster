@@ -1,7 +1,6 @@
 package dev.trademaster.matching;
 
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.trading.ItemCost;
 import net.minecraft.world.item.trading.MerchantOffer;
 
 import java.lang.reflect.Field;
@@ -62,7 +61,7 @@ public final class OfferCosts {
 		for (int i = chain.size() - 1; i >= 0; i--) {
 			for (Field field : chain.get(i).getDeclaredFields()) {
 				Class<?> raw = field.getType();
-				if (raw == ItemCost.class) {
+				if (dev.trademaster.compat.McTrade.isCostType(raw)) {
 					field.setAccessible(true);
 					found.add(field);
 					continue;
@@ -84,7 +83,7 @@ public final class OfferCosts {
 			return false;
 		}
 		java.lang.reflect.Type[] arguments = parameterized.getActualTypeArguments();
-		return arguments.length == 1 && arguments[0] == ItemCost.class;
+		return arguments.length == 1 && dev.trademaster.compat.McTrade.isCostType(arguments[0]);
 	}
 
 	/** The field as an ItemStack, or null when it cannot be read: a field that throws,
@@ -93,11 +92,10 @@ public final class OfferCosts {
 	private static ItemStack readAsStack(Object owner, Field field) {
 		try {
 			Object value = field.get(owner);
-			if (value instanceof ItemCost cost) return cost.itemStack();
 			if (value instanceof Optional<?> optional) {
-				return optional.orElse(null) instanceof ItemCost cost ? cost.itemStack() : null;
+				return dev.trademaster.compat.McTrade.costAsStack(optional.orElse(null));
 			}
-			return null;
+			return dev.trademaster.compat.McTrade.costAsStack(value);
 		} catch (Throwable ignored) {
 			return null;
 		}

@@ -8,6 +8,6 @@ public record OfferSnapshot(MerchantOffers offers) {
 	// server can rewrite on restock/profession change; copy so the snapshot
 	// stays valid even if it is consumed a tick later than today (R20-12)
 	public OfferSnapshot {
-		offers = offers.copy();
+		offers = dev.trademaster.compat.McTrade.copyOffers(offers);
 	}
 }

@@ -1,5 +1,10 @@
 package dev.trademaster.core;
 
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McTools;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
@@ -11,10 +16,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -51,7 +54,7 @@ public final class Preconditions {
 		Minecraft client = Minecraft.getInstance();
 		LocalPlayer player = client.player;
 		if (player == null || client.level == null) {
-			return Component.literal("not in game");
+			return McText.literal("not in game");
 		}
 
 		if (lectern == null) return missing("trademaster.settings.lecternPos");
@@ -71,7 +74,7 @@ public final class Preconditions {
 			if (TradeMatcher.goodMatchable(good)) goods.add(good);
 		}
 		if (enabled.isEmpty() && goods.isEmpty()) {
-			return Component.translatable("trademaster.message.no_enchantments");
+			return McText.translatable("trademaster.message.no_enchantments");
 		}
 
 		// What the specs declare: for each target, the SUM of that target's slots per
@@ -99,7 +102,7 @@ public final class Preconditions {
 						? target.maxPrice()
 						: (cost.count() < 0 ? 1 : cost.count());
 				if (needed <= 0) continue;
-				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
+				Item item = McRegistry.value(McBuiltIn.items(), cost.item());
 				if (item == null) continue;
 				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
 				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
@@ -120,7 +123,7 @@ public final class Preconditions {
 						? good.maxPrice()
 						: (cost.count() < 0 ? 1 : cost.count());
 				if (needed <= 0) continue;
-				Item item = BuiltInRegistries.ITEM.get(cost.item()).map(Holder::value).orElse(null);
+				Item item = McRegistry.value(McBuiltIn.items(), cost.item());
 				if (item == null) continue;
 				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
 				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
@@ -165,7 +168,7 @@ public final class Preconditions {
 			// with preventAxeBreaking on, nearly-broken tools are unusable (the strategies
 			// refuse them): don't count them, fail up front instead of mid-run at the first
 			// break
-			if (!toolCarried && (needAxe ? item instanceof AxeItem : item == needItem)) {
+			if (!toolCarried && (needAxe ? McTools.isAxe(stack) : item == needItem)) {
 				if (!config.preventAxeBreaking || !LecternRestock.toolNearlyBroken(stack)) toolCarried = true;
 				else toolNearlyBroken = true;
 			}
@@ -176,14 +179,14 @@ public final class Preconditions {
 		for (Map.Entry<Item, Integer> entry : required.entrySet()) {
 			int have = carried.getOrDefault(entry.getKey(), 0);
 			if (have < entry.getValue()) {
-				return Component.translatable("trademaster.message.material_short_item",
+				return McText.translatable("trademaster.message.material_short_item",
 						itemName(entry.getKey()), entry.getValue(), have);
 			}
 		}
 
 		if (workBlocks < 1 && !RigTarget.isWorkBlockAt(client.level, lectern)) {
 			// the default lectern keeps its established wording
-			return Component.translatable(RigTarget.workBlock() == net.minecraft.world.level.block.Blocks.LECTERN
+			return McText.translatable(RigTarget.workBlock() == net.minecraft.world.level.block.Blocks.LECTERN
 					? "trademaster.message.lectern_lost"
 					: "trademaster.message.workblock_lost");
 		}
@@ -191,7 +194,7 @@ public final class Preconditions {
 		if (!toolCarried) {
 			// "a tool is present but the durability guard rejects it" vs "no tool at all":
 			// report the same wording the runtime strategies use (R20-7)
-			return Component.translatable(toolNearlyBroken
+			return McText.translatable(toolNearlyBroken
 					? RigTarget.toolBreakingKey(workState, player)
 					: RigTarget.toolRequiredKey(workState, player));
 		}
@@ -206,8 +209,8 @@ public final class Preconditions {
 	}
 
 	private static Component missing(String positionKey) {
-		return Component.translatable("trademaster.message.precheck_failed",
-				Component.translatable(positionKey));
+		return McText.translatable("trademaster.message.precheck_failed",
+				McText.translatable(positionKey));
 	}
 
 	/** Emerald requirement: the configured floor, raised by the largest outstanding
@@ -264,7 +267,7 @@ public final class Preconditions {
 		List<ItemStack> pending = new ArrayList<>();
 		for (ItemStack cost : costs) {
 			if (cost == null || cost.isEmpty()) continue;
-			ResourceLocation id = BuiltInRegistries.ITEM.getKey(cost.getItem());
+			ResourceLocation id = McBuiltIn.items().getKey(cost.getItem());
 			if (config.isAirItem(id)) continue;
 			pending.add(cost);
 		}
@@ -286,7 +289,7 @@ public final class Preconditions {
 			if (stack.isEmpty()) continue;
 			for (int slot = 0; slot < pending.size(); slot++) {
 				if (need[slot] <= 0 || remaining[i] <= 0) continue;
-				if (ItemStack.isSameItemSameComponents(stack, pending.get(slot))) {
+				if (McItem.sameItemSameComponents(stack, pending.get(slot))) {
 					int take = Math.min(need[slot], remaining[i]);
 					need[slot] -= take;
 					remaining[i] -= take;
@@ -295,7 +298,7 @@ public final class Preconditions {
 		}
 		for (int slot = 0; slot < pending.size(); slot++) {
 			if (need[slot] > 0) {
-				return Component.translatable("trademaster.message.material_short_item",
+				return McText.translatable("trademaster.message.material_short_item",
 						itemName(pending.get(slot).getItem()), pending.get(slot).getCount(),
 						pending.get(slot).getCount() - need[slot]);
 			}

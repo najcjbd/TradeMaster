@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
@@ -10,22 +11,24 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.EnchantmentTags;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.inventory.ChestMenu;
-import net.minecraft.world.inventory.ContainerInput;
+import dev.trademaster.compat.McClicks;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McText;
+import dev.trademaster.compat.McInteract;
 import net.minecraft.world.inventory.GrindstoneMenu;
 import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.phys.BlockHitResult;
@@ -124,14 +127,14 @@ public class GrindstoneRecycler implements BookDisposal {
 		var player = mc.player;
 		if (player == null || mc.level == null || mc.gameMode == null) {
 			if (player != null) restoreHotbarSelection(player);
-			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 180) {
 			restoreHotbarSelection(player);
-			return StepResult.failed(Component.translatable("trademaster.error.grindstone-timeout"));
+			return StepResult.failed(McText.translatable("trademaster.error.grindstone-timeout"));
 		}
-		this.curseRegistry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+		this.curseRegistry = McRegistry.enchantments(mc.level);
 
 		switch (this.state) {
 			case SEEK -> {
@@ -151,9 +154,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					return StepResult.RUNNING;
 				}
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.grindstone), Direction.UP, this.grindstone, false);
-				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-				player.swing(InteractionHand.MAIN_HAND, true);
-				player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+				McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+				McPackets.swing(player, InteractionHand.MAIN_HAND);
 				this.openWait = 0;
 				this.state = State.AWAIT_OPEN;
 			}
@@ -198,8 +200,8 @@ public class GrindstoneRecycler implements BookDisposal {
 				if (this.waitTicks == 1 || this.waitTicks == 21 || this.waitTicks == 41) {
 					for (int i = 0; i < 3; i++) {
 						if (!player.containerMenu.slots.get(i).getItem().isEmpty()) {
-							mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-									i, 0, ContainerInput.QUICK_MOVE, player);
+							McClicks.click(mc.gameMode, player.containerMenu.containerId,
+									i, 0, McClicks.Click.QUICK_MOVE, player);
 							break;
 						}
 					}
@@ -237,8 +239,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.placeSlot = grindable.index;
 					this.preEnchanted = enchantedBooks;
 					this.prePlain = Preconditions.countItem(player, Items.BOOK);
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							grindable.index, 0, ContainerInput.QUICK_MOVE, player);
+					McClicks.click(mc.gameMode, player.containerMenu.containerId,
+							grindable.index, 0, McClicks.Click.QUICK_MOVE, player);
 					this.waitTicks = 0;
 					this.state = State.PLACE;
 					return StepResult.RUNNING;
@@ -253,8 +255,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					if (swapSlot < 0) {
 						return fail(player, "trademaster.message.curse_stage_failed");
 					}
-					if (player.getInventory().getSelectedSlot() != swapSlot) {
-						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
+					if (McPlayer.selectedSlot(player) != swapSlot) {
+						if (this.originalSlot < 0) this.originalSlot = McPlayer.selectedSlot(player);
 						Interactions.selectHotbarSlot(player, swapSlot);
 					}
 					this.stagedHotbarSlot = swapSlot;
@@ -314,8 +316,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					// lag resend — idempotent: once the first click landed the source
 					// slot is empty server-side and a second click moves nothing
 					if (!player.containerMenu.slots.get(this.placeSlot).getItem().isEmpty()) {
-						mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-								this.placeSlot, 0, ContainerInput.QUICK_MOVE, player);
+						McClicks.click(mc.gameMode, player.containerMenu.containerId,
+								this.placeSlot, 0, McClicks.Click.QUICK_MOVE, player);
 					}
 				}
 			}
@@ -325,8 +327,8 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 				ItemStack result = player.containerMenu.slots.get(2).getItem();
 				if (result.is(Items.BOOK)) {
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							2, 0, ContainerInput.QUICK_MOVE, player);
+					McClicks.click(mc.gameMode, player.containerMenu.containerId,
+							2, 0, McClicks.Click.QUICK_MOVE, player);
 					this.waitTicks = 0;
 					this.state = State.TAKE;
 				} else if (result.is(Items.ENCHANTED_BOOK)) {
@@ -356,8 +358,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					return fail(player, "trademaster.message.grind_take_failed");
 				} else if (this.waitTicks == 20 || this.waitTicks == 40) {
 					// lag resend — idempotent: an already-emptied result slot ignores it
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							2, 0, ContainerInput.QUICK_MOVE, player);
+					McClicks.click(mc.gameMode, player.containerMenu.containerId,
+							2, 0, McClicks.Click.QUICK_MOVE, player);
 				}
 			}
 			case CHEST_SEEK -> {
@@ -383,9 +385,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					return StepResult.RUNNING;
 				}
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(chest), Direction.UP, chest, false);
-				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-				player.swing(InteractionHand.MAIN_HAND, true);
-				player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+				McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+				McPackets.swing(player, InteractionHand.MAIN_HAND);
 				this.openWait = 0;
 				this.state = State.CHEST_AWAIT;
 			}
@@ -426,8 +427,8 @@ public class GrindstoneRecycler implements BookDisposal {
 						return toGrindstone(player);
 					}
 					this.stashSlot = target.index;
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							target.index, 0, ContainerInput.QUICK_MOVE, player);
+					McClicks.click(mc.gameMode, player.containerMenu.containerId,
+							target.index, 0, McClicks.Click.QUICK_MOVE, player);
 					this.waitTicks = 0;
 					return StepResult.RUNNING;
 				}
@@ -445,8 +446,8 @@ public class GrindstoneRecycler implements BookDisposal {
 				} else if (this.waitTicks == 20 || this.waitTicks == 40) {
 					// lag resend — idempotent, and only while the book is still there
 					if (player.containerMenu.slots.get(this.stashSlot).getItem().is(Items.ENCHANTED_BOOK)) {
-						mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-								this.stashSlot, 0, ContainerInput.QUICK_MOVE, player);
+						McClicks.click(mc.gameMode, player.containerMenu.containerId,
+								this.stashSlot, 0, McClicks.Click.QUICK_MOVE, player);
 					}
 				}
 			}
@@ -469,7 +470,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				if (invSlot < 0) {
 					// offhand: the raw swap packet has no client-side prediction, so
 					// the book only counts as staged once the server sync shows it
-					this.dropSlot = player.getInventory().getSelectedSlot();
+					this.dropSlot = McPlayer.selectedSlot(player);
 					this.dropStageOffhand = true;
 					this.dropStageSource = -1;
 					this.dropStageResent = false;
@@ -480,8 +481,8 @@ public class GrindstoneRecycler implements BookDisposal {
 							BlockPos.ZERO, Direction.DOWN));
 				} else if (invSlot < 9) {
 					this.dropSlot = invSlot;
-					if (player.getInventory().getSelectedSlot() != invSlot) {
-						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
+					if (McPlayer.selectedSlot(player) != invSlot) {
+						if (this.originalSlot < 0) this.originalSlot = McPlayer.selectedSlot(player);
 						Interactions.selectHotbarSlot(player, invSlot);
 					}
 					// already in the hotbar: straight to aiming (the SET_CARRIED_ITEM
@@ -498,8 +499,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					if (target < 0) {
 						return fail(player, "trademaster.message.drop_no_slot");
 					}
-					if (player.getInventory().getSelectedSlot() != target) {
-						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
+					if (McPlayer.selectedSlot(player) != target) {
+						if (this.originalSlot < 0) this.originalSlot = McPlayer.selectedSlot(player);
 						Interactions.selectHotbarSlot(player, target);
 					}
 					this.dropSlot = target;
@@ -508,8 +509,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageResent = false;
 					// the destination is an EMPTY hotbar slot (a full hotbar fails above),
 					// so the SWAP is a plain move: the source slot simply empties
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							inventoryMenuSlot(invSlot), target, ContainerInput.SWAP, player);
+					McClicks.click(mc.gameMode, player.containerMenu.containerId,
+							inventoryMenuSlot(invSlot), target, McClicks.Click.SWAP, player);
 				}
 				this.waitTicks = 0;
 				this.state = State.DROP_STAGE_WAIT;
@@ -556,8 +557,8 @@ public class GrindstoneRecycler implements BookDisposal {
 							}
 							this.dropStageResent = true;
 							this.waitTicks = 0;
-							mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-									inventoryMenuSlot(this.dropStageSource), this.dropSlot, ContainerInput.SWAP, player);
+							McClicks.click(mc.gameMode, player.containerMenu.containerId,
+									inventoryMenuSlot(this.dropStageSource), this.dropSlot, McClicks.Click.SWAP, player);
 							return StepResult.RUNNING;
 						}
 					}
@@ -650,8 +651,8 @@ public class GrindstoneRecycler implements BookDisposal {
 		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK)) return;
 		// the offhand must still carry exactly what the swap displaced: anything else
 		// means the player changed it, and moving it now would be theft
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
-		if (player.getInventory().getSelectedSlot() != slot) {
+		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		if (McPlayer.selectedSlot(player) != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}
 		player.connection.send(new ServerboundPlayerActionPacket(
@@ -695,11 +696,11 @@ public class GrindstoneRecycler implements BookDisposal {
 	private StepResult fail(net.minecraft.client.player.LocalPlayer player, String key) {
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 		restoreHotbarSelection(player);
-		return StepResult.failed(Component.translatable(key));
+		return StepResult.failed(McText.translatable(key));
 	}
 
 	private void restoreHotbarSelection(net.minecraft.client.player.LocalPlayer player) {
-		if (this.originalSlot >= 0 && player.getInventory().getSelectedSlot() != this.originalSlot) {
+		if (this.originalSlot >= 0 && McPlayer.selectedSlot(player) != this.originalSlot) {
 			Interactions.selectHotbarSlot(player, this.originalSlot);
 		}
 		this.originalSlot = -1;
@@ -756,16 +757,16 @@ public class GrindstoneRecycler implements BookDisposal {
 	public static boolean isCurseBook(ItemStack stack) {
 		Minecraft mc = Minecraft.getInstance();
 		return isCurseBook(stack, mc.level == null ? null
-				: mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT));
+				: McRegistry.enchantments(mc.level));
 	}
 
 	public static boolean isCurseBook(ItemStack stack, @Nullable Registry<Enchantment> registry) {
 		if (!stack.is(Items.ENCHANTED_BOOK)) return false;
-		ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
+		var enchantments = McEnchantments.of(stack);
 		if (enchantments.isEmpty()) return false;
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		for (Holder<Enchantment> holder : enchantments.keySet()) {
-			if (holder.is(EnchantmentTags.CURSE)) return true;
+			if (McEnchantments.isCurse(holder)) return true;
 			if (registry != null && !config.customCurseEnchantments.isEmpty()) {
 				ResourceLocation id = registry.getKey(holder.value());
 				if (id != null && config.customCurseEnchantments.contains(id.toString())) return true;

@@ -1,6 +1,7 @@
 package dev.trademaster.compat;
 
-import net.minecraft.core.Registry;
+
+import dev.trademaster.compat.McBuiltIn;import net.minecraft.core.Registry;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.item.enchantment.Enchantment;
@@ -9,7 +10,7 @@ import net.minecraft.world.item.enchantment.Enchantment;
  * Version-gated enchantment tag keys.
  *
  * <p>{@code net.minecraft.tags.EnchantmentTags} exists from 1.21. Before that the keys are
- * built by hand against the enchantment registry key: {@code Registries.ENCHANTMENT} from
+ * built by hand against the enchantment registry key: {@code McBuiltIn.enchantmentKey()} from
  * 1.19.3, {@code Registry.ENCHANTMENT_REGISTRY} before.
  */
 public final class McEnchantTags {

@@ -1,22 +1,19 @@
 package dev.trademaster.strategy;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.network.HashedStack;
-import net.minecraft.network.protocol.game.ServerboundContainerClickPacket;
 import net.minecraft.network.protocol.game.ServerboundPlayerActionPacket;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.network.protocol.game.ServerboundUseItemOnPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.inventory.ContainerInput;
-import net.minecraft.world.item.AxeItem;
+import dev.trademaster.compat.McClicks;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McTools;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.BlockGetter;
@@ -130,10 +127,15 @@ public final class LecternRestock {
 	public static void placeLectern(Minecraft mc, LocalPlayer player, BlockPos lecternPos) {
 		BlockHitResult hit = new BlockHitResult(
 				Vec3.atCenterOf(lecternPos), Direction.UP, lecternPos.below(), false);
+		// the prediction-sequence overload exists from 1.19; before that the packet is the
+		// plain (hand, hit) form.
+		//? if >=1.19 {
 		int sequence = mc.level.getBlockStatePredictionHandler().currentSequence();
 		player.connection.send(new ServerboundUseItemOnPacket(InteractionHand.OFF_HAND, hit, sequence));
-		player.swing(InteractionHand.OFF_HAND, true);
-		player.connection.send(new ServerboundSwingPacket(InteractionHand.OFF_HAND));
+		//?} else {
+		/*player.connection.send(new ServerboundUseItemOnPacket(InteractionHand.OFF_HAND, hit));*/
+		//?}
+		McPackets.swing(player, InteractionHand.OFF_HAND);
 	}
 
 	/** Marks a close-container batch: its effect is only visible once the menu is gone. */
@@ -182,23 +184,14 @@ public final class LecternRestock {
 				boolean itemInOffhand = !player.getOffhandItem().isEmpty();
 				var container = player.containerMenu;
 
-				ContainerInput pickupInput = ContainerInput.PICKUP;
-				Int2ObjectMap<HashedStack> emptyChangedSlots = new Int2ObjectOpenHashMap<>();
-				HashedStack emptyCarried = HashedStack.EMPTY;
 				// the server increments the state id after each accepted click; predict
 				// it for the follow-up packets or each mismatch forces a full resync
 				int stateId = container.getStateId();
 
-				player.connection.send(new ServerboundContainerClickPacket(
-						container.containerId, stateId, (short) i, (byte) 0,
-						pickupInput, emptyChangedSlots, emptyCarried));
-				player.connection.send(new ServerboundContainerClickPacket(
-						container.containerId, stateId + 1, (short) 45, (byte) 0,
-						pickupInput, emptyChangedSlots, emptyCarried));
+				McClicks.sendContainerClick(player, container.containerId, stateId, i, 0, McClicks.Click.PICKUP);
+				McClicks.sendContainerClick(player, container.containerId, stateId + 1, 45, 0, McClicks.Click.PICKUP);
 				if (itemInOffhand) {
-					player.connection.send(new ServerboundContainerClickPacket(
-							container.containerId, stateId + 2, (short) i, (byte) 0,
-							pickupInput, emptyChangedSlots, emptyCarried));
+					McClicks.sendContainerClick(player, container.containerId, stateId + 2, i, 0, McClicks.Click.PICKUP);
 				}
 				markRestockInFlight(i >= 36 ? i - 36 : i);
 				return true;
@@ -207,7 +200,7 @@ public final class LecternRestock {
 			for (int i = 0; i < 9; i++) {
 				if (player.getInventory().getItem(i).getItem() != work) continue;
 				rememberSelection(player);
-				if (i != player.getInventory().getSelectedSlot()) {
+				if (i != McPlayer.selectedSlot(player)) {
 					Interactions.selectHotbarSlot(player, i);
 				}
 				player.connection.send(new ServerboundPlayerActionPacket(
@@ -261,7 +254,7 @@ public final class LecternRestock {
 	private static ToolState equipChosenTool(Minecraft mc, LocalPlayer player, Item tool) {
 		var inventory = player.getInventory();
 		boolean guardDurability = TradeMasterConfig.INSTANCE.preventAxeBreaking;
-		ItemStack held = inventory.getSelectedItem();
+		ItemStack held = McPlayer.selectedItem(player);
 		// a nearly-broken copy already in hand must not short-circuit: the skip loop
 		// below still has to run so a healthy spare can replace it
 		if (held.getItem() == tool && (!guardDurability || !toolNearlyBroken(held))) {
@@ -288,14 +281,14 @@ public final class LecternRestock {
 	private static ToolState bringLegacyAxeToHand(Minecraft mc, LocalPlayer player) {
 		var inventory = player.getInventory();
 		boolean guardDurability = TradeMasterConfig.INSTANCE.preventAxeBreaking;
-		ItemStack held = inventory.getSelectedItem();
-		if (held.getItem() instanceof AxeItem && (!guardDurability || !toolNearlyBroken(held))) {
+		ItemStack held = McPlayer.selectedItem(player);
+		if (McTools.isAxe(held) && (!guardDurability || !toolNearlyBroken(held))) {
 			return ToolState.READY;
 		}
 		int brokenFallback = -1;
 		for (int i = 0; i < 36; i++) {
 			ItemStack stack = inventory.getItem(i);
-			if (!(stack.getItem() instanceof AxeItem)) continue;
+			if (!(McTools.isAxe(stack))) continue;
 			if (guardDurability && toolNearlyBroken(stack)) {
 				if (brokenFallback < 0) brokenFallback = i;
 				continue;
@@ -303,7 +296,7 @@ public final class LecternRestock {
 			return equipTool(mc, player, i);
 		}
 		ItemStack offhand = player.getOffhandItem();
-		if (offhand.getItem() instanceof AxeItem
+		if (McTools.isAxe(offhand)
 				&& (!guardDurability || !toolNearlyBroken(offhand) || brokenFallback < 0)) {
 			return equipOffhandTool(mc, player);
 		}
@@ -325,8 +318,8 @@ public final class LecternRestock {
 			return ToolState.WORKING;
 		}
 		rememberSelection(player);
-		mc.gameMode.handleContainerInput(0, 45, player.getInventory().getSelectedSlot(),
-				ContainerInput.SWAP, player);
+		McClicks.click(mc.gameMode, 0, 45, McPlayer.selectedSlot(player),
+				McClicks.Click.SWAP, player);
 		return ToolState.WORKING;
 	}
 
@@ -336,7 +329,7 @@ public final class LecternRestock {
 	private static int originalSelected = -1;
 
 	private static void rememberSelection(LocalPlayer player) {
-		if (originalSelected < 0) originalSelected = player.getInventory().getSelectedSlot();
+		if (originalSelected < 0) originalSelected = McPlayer.selectedSlot(player);
 	}
 
 	/** Puts the hand back on the slot it was on before the run started moving items.
@@ -350,7 +343,7 @@ public final class LecternRestock {
 		if (slot < 0) return;
 		LocalPlayer player = Minecraft.getInstance().player;
 		if (player == null) return;
-		if (player.getInventory().getSelectedSlot() != slot) {
+		if (McPlayer.selectedSlot(player) != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}
 	}
@@ -369,8 +362,8 @@ public final class LecternRestock {
 			return ToolState.WORKING;
 		}
 		// InventoryMenu maps main-inventory slots 9-35 onto themselves
-		mc.gameMode.handleContainerInput(0, slot, player.getInventory().getSelectedSlot(),
-				ContainerInput.SWAP, player);
+		McClicks.click(mc.gameMode, 0, slot, McPlayer.selectedSlot(player),
+				McClicks.Click.SWAP, player);
 		return ToolState.WORKING;
 	}
 
@@ -382,7 +375,7 @@ public final class LecternRestock {
 
 	/** Whether the held tool is at or below the preventAxeBreaking durability threshold. */
 	public static boolean toolNearlyBroken(LocalPlayer player) {
-		return toolNearlyBroken(player.getInventory().getSelectedItem());
+		return toolNearlyBroken(McPlayer.selectedItem(player));
 	}
 
 	/**
@@ -402,8 +395,8 @@ public final class LecternRestock {
 
 	/** One main-hand breaking tick on the block, swinging visibly and server-side. */
 	public static void breakBlock(Minecraft mc, LocalPlayer player, BlockPos pos) {
-		player.swing(InteractionHand.MAIN_HAND, true);
+		McPackets.swingOnly(player, InteractionHand.MAIN_HAND);
 		mc.gameMode.continueDestroyBlock(pos, Direction.UP);
-		player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+		McPackets.sendSwingPacket(player, InteractionHand.MAIN_HAND);
 	}
 }

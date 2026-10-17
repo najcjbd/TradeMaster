@@ -2,6 +2,9 @@ package dev.trademaster.detection;
 
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McItem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.Items;
@@ -289,21 +292,21 @@ public final class DetectionHub {
 			MerchantOffer oa = a.get(i);
 			MerchantOffer ob = b.get(i);
 
-			if (!ItemStack.isSameItem(oa.getResult(), ob.getResult())) return false;
+			if (!McItem.sameItem(oa.getResult(), ob.getResult())) return false;
 
 			if (oa.getResult().is(Items.ENCHANTED_BOOK)) {
-				var enchantmentsA = EnchantmentHelper.getEnchantmentsForCrafting(oa.getResult());
-				var enchantmentsB = EnchantmentHelper.getEnchantmentsForCrafting(ob.getResult());
+				var enchantmentsA = McEnchantments.of(oa.getResult());
+				var enchantmentsB = McEnchantments.of(ob.getResult());
 				if (enchantmentsA.size() != enchantmentsB.size()) return false;
 
 				for (var entryA : enchantmentsA.entrySet()) {
-					var idA = entryA.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-					int levelA = entryA.getIntValue();
+					var idA = entryA.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+					int levelA = entryA.getValue();
 
 					boolean found = false;
 					for (var entryB : enchantmentsB.entrySet()) {
-						var idB = entryB.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-						if (idA != null && idB != null && idA.equals(idB) && levelA == entryB.getIntValue()) {
+						var idB = entryB.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+						if (idA != null && idB != null && idA.equals(idB) && levelA == entryB.getValue()) {
 							found = true;
 							break;
 						}
@@ -312,9 +315,9 @@ public final class DetectionHub {
 				}
 			}
 
-			if (!ItemStack.isSameItem(oa.getBaseCostA(), ob.getBaseCostA())
+			if (!McItem.sameItem(oa.getBaseCostA(), ob.getBaseCostA())
 					|| oa.getBaseCostA().getCount() != ob.getBaseCostA().getCount()) return false;
-			if (!ItemStack.isSameItem(oa.getCostB(), ob.getCostB())
+			if (!McItem.sameItem(oa.getCostB(), ob.getCostB())
 					|| oa.getCostB().getCount() != ob.getCostB().getCount()) return false;
 		}
 

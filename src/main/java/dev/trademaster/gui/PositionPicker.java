@@ -1,5 +1,7 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.compat.McPlayer;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RerollController;
 import net.minecraft.ChatFormatting;
@@ -39,14 +41,14 @@ public final class PositionPicker {
 		// same PASS-callback problem as the hotkey path: an armed pick during a
 		// run would silently never capture, so refuse to arm it
 		if (RerollController.isRunning()) {
-			message(Component.translatable("trademaster.pick.busy").withStyle(ChatFormatting.RED));
+			message(McText.translatable("trademaster.pick.busy").withStyle(ChatFormatting.RED));
 			return false;
 		}
 		boolean replacing = pendingSlot != null;
 		pendingSlot = slot;
 		pendingSetter = setter;
 		armedDimension = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.dimension() : null;
-		message(Component.translatable(replacing ? "trademaster.pick.replaced" : "trademaster.pick.prompt")
+		message(McText.translatable(replacing ? "trademaster.pick.replaced" : "trademaster.pick.prompt")
 				.withStyle(ChatFormatting.YELLOW));
 		return true;
 	}
@@ -63,7 +65,7 @@ public final class PositionPicker {
 		// while running the use callbacks PASS, so an armed pick would silently
 		// never capture; a capture mid-run could also corrupt the rig positions
 		if (RerollController.isRunning()) {
-			message(Component.translatable("trademaster.pick.busy").withStyle(ChatFormatting.RED));
+			message(McText.translatable("trademaster.pick.busy").withStyle(ChatFormatting.RED));
 			return;
 		}
 		HitResult hit = client.player.pick(5.0, 0.0F, false);
@@ -74,12 +76,12 @@ public final class PositionPicker {
 			pos = entityHit.getEntity().blockPosition();
 		}
 		if (pos == null) {
-			message(Component.translatable("trademaster.pick.prompt").withStyle(ChatFormatting.RED));
+			message(McText.translatable("trademaster.pick.prompt").withStyle(ChatFormatting.RED));
 			return;
 		}
 		Slot slot = nextSlotWithNullPosition();
 		if (slot == null) {
-			message(Component.translatable("trademaster.pick.all_set").withStyle(ChatFormatting.RED));
+			message(McText.translatable("trademaster.pick.all_set").withStyle(ChatFormatting.RED));
 			return;
 		}
 		applyTo(slot, pos);
@@ -91,12 +93,12 @@ public final class PositionPicker {
 		if (client.level != null && armedDimension != null && client.level.dimension() != armedDimension) {
 			// coordinates from another dimension would brick the rig: refuse and
 			// keep the pick armed so the user can return and capture properly
-			message(Component.translatable("trademaster.pick.wrong_dimension").withStyle(ChatFormatting.RED));
+			message(McText.translatable("trademaster.pick.wrong_dimension").withStyle(ChatFormatting.RED));
 			return InteractionResult.PASS;
 		}
 		pendingSetter.accept(pos.immutable());
 		TradeMasterConfig.INSTANCE.save();
-		message(Component.translatable("trademaster.pick.captured", pos.toShortString()).withStyle(ChatFormatting.GREEN));
+		message(McText.translatable("trademaster.pick.captured", pos.toShortString()).withStyle(ChatFormatting.GREEN));
 		pendingSlot = null;
 		pendingSetter = null;
 		armedDimension = null;
@@ -117,7 +119,7 @@ public final class PositionPicker {
 		pendingSlot = null;
 		pendingSetter = null;
 		armedDimension = null;
-		message(Component.translatable("trademaster.pick.cancelled").withStyle(ChatFormatting.RED));
+		message(McText.translatable("trademaster.pick.cancelled").withStyle(ChatFormatting.RED));
 	}
 
 	/** An armed pick met the running pipeline: drop it and say why — the use
@@ -128,7 +130,7 @@ public final class PositionPicker {
 		pendingSlot = null;
 		pendingSetter = null;
 		armedDimension = null;
-		message(Component.translatable("trademaster.pick.cancelled_running").withStyle(ChatFormatting.RED));
+		message(McText.translatable("trademaster.pick.cancelled_running").withStyle(ChatFormatting.RED));
 	}
 
 	private static @Nullable Slot nextSlotWithNullPosition() {
@@ -155,13 +157,13 @@ public final class PositionPicker {
 			case GRINDSTONE -> c.grindstonePos = pos;
 		}
 		c.save();
-		message(Component.translatable("trademaster.pick.captured", pos.toShortString()).withStyle(ChatFormatting.GREEN));
+		message(McText.translatable("trademaster.pick.captured", pos.toShortString()).withStyle(ChatFormatting.GREEN));
 	}
 
 	private static void message(Component text) {
 		Minecraft client = Minecraft.getInstance();
 		if (client.player != null) {
-			client.player.sendSystemMessage(Component.literal("[Trade Master] ").append(text));
+			McPlayer.sendSystemMessage(client.player, McText.literal("[Trade Master] ").append(text));
 		}
 	}
 }

@@ -38,4 +38,19 @@ public interface TradeMasterPlatform {
 	default boolean hasMalilib() {
 		return false;
 	}
+
+	/** Display label for one of the mod's keybinds, identified by a stable id
+	 * ({@code "open_menu"}, {@code "start_stop"}, {@code "pick_position"}), or {@code "-"}
+	 * when the loader exposes none. The keybinds tab reads this so the shared GUI never
+	 * touches a loader keybind type. */
+	default String keybindLabel(String id) {
+		return "-";
+	}
+
+	/** Whether a loader-provided config screen is currently open. maLiLib only pushes its
+	 * edits into the model when it CLOSES, so {@code RerollController.start()} must refuse
+	 * while one is up; loaders with no such screen always return false. */
+	default boolean isConfigScreenOpen() {
+		return false;
+	}
 }

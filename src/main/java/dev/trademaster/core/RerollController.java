@@ -1,7 +1,15 @@
 package dev.trademaster.core;
 
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
+import dev.trademaster.compat.McClient;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McVillager;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.ConfigPersistence;
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.EnchantmentTarget;
@@ -32,15 +40,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Holder;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
-import net.minecraft.network.chat.contents.TranslatableContents;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.InteractionResult;
-import net.minecraft.world.entity.npc.villager.Villager;
-import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import net.minecraft.world.entity.npc.Villager;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.Item;
@@ -248,7 +253,7 @@ public final class RerollController {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (isRunning()) {
-			chat(Component.translatable("commands.trademaster.already_running").withStyle(ChatFormatting.RED));
+			chat(McText.translatable("commands.trademaster.already_running").withStyle(ChatFormatting.RED));
 			return false;
 		}
 		if (player == null || mc.level == null) return false;
@@ -257,7 +262,7 @@ public final class RerollController {
 		// or a hotkey while the settings screen is open with an unfocused draft, and the
 		// "missing position" guard below reads the config the row has not written yet —
 		// without this a run is refused with a bogus "position missing"
-		if (Minecraft.getInstance().gui.screen()
+		if (McClient.screen(Minecraft.getInstance())
 				instanceof dev.trademaster.gui.TradeMasterScreen settingsScreen) {
 			settingsScreen.flushSettingsDrafts();
 		}
@@ -267,8 +272,8 @@ public final class RerollController {
 				: config.summonButtonPos == null ? "trademaster.settings.summonButtonPos"
 				: config.sendAwayButtonPos == null ? "trademaster.settings.sendAwayButtonPos" : null;
 		if (missingPosKey != null) {
-			chat(Component.translatable("trademaster.message.precheck_failed",
-					Component.translatable(missingPosKey)).withStyle(ChatFormatting.RED));
+			chat(McText.translatable("trademaster.message.precheck_failed",
+					McText.translatable(missingPosKey)).withStyle(ChatFormatting.RED));
 			return false;
 		}
 
@@ -276,10 +281,10 @@ public final class RerollController {
 		// fallback: once real coordinates are configured, a later loss of them must
 		// ask for confirmation again
 		if (regionConfigured()) regionFallbackConfirmed = false;
-		// maLiLib's own config screen only pushes its edits to the model on CLOSE:
+		// a loader config screen (maLiLib) only pushes its edits to the model on CLOSE:
 		// starting now would snapshot the pre-edit values, so refuse and say why
-		if (dev.trademaster.config.MaliLibAdapter.isConfigScreenOpen()) {
-			chat(Component.translatable("trademaster.message.config_screen_open")
+		if (dev.trademaster.platform.Platforms.get().isConfigScreenOpen()) {
+			chat(McText.translatable("trademaster.message.config_screen_open")
 					.withStyle(ChatFormatting.RED));
 			return false;
 		}
@@ -294,14 +299,14 @@ public final class RerollController {
 		// with /trademaster goon
 		if (!regionConfigured() && !regionFallbackConfirmed) {
 			regionFallbackPending = true;
-			chat(Component.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
+			chat(McText.translatable("trademaster.message.region_fallback_prompt", sphereRadius())
 					.withStyle(ChatFormatting.YELLOW));
 			return false;
 		}
 		// a successful start consumes the pending request
 		regionFallbackPending = false;
 		if (!regionConfigured()) {
-			chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
+			chat(McText.translatable("trademaster.message.region_fallback_active", sphereRadius())
 					.withStyle(ChatFormatting.YELLOW));
 		}
 
@@ -326,7 +331,7 @@ public final class RerollController {
 		warnRigTarget();
 		warnUnmatchableDemands(mc);
 		if (s.matcher.isEmpty()) {
-			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
+			chat(McText.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
 		}
 		// material/axe/lectern failures must reject the start right here: deferring
@@ -346,9 +351,9 @@ public final class RerollController {
 		// pipeline never ticks (the Start button already closes it on the same terms).
 		// NOTE: only these two screens are handled — a chest/anvil screen open at start
 		// still pauses a singleplayer run.
-		if (mc.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen
-				|| mc.gui.screen() instanceof dev.trademaster.gui.TradeMasterScreen) {
-			mc.gui.setScreen(null);
+		if (McClient.screen(mc) instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen
+				|| McClient.screen(mc) instanceof dev.trademaster.gui.TradeMasterScreen) {
+			McClient.setScreen(mc, null);
 		}
 		closeMerchantMenuIfOpen(mc);
 
@@ -359,7 +364,7 @@ public final class RerollController {
 		PositionPicker.cancel();
 		loggedOnce.clear();
 		session = s;
-		sessionDimension = mc.level == null ? null : mc.level.dimension().identifier();
+		sessionDimension = mc.level == null ? null : McRegistry.keyId(mc.level.dimension());
 		runTicks = 0;
 		professionHealCycles = 0;
 		strayChestTicks = 0;
@@ -380,16 +385,16 @@ public final class RerollController {
 			}
 		}
 		enter(Phase.PRECHECK);
-		chat(Component.translatable("trademaster.message.started").withStyle(ChatFormatting.GREEN));
+		chat(McText.translatable("trademaster.message.started").withStyle(ChatFormatting.GREEN));
 		return true;
 	}
 
 	public static void stopManual() {
 		if (!isRunning()) {
-			chat(Component.translatable("commands.trademaster.not_running").withStyle(ChatFormatting.RED));
+			chat(McText.translatable("commands.trademaster.not_running").withStyle(ChatFormatting.RED));
 			return;
 		}
-		stop(Component.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
+		stop(McText.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
 	}
 
 	public static String statusText() {
@@ -403,18 +408,18 @@ public final class RerollController {
 			return cachedStatusText;
 		}
 		String base = switch (phase) {
-			case IDLE -> Component.translatable("trademaster.status.idle").getString();
-			case PRECHECK -> Component.translatable("trademaster.status.precheck").getString();
-			case CHECK_TRADE -> Component.translatable("trademaster.status.check").getString();
-			case REROLL -> Component.translatable("trademaster.status.break").getString();
-			case SUMMON -> Component.translatable("trademaster.status.summon").getString();
-			case AWAIT_VILLAGER -> Component.translatable("trademaster.status.await_villager").getString();
-			case ENSURE_LECTERN -> Component.translatable("trademaster.status.place").getString();
-			case WAIT_PROFESSION -> Component.translatable("trademaster.status.wait_profession").getString();
-			case LOCK -> Component.translatable("trademaster.status.lock").getString();
-			case NAME -> Component.translatable("trademaster.status.name").getString();
-			case SEND_AWAY -> Component.translatable("trademaster.status.send_away").getString();
-			case DEPOSIT -> Component.translatable("trademaster.status.deposit").getString();
+			case IDLE -> McText.translatable("trademaster.status.idle").getString();
+			case PRECHECK -> McText.translatable("trademaster.status.precheck").getString();
+			case CHECK_TRADE -> McText.translatable("trademaster.status.check").getString();
+			case REROLL -> McText.translatable("trademaster.status.break").getString();
+			case SUMMON -> McText.translatable("trademaster.status.summon").getString();
+			case AWAIT_VILLAGER -> McText.translatable("trademaster.status.await_villager").getString();
+			case ENSURE_LECTERN -> McText.translatable("trademaster.status.place").getString();
+			case WAIT_PROFESSION -> McText.translatable("trademaster.status.wait_profession").getString();
+			case LOCK -> McText.translatable("trademaster.status.lock").getString();
+			case NAME -> McText.translatable("trademaster.status.name").getString();
+			case SEND_AWAY -> McText.translatable("trademaster.status.send_away").getString();
+			case DEPOSIT -> McText.translatable("trademaster.status.deposit").getString();
 		};
 		// the "attempt N" suffix is about REROLLS: in LOCK/NAME/SEND_AWAY/DEPOSIT it
 		// read as if those steps were being retried
@@ -424,7 +429,7 @@ public final class RerollController {
 		};
 		cachedStatusText = !rerolling || tries <= 0
 				? base
-				: base + Component.translatable("trademaster.status.tries", tries).getString();
+				: base + McText.translatable("trademaster.status.tries", tries).getString();
 		cachedStatusPhase = phase;
 		cachedStatusTries = tries;
 		cachedStatusLang = lang;
@@ -443,15 +448,15 @@ public final class RerollController {
 		// and would stall forever, and respawn would later trip the movement
 		// guard with a misleading "player moved" message
 		if (player.isDeadOrDying()) {
-			stop(Component.translatable("trademaster.message.player_died"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.player_died"), ChatFormatting.RED);
 			return;
 		}
 		// a dimension change mid-run (portal, server teleport) leaves every stored
 		// position behind: the pipeline would flail at empty coordinates. Compared by
 		// DIMENSION, not by level identity, so a same-dimension reconnect is untouched
 		if (sessionDimension != null
-				&& !client.level.dimension().identifier().equals(sessionDimension)) {
-			stop(Component.translatable("trademaster.message.dimension_changed"), ChatFormatting.RED);
+				&& !McRegistry.keyId(client.level.dimension()).equals(sessionDimension)) {
+			stop(McText.translatable("trademaster.message.dimension_changed"), ChatFormatting.RED);
 			return;
 		}
 		// vanilla skips every block interaction while sneaking with a non-empty
@@ -460,7 +465,7 @@ public final class RerollController {
 		if (player.isShiftKeyDown()) {
 			if (!sneakPaused) {
 				sneakPaused = true;
-				chat(Component.translatable("trademaster.message.sneak_paused").withStyle(ChatFormatting.YELLOW));
+				chat(McText.translatable("trademaster.message.sneak_paused").withStyle(ChatFormatting.YELLOW));
 			}
 			return;
 		}
@@ -483,7 +488,7 @@ public final class RerollController {
 			comboHuntPrices.clear();
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty() && !finalizingRun()) {
-				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 				return;
 			}
 		}
@@ -501,7 +506,7 @@ public final class RerollController {
 			debug("target config edited mid-run, rebuilding needs");
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty() && !finalizingRun()) {
-				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 				return;
 			}
 		}
@@ -511,7 +516,7 @@ public final class RerollController {
 		// factory only re-reads it at deposit time, so a mid-run change would
 		// silently switch how books are disposed of — stop the normal way instead
 		if (grindstoneSnapshotValid && grindstoneConfigChanged(config)) {
-			stop(Component.translatable("trademaster.message.grindstone_config_changed"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.grindstone_config_changed"), ChatFormatting.RED);
 			return;
 		}
 		// the staging area is part of the running rig too: losing the region coords
@@ -525,11 +530,11 @@ public final class RerollController {
 			// to the running rig: switching any of them mid-run makes the pipeline work the old
 			// spot with the new rules (or break/place a block that is not there). Stop the
 			// normal way instead of switching under the pipeline.
-			stop(Component.translatable("trademaster.message.rig_target_config_changed"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.rig_target_config_changed"), ChatFormatting.RED);
 			return;
 		}
 		if (snapRegionConfigured && !regionConfigured()) {
-			stop(Component.translatable("trademaster.message.region_broken"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.region_broken"), ChatFormatting.RED);
 			return;
 		}
 		if (!snapRegionConfigured && regionConfigured()) {
@@ -543,11 +548,11 @@ public final class RerollController {
 		}
 		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
 		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
-			stop(Component.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
 			return;
 		}
 		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks) {
-			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
 		phaseTicks++;
@@ -563,15 +568,15 @@ public final class RerollController {
 			String text = statusText();
 			if (!text.equals(lastOverlayText)) {
 				lastOverlayText = text;
-				lastOverlayComponent = Component.literal(text);
+				lastOverlayComponent = McText.literal(text);
 			}
-			client.gui.hud.setOverlayMessage(lastOverlayComponent, false);
+			McClient.setOverlayMessage(client, lastOverlayComponent, false);
 		} else if (lastOverlayText != null) {
 			// turned off mid-run: drop the stale line instead of leaving it on screen
 			// until the next stop
 			lastOverlayText = null;
 			lastOverlayComponent = null;
-			client.gui.hud.setOverlayMessage(Component.empty(), false);
+			McClient.setOverlayMessage(client, McText.empty(), false);
 		}
 
 		// a dropped depositor can have a chest-open click in flight: the menu
@@ -730,7 +735,7 @@ public final class RerollController {
 		if (!Preconditions.hasFreeSlot(player)) {
 			depositor = createBookDisposal();
 			if (depositor == null) {
-				stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+				stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 			} else {
 				enter(Phase.DEPOSIT);
 			}
@@ -766,7 +771,7 @@ public final class RerollController {
 			// already squatting at the detection point would block later arrivals
 			// and can never become a librarian: send it away first
 			boolean blockerAtArrival = atArrival.stream()
-					.anyMatch(v -> !v.isBaby() && unusableProfession(v.getVillagerData().profession()));
+					.anyMatch(v -> !v.isBaby() && unusableProfession(McVillager.profession(v)));
 			if (blockerAtArrival) {
 				debug("precheck: unusable villager at detection point, sending away first");
 				sendAwayPresser = null;
@@ -800,7 +805,7 @@ public final class RerollController {
 				// everything depositable is gone but the inventory is still full
 				// (non-book items): re-running PRECHECK would bounce straight back
 				// here and open/close the chests forever
-				stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+				stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 				return;
 			}
 			enter(Phase.PRECHECK);
@@ -840,19 +845,19 @@ public final class RerollController {
 			releaseCheck();
 			if (!dispenserUnsetWarned) {
 				dispenserUnsetWarned = true;
-				notice(Component.translatable("trademaster.message.dispenser_unset"));
+				notice(McText.translatable("trademaster.message.dispenser_unset"));
 			}
 			return true;
 		}
 		LocalPlayer dispenserPlayer = Minecraft.getInstance().player;
 		// a coordinate the player cannot REACH is as good as unset: the open would just
 		// fail and we would wait a minute for nothing, so treat it like a parse failure
-		if (dispenserPlayer == null || !dispenserPlayer.isWithinBlockInteractionRange(pos, 1.0)) {
+		if (dispenserPlayer == null || !McPlayer.withinBlockInteractionRange(dispenserPlayer, pos, 1.0)) {
 			// as above: an unreachable position must not leave a wait (or an open menu) behind
 			releaseCheck();
 			if (!dispenserOutOfReachWarned) {
 				dispenserOutOfReachWarned = true;
-				chat(Component.translatable("trademaster.message.dispenser_out_of_reach")
+				chat(McText.translatable("trademaster.message.dispenser_out_of_reach")
 						.withStyle(ChatFormatting.YELLOW));
 			}
 			return true;
@@ -884,7 +889,7 @@ public final class RerollController {
 				// the position holds no dispenser (wrong coordinate, or the block was
 				// replaced): the open can never succeed, so say so and stop
 				dispenserCheck = null;
-				stop(Component.translatable("trademaster.message.dispenser_not_a_dispenser"),
+				stop(McText.translatable("trademaster.message.dispenser_not_a_dispenser"),
 						ChatFormatting.RED);
 				return false;
 			}
@@ -893,7 +898,7 @@ public final class RerollController {
 				// walled-off / broken dispenser
 				dispenserCheck = null;
 				if (++dispenserFailedAttempts >= 3) {
-					stop(Component.translatable("trademaster.message.dispenser_open_failed"),
+					stop(McText.translatable("trademaster.message.dispenser_open_failed"),
 							ChatFormatting.RED);
 					return false;
 				}
@@ -986,7 +991,7 @@ public final class RerollController {
 			// own: skip it and keep waiting (same trap as findArrivedVillager —
 			// it could never claim the lectern)
 			if (villager.isBaby()) continue;
-			var profession = villager.getVillagerData().profession();
+			var profession = McVillager.profession(villager);
 			if (unusableProfession(profession)) {
 				// a nitwit can never take a profession, and an employed
 				// non-librarian will never switch to one at this lectern: never
@@ -1085,8 +1090,8 @@ public final class RerollController {
 		nonLibrarianTicks = 0;
 		urgentProfessionHeal = false;
 		slowInteractDelay = 0;
-		if (client.gui.screen() instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
-			client.gui.setScreen(null);
+		if (McClient.screen(client) instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
+			McClient.setScreen(client, null);
 		}
 		closeMerchantMenuIfOpen(client);
 		sendAwayPresser = null;
@@ -1172,7 +1177,7 @@ public final class RerollController {
 			}
 			return;
 		}
-		if (s.villager.getVillagerData().profession().is(RigTarget.professionKey())) {
+		if (McVillager.profession(s.villager).is(RigTarget.professionKey())) {
 			urgentProfessionHeal = false;
 			checkLook.reset();
 			enter(Phase.CHECK_TRADE);
@@ -1186,7 +1191,7 @@ public final class RerollController {
 		if (phaseTicks % scanInterval != 0) return;
 		Villager found = findArrivedVillager(client, s.lecternPos);
 		if (found != null && found != s.villager
-				&& found.getVillagerData().profession().is(RigTarget.professionKey())) {
+				&& McVillager.profession(found).is(RigTarget.professionKey())) {
 			debug("wait-profession: stale reference, switched to librarian at arrival point");
 			s.villager = found;
 			professionHealCycles = 0;
@@ -1214,7 +1219,7 @@ public final class RerollController {
 			professionHealCycles++;
 			boolean lecternThere = LecternRestock.isWorkBlockAt(client.level, s.lecternPos);
 			debug("wait-profession: no profession (read="
-					+ professionName(s.villager.getVillagerData().profession()) + ", lectern="
+					+ professionName(McVillager.profession(s.villager)) + ", lectern="
 					+ (lecternThere ? "present" : "missing") + ", cycle " + professionHealCycles + ") -> "
 					+ (lecternThere ? "refresh lectern" : "re-place lectern"));
 			guardian = lecternThere ? LecternGuardian.refresh() : new LecternGuardian();
@@ -1228,7 +1233,7 @@ public final class RerollController {
 		// that must be wall-clock is the detection hub's (a packet arriving 3s after
 		// the interact is not this check's answer) and it enforces that itself.
 		if (phaseTimedOut(20 * 60)) {
-			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
 		if (s.villager == null || !s.villager.isAlive()) {
@@ -1250,7 +1255,7 @@ public final class RerollController {
 				return;
 			}
 		}
-		if (!s.villager.getVillagerData().profession().is(RigTarget.professionKey())) {
+		if (!McVillager.profession(s.villager).is(RigTarget.professionKey())) {
 			// After a reroll the villager has to re-claim the lectern; under lag
 			// that can take a long time or fail outright. Waiting here used to
 			// stall until the phase timeout killed the run — instead, allow a
@@ -1260,7 +1265,7 @@ public final class RerollController {
 			if (++nonLibrarianTicks > healGrace) {
 				debug("check-trade: villager lost the librarian profession for "
 						+ (healGrace / 20) + "s"
-						+ " (read=" + professionName(s.villager.getVillagerData().profession())
+						+ " (read=" + professionName(McVillager.profession(s.villager))
 						+ "), falling back to wait-profession");
 				nonLibrarianTicks = 0;
 				urgentProfessionHeal = true;
@@ -1287,7 +1292,7 @@ public final class RerollController {
 			detectionPending = false;
 			Villager replacement = findArrivedVillager(client, s.lecternPos);
 			if (replacement != null && replacement != s.villager
-					&& replacement.getVillagerData().profession().is(RigTarget.professionKey())) {
+					&& McVillager.profession(replacement).is(RigTarget.professionKey())) {
 				// an EVENT-mode detection can have left the merchant menu open; the
 				// replacement villager needs a fresh interact, so clear it
 				closeMerchantMenuIfOpen(client);
@@ -1403,7 +1408,7 @@ public final class RerollController {
 								boolean unconfirmed = lockExecutor.uncertain();
 								debug("lock: matched target disabled mid-run, click sent, outcome "
 										+ (unconfirmed ? "unconfirmed" : "drifted") + " — dispatching");
-								notice(Component.translatable(unconfirmed
+								notice(McText.translatable(unconfirmed
 										? "trademaster.message.lock_unconfirmed"
 										: "trademaster.message.lock_drift_purchased"));
 								// voucher the attempted target first: the rebuild re-enqueues
@@ -1416,7 +1421,7 @@ public final class RerollController {
 								// AWAIT_VILLAGER with nothing left to roll for
 								refreshNeeds(client, s);
 								if (s.matcher.isEmpty()) {
-									stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+									stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 									return;
 								}
 								awaitNextVillager(client, s);
@@ -1469,14 +1474,14 @@ public final class RerollController {
 					// be dropped on the ground (possibly into the void). Stop before
 					// locking and leave the villager in place — once the player frees
 					// a slot the run resumes and re-locks the same villager
-					stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+					stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 					return;
 				}
 			}
 			lockSlotPrepared = true;
 		}
 		if (phaseTimedOut(20 * 20)) {
-			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
 		if (s.villager == null || !s.villager.isAlive()) {
@@ -1585,7 +1590,7 @@ public final class RerollController {
 			if (slot < 0) {
 				// nothing on the list can be paid for at all: name what the matched offer
 				// asks for when we can point at it, otherwise stay generic
-				Component reason = Component.translatable("trademaster.message.material_short");
+				Component reason = McText.translatable("trademaster.message.material_short");
 				if (s.matchedTrade != null && s.matchedTrade.offerIndex() < offers.size()) {
 					Component lack = Preconditions.shortfall(player,
 							OfferCosts.slots(offers.get(s.matchedTrade.offerIndex())));
@@ -1660,7 +1665,7 @@ public final class RerollController {
 			boolean unconfirmed = lockExecutor.uncertain();
 			debug("lock: click sent, outcome " + (unconfirmed ? "unconfirmed" : "drifted")
 					+ " — dispatching the villager instead of re-buying");
-			notice(Component.translatable(unconfirmed
+			notice(McText.translatable(unconfirmed
 					? "trademaster.message.lock_unconfirmed"
 					: "trademaster.message.lock_drift_purchased"));
 			// the click is out and the outcome is unknown: the target must not be re-demanded,
@@ -1672,7 +1677,7 @@ public final class RerollController {
 			// like the edited-out path does
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty()) {
-				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 				return;
 			}
 			awaitNextVillager(client, s);
@@ -1707,7 +1712,7 @@ public final class RerollController {
 		closeMerchantMenuIfOpen(client);
 		refreshNeeds(client, s);
 		if (s.matcher.isEmpty()) {
-			stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+			stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 			return;
 		}
 		enter(Phase.REROLL);
@@ -1733,7 +1738,7 @@ public final class RerollController {
 		lockAttempts++;
 		int maxRetries = TradeMasterConfig.INSTANCE.lockMaxRetries;
 		if (maxRetries >= 0 && lockAttempts > maxRetries) {
-			notice(Component.translatable("trademaster.message.lock_retry_exhausted", lockAttempts));
+			notice(McText.translatable("trademaster.message.lock_retry_exhausted", lockAttempts));
 			if (s.matchedTrade != null) {
 				// same guard as awaitNextVillager: undoMatch's computeIfAbsent would
 				// resurrect a locked target that dropLocked removed after hunt was
@@ -1749,7 +1754,7 @@ public final class RerollController {
 				// stash enchanted books to free a slot before rerolling on
 				depositor = createBookDisposal();
 				if (depositor == null) {
-					stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+					stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 					return;
 				}
 				lockExhaustionDepositPending = true;
@@ -1784,7 +1789,7 @@ public final class RerollController {
 		}
 		lockExhaustionDepositPending = false;
 		if (!Preconditions.hasFreeSlot(player)) {
-			stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+			stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 			return;
 		}
 		resumeAfterLockExhaustion(client);
@@ -1804,8 +1809,8 @@ public final class RerollController {
 	 * hang. tool_cannot_harvest is included: no retry can conjure the missing tool. */
 	private static boolean isPermanentAxeFailure(@Nullable Component reason) {
 		if (reason == null) return false;
-		if (!(reason.getContents() instanceof TranslatableContents contents)) return false;
-		String key = contents.getKey();
+		String key = McText.translationKey(reason);
+		if (key == null) return false;
 		return key.equals("trademaster.message.axe_required") || key.equals("trademaster.message.axe_breaking")
 				|| key.equals("trademaster.message.tool_required") || key.equals("trademaster.message.tool_breaking")
 				|| key.equals("trademaster.message.tool_cannot_harvest");
@@ -1859,7 +1864,7 @@ public final class RerollController {
 		java.util.List<net.minecraft.world.item.ItemStack> known =
 				into.computeIfAbsent(produced.getItem(), k -> new java.util.ArrayList<>());
 		for (net.minecraft.world.item.ItemStack prev : known) {
-			if (net.minecraft.world.item.ItemStack.isSameItemSameComponents(prev, produced)) return;
+			if (McItem.sameItemSameComponents(prev, produced)) return;
 		}
 		known.add(produced.copy());
 	}
@@ -1909,7 +1914,7 @@ public final class RerollController {
 				if (prev == null || purchased.price() < prev) {
 					comboHuntPrices.put(key, purchased.price());
 					debug("hunt: combo need recorded " + key + " at " + purchased.price());
-					chat(Component.translatable("trademaster.message.combo_need_recorded",
+					chat(McText.translatable("trademaster.message.combo_need_recorded",
 									describeBook(purchased), purchased.price())
 							.withStyle(ChatFormatting.YELLOW));
 				}
@@ -1980,10 +1985,10 @@ public final class RerollController {
 			// a fresh tag costs one level: below that, naming is temporarily turned
 			// off — the book stays locked, the villager goes away unnamed, and the
 			// next villager is named again once XP is back (no manual switch needed)
-			if (!player.hasInfiniteMaterials() && player.experienceLevel < 1) {
+			if (!McPlayer.hasInfiniteMaterials(player) && player.experienceLevel < 1) {
 				if (!xpNamingPaused) {
 					xpNamingPaused = true;
-					chat(Component.translatable("trademaster.message.xp_short").withStyle(ChatFormatting.YELLOW));
+					chat(McText.translatable("trademaster.message.xp_short").withStyle(ChatFormatting.YELLOW));
 				}
 				closeMerchantMenuIfOpen(client);
 				sendAwayPresser = null;
@@ -2025,8 +2030,8 @@ public final class RerollController {
 					debug("naming: could not free a slot (chests bound="
 							+ config.chestPositions.size() + "), skipping naming");
 					closeMerchantMenuIfOpen(client);
-					notice(Component.translatable("trademaster.message.naming_skipped",
-							Component.translatable("trademaster.naming_skip.inventory_full")));
+					notice(McText.translatable("trademaster.message.naming_skipped",
+							McText.translatable("trademaster.naming_skip.inventory_full")));
 					sendAwayPresser = null;
 					enter(Phase.SEND_AWAY);
 					return;
@@ -2061,8 +2066,8 @@ public final class RerollController {
 				SmoothRotation.reset();
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
 				debug("naming failed: " + reason);
-				notice(Component.translatable("trademaster.message.naming_skipped",
-						Component.translatable("trademaster.naming_skip.failed",
+				notice(McText.translatable("trademaster.message.naming_skipped",
+						McText.translatable("trademaster.naming_skip.failed",
 								NamingExecutor.describeFailure(reason))));
 				sendAwayPresser = null;
 				enter(Phase.SEND_AWAY);
@@ -2083,8 +2088,8 @@ public final class RerollController {
 			namingExecutor.abortCleanly();
 			namingExecutor = null;
 			closeMerchantMenuIfOpen(Minecraft.getInstance());
-			notice(Component.translatable("trademaster.message.naming_skipped",
-					Component.translatable("trademaster.naming_skip.timeout")));
+			notice(McText.translatable("trademaster.message.naming_skipped",
+					McText.translatable("trademaster.naming_skip.timeout")));
 			sendAwayPresser = null;
 			enter(Phase.SEND_AWAY);
 		}
@@ -2115,7 +2120,7 @@ public final class RerollController {
 			// otherwise be re-targeted, looping the run forever
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty()) {
-				stop(Component.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 				return;
 			}
 			s.tries = 0;
@@ -2163,7 +2168,7 @@ public final class RerollController {
 				if (alt >= 0) {
 					MerchantOffer altOffer = snapshot.offers().get(alt);
 					debug("offers: matched " + hit.price() + " emeralds, unaffordable; emergency buy at slot " + alt);
-					chat(Component.translatable("trademaster.message.emergency_purchase",
+					chat(McText.translatable("trademaster.message.emergency_purchase",
 									describeBook(bookFingerprint(altOffer, alt)), altOffer.getBaseCostA().getCount())
 							.withStyle(ChatFormatting.YELLOW));
 					// keep the match: LOCK re-picks the affordable slot and fingerprints the
@@ -2179,7 +2184,7 @@ public final class RerollController {
 					// offer reveals it, so name the switch that would have covered it
 					if (hit.purchase().parts().size() >= 2
 							&& !TradeMasterConfig.INSTANCE.multiEnchantProtection) {
-						chat(Component.translatable("trademaster.message.combo_shortage_hint")
+						chat(McText.translatable("trademaster.message.combo_shortage_hint")
 								.withStyle(ChatFormatting.YELLOW));
 					}
 					// tryMatch already dequeued the matched targets' budget slots: return
@@ -2194,7 +2199,7 @@ public final class RerollController {
 							? Preconditions.shortfall(player, OfferCosts.slots(snapshot.offers().get(hit.offerIndex())))
 							: null;
 					stop(lack != null ? lack
-							: Component.translatable("trademaster.message.material_short"),
+							: McText.translatable("trademaster.message.material_short"),
 							ChatFormatting.RED);
 					return;
 				}
@@ -2205,7 +2210,7 @@ public final class RerollController {
 			s.matchedTrade = hit;
 			debug("offers: matched " + hit.id() + " " + hit.level()
 					+ " for " + hit.price() + " on roll " + (s.tries + 1));
-			chat(Component.translatable("trademaster.message.found",
+			chat(McText.translatable("trademaster.message.found",
 							describeEnchantment(hit), hit.price(), s.tries + 1)
 					.withStyle(ChatFormatting.GREEN));
 			lockInteracted = false;
@@ -2354,39 +2359,39 @@ public final class RerollController {
 		// itself (the job-site check below would pass on the fallback and stay quiet)
 		ResourceLocation blockId = config.workBlockIdentifier();
 		net.minecraft.world.level.block.Block resolved = blockId == null ? null
-				: BuiltInRegistries.BLOCK.getValue(blockId);
+				: McRegistry.value(McBuiltIn.blocks(), blockId);
 		boolean blockUsable = blockId != null && resolved != null
 				&& resolved != net.minecraft.world.level.block.Blocks.AIR;
 		if (!blockUsable) {
-			warnings.add(Component.translatable("trademaster.message.workblock_unknown", config.workBlockId));
+			warnings.add(McText.translatable("trademaster.message.workblock_unknown", config.workBlockId));
 		} else if (!RigTarget.isJobSiteBlock(resolved)) {
-			warnings.add(Component.translatable("trademaster.message.workblock_invalid", resolved.getName()));
+			warnings.add(McText.translatable("trademaster.message.workblock_invalid", resolved.getName()));
 		} else if (RigTarget.professionKnown()
-				&& !RigTarget.professionKey().equals(VillagerProfession.NONE)
+				&& !RigTarget.professionKey().equals(McVillager.none())
 				&& !RigTarget.isJobSiteBlockFor(resolved, RigTarget.professionKey())) {
 			// a valid job site, but not for THIS profession: the villager can never take the
 			// job, so waiting for a profession would never end (a composter is never a
 			// librarian's job site). Skipped for the unemployed target, which needs no job.
-			warnings.add(Component.translatable("trademaster.message.workblock_not_for_profession",
+			warnings.add(McText.translatable("trademaster.message.workblock_not_for_profession",
 					resolved.getName()));
 		}
 		if (config.professionIdentifier() == null) {
 			// blank or unparsable. A BLANK id is the documented default (the runtime uses the
 			// librarian), so only a real typo is worth a warning.
 			if (config.professionId != null && !config.professionId.isBlank()) {
-				warnings.add(Component.translatable("trademaster.message.profession_invalid",
+				warnings.add(McText.translatable("trademaster.message.profession_invalid",
 						config.professionId));
 			}
 		} else if (!RigTarget.professionKnown()) {
-			warnings.add(Component.translatable("trademaster.message.profession_invalid", config.professionId));
+			warnings.add(McText.translatable("trademaster.message.profession_invalid", config.professionId));
 		} else if (RigTarget.professionConfiguredNonTradeable()) {
 			// the target degrades to the librarian: say which id was ignored
-			warnings.add(Component.translatable("trademaster.message.profession_not_tradeable",
+			warnings.add(McText.translatable("trademaster.message.profession_not_tradeable",
 					config.professionId));
-		} else if (RigTarget.professionKey().equals(VillagerProfession.NONE)) {
+		} else if (RigTarget.professionKey().equals(McVillager.none())) {
 			// unemployed sells no trade: as a target the run can never lock, so say so even
 			// though the pairing check above deliberately skips it
-			warnings.add(Component.translatable("trademaster.message.profession_unemployed",
+			warnings.add(McText.translatable("trademaster.message.profession_unemployed",
 					config.professionId));
 		}
 		// a non-librarian profession may sell GOODS instead of books: an enchantment
@@ -2397,12 +2402,12 @@ public final class RerollController {
 		// about the (ignored) raw id would be wrong
 		ResourceLocation profession = config.professionIdentifier();
 		if (RigTarget.professionKnown() && profession != null
-				&& !RigTarget.professionKey().equals(VillagerProfession.LIBRARIAN)
+				&& !RigTarget.professionKey().equals(McVillager.librarian())
 				// unemployed sells nothing at all, so the goods-table hint cannot apply to it
 				// (only the profession_unemployed warning above is right for it)
-				&& !RigTarget.professionKey().equals(VillagerProfession.NONE)
+				&& !RigTarget.professionKey().equals(McVillager.none())
 				&& !config.enabledTargets().isEmpty()) {
-			warnings.add(Component.translatable("trademaster.message.profession_not_book"));
+			warnings.add(McText.translatable("trademaster.message.profession_not_book"));
 		}
 		return warnings;
 	}
@@ -2438,10 +2443,9 @@ public final class RerollController {
 				continue;
 			}
 			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) {
-				Enchantment enchantment = mc.level.registryAccess()
-						.lookupOrThrow(Registries.ENCHANTMENT).getValue(target.id());
+				Enchantment enchantment = McRegistry.value(McRegistry.enchantments(mc.level), target.id());
 				dead.add(enchantment != null
-						? Enchantment.getFullname(Holder.direct(enchantment), target.level()).getString()
+						? McEnchantments.fullname(Holder.direct(enchantment), target.level()).getString()
 						: target.id().toString());
 			}
 		}
@@ -2453,23 +2457,23 @@ public final class RerollController {
 			if (blankPriceSlot(good.spec())) blankPrice.add(good.id().toString());
 		}
 		if (!dead.isEmpty()) {
-			chat(Component.translatable("trademaster.message.unmatchable_targets", String.join(", ", dead))
+			chat(McText.translatable("trademaster.message.unmatchable_targets", String.join(", ", dead))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!unavailable.isEmpty()) {
-			chat(Component.translatable("trademaster.message.unavailable_targets", String.join(", ", unavailable))
+			chat(McText.translatable("trademaster.message.unavailable_targets", String.join(", ", unavailable))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!goods.isEmpty()) {
-			chat(Component.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
+			chat(McText.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!uncosted.isEmpty()) {
-			chat(Component.translatable("trademaster.message.uncosted_targets", String.join(", ", uncosted))
+			chat(McText.translatable("trademaster.message.uncosted_targets", String.join(", ", uncosted))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!blankPrice.isEmpty()) {
-			chat(Component.translatable("trademaster.message.blank_price_slot", String.join(", ", blankPrice))
+			chat(McText.translatable("trademaster.message.blank_price_slot", String.join(", ", blankPrice))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 	}
@@ -2535,12 +2539,12 @@ public final class RerollController {
 		for (Villager villager : villagersAtArrivalPoint(client, arrival)) {
 			if (villager.isBaby()) continue;
 			double distance = villager.position().distanceToSqr(arrival);
-			if (villager.getVillagerData().profession().is(RigTarget.professionKey())) {
+			if (McVillager.profession(villager).is(RigTarget.professionKey())) {
 				if (distance < bestLibrarianDistance) {
 					bestLibrarianDistance = distance;
 					bestLibrarian = villager;
 				}
-			} else if (villager.getVillagerData().profession().is(VillagerProfession.NONE)) {
+			} else if (McVillager.profession(villager).is(McVillager.none())) {
 				if (distance < bestUnemployedDistance) {
 					bestUnemployedDistance = distance;
 					bestUnemployed = villager;
@@ -2597,14 +2601,14 @@ public final class RerollController {
 	 * refused start asked for, then starts. Invalid while nothing is pending. */
 	public static void confirmRegionFallback() {
 		if (!regionFallbackPending) {
-			chat(Component.translatable("trademaster.message.goon_nothing_pending")
+			chat(McText.translatable("trademaster.message.goon_nothing_pending")
 					.withStyle(ChatFormatting.RED));
 			return;
 		}
 		regionFallbackPending = false;
 		regionFallbackConfirmed = true;
 		regionFallbackLevel = new java.lang.ref.WeakReference<>(Minecraft.getInstance().level);
-		chat(Component.translatable("trademaster.message.region_fallback_active", sphereRadius())
+		chat(McText.translatable("trademaster.message.region_fallback_active", sphereRadius())
 				.withStyle(ChatFormatting.YELLOW));
 		start();
 	}
@@ -2788,10 +2792,10 @@ public final class RerollController {
 	 * into matching the same unaffordable book again — the old livelock. */
 	private static TradeMatcher.MatchedBook bookFingerprint(MerchantOffer offer, int slot) {
 		java.util.ArrayList<TradeMatcher.MatchPart> parts = new java.util.ArrayList<>();
-		var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(offer.getResult());
+		var enchantments = McEnchantments.of(offer.getResult());
 		for (var entry : enchantments.entrySet()) {
-			ResourceLocation id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-			if (id != null) parts.add(new TradeMatcher.MatchPart(id, entry.getIntValue()));
+			ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+			if (id != null) parts.add(new TradeMatcher.MatchPart(id, entry.getValue()));
 		}
 		return new TradeMatcher.MatchedBook(List.copyOf(parts), List.copyOf(parts),
 				offer.getBaseCostA().getCount(), slot,
@@ -2808,18 +2812,17 @@ public final class RerollController {
 			if (part.level() <= 0) {
 				// a custom good: the part is an item, not an enchantment, so the
 				// enchantment registry lookup below would print its raw id
-				partText = Component.literal(EnchantmentNamer.demandDisplayName(part.id()));
+				partText = McText.literal(EnchantmentNamer.demandDisplayName(part.id()));
 			} else if (mc.level != null) {
-				Enchantment enchantment = mc.level.registryAccess()
-						.lookupOrThrow(Registries.ENCHANTMENT).getValue(part.id());
+				Enchantment enchantment = McRegistry.value(McRegistry.enchantments(mc.level), part.id());
 				if (enchantment != null) {
-					partText = Enchantment.getFullname(Holder.direct(enchantment), part.level()).copy();
+					partText = McEnchantments.fullname(Holder.direct(enchantment), part.level()).copy();
 				}
 			}
-			if (partText == null) partText = Component.literal(part.id() + " " + part.level());
-			bookText = bookText == null ? partText : bookText.append(Component.literal("+")).append(partText);
+			if (partText == null) partText = McText.literal(part.id() + " " + part.level());
+			bookText = bookText == null ? partText : bookText.append(McText.literal("+")).append(partText);
 		}
-		return bookText == null ? Component.literal("?") : bookText;
+		return bookText == null ? McText.literal("?") : bookText;
 	}
 
 	private static Component describeEnchantment(TradeMatcher.MatchedTrade trade) {
@@ -2828,14 +2831,14 @@ public final class RerollController {
 		MutableComponent result = null;
 		for (TradeMatcher.MatchedBook book : books) {
 			MutableComponent bookText = describeBook(book);
-			result = result == null ? bookText : result.append(Component.literal(" ")).append(bookText);
+			result = result == null ? bookText : result.append(McText.literal(" ")).append(bookText);
 		}
-		return result == null ? Component.literal("?") : result;
+		return result == null ? McText.literal("?") : result;
 	}
 
 	/** Readable registry id of a profession for debug output (e.g. "minecraft:librarian"). */
 	private static String professionName(Holder<VillagerProfession> profession) {
-		return String.valueOf(BuiltInRegistries.VILLAGER_PROFESSION.getKey(profession.value()));
+		return String.valueOf(McBuiltIn.villagerProfessions().getKey(profession.value()));
 	}
 
 	/** Nitwits can never take a profession, and villagers already employed in any
@@ -2958,7 +2961,7 @@ public final class RerollController {
 		phase = Phase.IDLE;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.isSameThread()) {
-			mc.gui.hud.setOverlayMessage(Component.literal(""), false);
+			McClient.setOverlayMessage(mc, McText.literal(""), false);
 			overlayNotice = null;
 			overlayNoticeTicks = 0;
 		}
@@ -2982,7 +2985,7 @@ public final class RerollController {
 		Minecraft mc = Minecraft.getInstance();
 		overlayNotice = component;
 		overlayNoticeTicks = 20 * 4;
-		if (mc.gui != null) mc.gui.hud.setOverlayMessage(component, false);
+		if (mc.gui != null) McClient.setOverlayMessage(mc, component, false);
 	}
 
 	/** Diagnostics go to the game log file, never to the chat bar. */
@@ -3009,12 +3012,12 @@ public final class RerollController {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.player == null) return;
 		if (mc.isSameThread()) {
-			mc.player.sendSystemMessage(component);
+			McPlayer.sendSystemMessage(mc.player, component);
 		} else {
 			// never touch the chat list from a foreign thread: quitting the world
 			// crashed with a ConcurrentModificationException in ChatComponent
 			mc.execute(() -> {
-				if (mc.player != null) mc.player.sendSystemMessage(component);
+				if (mc.player != null) McPlayer.sendSystemMessage(mc.player, component);
 			});
 		}
 	}

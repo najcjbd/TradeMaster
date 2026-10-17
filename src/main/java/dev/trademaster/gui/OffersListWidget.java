@@ -1,6 +1,19 @@
 package dev.trademaster.gui;
 
+//? if >=26.1 {
+/*import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;*/
+//?}
+import dev.trademaster.compat.McList;
+import dev.trademaster.compat.McInput;
+import dev.trademaster.compat.McRender;
 import dev.trademaster.compat.McIds;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McGraphics;
+import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McWidget;
+import dev.trademaster.compat.McText;
 
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
@@ -8,13 +21,12 @@ import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.exec.EnchantmentNamer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+//? if >=1.20 {
+import net.minecraft.client.gui.GuiGraphics;
+//?}
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import org.jetbrains.annotations.Nullable;
@@ -43,6 +55,43 @@ import java.util.List;
  */
 public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row> {
 
+	/** The list's left edge: 1.20.1 exposes protected x0/y0; 1.20.2+ inherits
+	 * AbstractContainerWidget's getX/getY. */
+	private int listLeft() {
+		//? if >=1.20.2 {
+		return this.getX();
+		//?} else {
+		/*return this.x0;*/
+		//?}
+	}
+
+	private int listTop() {
+		//? if >=1.20.2 {
+		return this.getY();
+		//?} else {
+		/*return this.y0;*/
+		//?}
+	}
+
+	/** Row height: 26.1 renamed AbstractSelectionList.itemHeight to defaultEntryHeight. */
+	private int entryRowHeight() {
+		//? if >=26.1 {
+		/*return this.defaultEntryHeight;*/
+		//?} else {
+		return this.itemHeight;
+		//?}
+	}
+
+	/** Claims the scrollbar area for mouse routing. 26.1 exposes a hit helper; earlier
+	 * versions draw the bar inside the list bounds, so the base isMouseOver covers it. */
+	private boolean overScrollbar(double x, double y) {
+		//? if >=26.1 {
+		/*return this.isOverScrollbar(x, y);*/
+		//?} else {
+		return false;
+		//?}
+	}
+
 	static final int FIELD_GAP = 4;
 	static final int MIN_FIELD = 22;
 	static final int NUM_WIDTH = 26;
@@ -58,11 +107,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	private boolean suppressFocusClear = false;
 
 	public OffersListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
+		//? if >=1.20.2 {
 		super(client, width, height, top, itemHeight);
+		//?} else {
+		/*super(client, width, height, top, top + height, itemHeight);*/
+		//?}
 		this.rebuild = rebuild;
 
 		this.airField = new EditBox(client.font, 8, AIR_Y,
-				Math.max(60, this.width - 140), 14, Component.literal("air items"));
+				Math.max(60, this.width - 140), 14, McText.literal("air items"));
 		this.airField.setMaxLength(256);
 		this.airField.setValue(String.join(", ", TradeMasterConfig.INSTANCE.airItems));
 		for (var entry : TradeMasterConfig.INSTANCE.enchantments.entrySet()) {
@@ -80,48 +133,74 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		return Math.max(MIN_FIELD, (entryWidth - NUM_WIDTH - FIELD_GAP * 3 - 70) / 2);
 	}
 
+		//? if >=1.20.2 {
 	@Override
-	protected void extractListBackground(GuiGraphicsExtractor context) {
+	protected void renderListBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }
+	//?} elif >=1.20 {
+	/*@Override
+	protected void renderBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }*/
+	//?} else {
+	/*@Override
+	protected void renderBackground(com.mojang.blaze3d.vertex.PoseStack context) { drawListBackground(new McGraphics(context)); }*/
+	//?}
+
+	private void drawListBackground(McGraphics context) {
 		this.setSelected(null);
 		Font font = Minecraft.getInstance().font;
 		context.fill(5, AIR_Y - 1, this.width - 5, AIR_Y + 15, 0x1AC7C0C0);
-		context.text(font, Component.translatable("trademaster.column.air_items"), 8, AIR_Y + 4, 0xFF202020);
-		int hintX = this.airField.getX() + this.airField.getWidth() + 6;
+		context.drawString(font, McText.translatable("trademaster.column.air_items"), 8, AIR_Y + 4, 0xFF202020);
+		int hintX = McWidget.getX(this.airField) + this.airField.getWidth() + 6;
 		int hintWidth = this.width - hintX - 4;
 		if (hintWidth >= 8) {
-			String hint = Component.translatable("trademaster.air.hint").getString();
-			context.text(font, Component.literal(Row.fit(font, hint, hintWidth)), hintX, AIR_Y + 4, 0xFF606060);
+			String hint = McText.translatable("trademaster.air.hint").getString();
+			context.drawString(font, McText.literal(Row.fit(font, hint, hintWidth)), hintX, AIR_Y + 4, 0xFF606060);
 		}
-		this.airField.extractRenderState(context, 0, 0, 0.0f);
+		context.renderWidget(this.airField, 0, 0, 0.0f);
 
 		// the labels line up with the enchantment rows' three fields
 		int right = this.getRowLeft() + this.getRowWidth() - 2;
 		int costWidth = costWidthFor(this.getRowWidth());
-		context.text(font, Component.translatable("trademaster.column.cost_a"),
+		context.drawString(font, McText.translatable("trademaster.column.cost_a"),
 				right - NUM_WIDTH - FIELD_GAP - costWidth * 2 - FIELD_GAP * 2 + 2, 48, 0xFF202020);
-		context.text(font, Component.translatable("trademaster.column.cost_b"),
+		context.drawString(font, McText.translatable("trademaster.column.cost_b"),
 				right - NUM_WIDTH - FIELD_GAP - costWidth + 2, 48, 0xFF202020);
-		context.text(font, Component.translatable("trademaster.column.cost_count"),
+		context.drawString(font, McText.translatable("trademaster.column.cost_count"),
 				right - NUM_WIDTH + 2, 48, 0xFF202020);
-	}
+		}
 
+
+	//? if >=1.20.2 {
 	@Override
-	protected void extractListSeparators(GuiGraphicsExtractor context) {
+	protected void renderListSeparators(GuiGraphics context) {
 	}
+	//?}
 
+	//? if >=1.20.2 {
 	@Override
 	protected void updateWidgetNarration(NarrationElementOutput builder) {
 	}
+	//?} else {
+	/*@Override
+	public void updateNarration(NarrationElementOutput builder) {
+	}*/
+	//?}
 
 	@Override
 	public int getRowWidth() {
 		return this.width - 12;
 	}
 
+	//? if >=1.21.2 {
 	@Override
 	protected int scrollBarX() {
 		return this.width;
 	}
+	//?} else {
+	/*@Override
+	protected int getScrollbarPosition() {
+		return this.width;
+	}*/
+	//?}
 
 	@Override
 	public boolean isMouseOver(double x, double y) {
@@ -129,19 +208,19 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		// uses to route mouse events: claim it explicitly. The air-item header band is
 		// drawn ABOVE the widget's top (its rows start below it), so it must be claimed
 		// too, or the Screen never routes a click there and the field can never focus.
-		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y)
-				|| (x >= this.getX() && x < this.getX() + this.width
+		return super.isMouseOver(x, y) || this.overScrollbar(x, y)
+				|| (x >= this.listLeft() && x < this.listLeft() + this.width
 						&& y >= AIR_Y - 1 && y <= AIR_Y + 15);
 	}
 
 	@Override
 	public int getRowTop(int index) {
-		return this.getY() + 2 - (int) this.scrollAmount() + index * this.defaultEntryHeight;
+		return this.listTop() + 2 - (int) McList.scrollAmount(this) + index * this.entryRowHeight();
 	}
 
 	@Override
 	public int getRowLeft() {
-		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
+		return this.listLeft() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
 	/** Commits the air list plus every row's in-flight draft. */
@@ -176,7 +255,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		return fields;
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean keyPressed(KeyEvent input) {
 		if (this.airField.isFocused()) return this.airField.keyPressed(input) || super.keyPressed(input);
 		for (EditBox field : allFields()) {
@@ -207,7 +287,6 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		return consumed || super.charTyped(input);
 	}
 
-	/** IME preedit for the field being edited (see EnchantmentsListWidget). */
 	@Override
 	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
 		if (this.airField.isFocused()) return this.airField.preeditUpdated(input);
@@ -219,10 +298,6 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-		// the air field lives in the fixed header, outside the rows, so this list owns
-		// its clicks (an EditBox does not take focus on its own). Handle the air field
-		// FIRST: its band can overlap a stale row rect (rows are drawn by last-frame
-		// geometry), which used to leave that row's field focused as well (two focuses).
 		if (this.airField.isMouseOver(click.x(), click.y())) {
 			for (Row row : this.children()) {
 				for (EditBox field : row.fields()) field.setFocused(false);
@@ -230,8 +305,6 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.airField.setFocused(true);
 			return this.airField.mouseClicked(click, doubled);
 		}
-		// a field the pointer is NOT on commits its draft — judged by the FIELD rect, not
-		// the row rect, or a click on a row's empty area would blur without committing
 		for (Row row : this.children()) {
 			boolean onField = false;
 			for (EditBox field : row.fields()) {
@@ -247,13 +320,77 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		} finally {
 			this.suppressFocusClear = false;
 		}
+	}*/
+	//?} else {
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		if (this.airField.isFocused()) return McInput.keyPressed(this.airField, keyCode, scanCode, modifiers) || super.keyPressed(keyCode, scanCode, modifiers);
+		for (EditBox field : allFields()) {
+			if (field.isFocused()) return McInput.keyPressed(field, keyCode, scanCode, modifiers);
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
 
 	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		if (this.airField.isFocused()) McInput.keyReleased(this.airField, keyCode, scanCode, modifiers);
+		for (EditBox field : allFields()) {
+			if (field.isFocused()) McInput.keyReleased(field, keyCode, scanCode, modifiers);
+		}
+		return super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char c, int modifiers) {
+		if (this.airField.isFocused()) return McInput.charTyped(this.airField, c, modifiers) || super.charTyped(c, modifiers);
+		if (!McInput.isAllowedChatCharacter(c)) return false;
+		boolean consumed = false;
+		for (EditBox field : allFields()) {
+			consumed |= McInput.charTyped(field, c, modifiers);
+		}
+		// consuming matters: the screen falls back to the list and would deliver the
+		// same character a second time
+		return consumed || super.charTyped(c, modifiers);
+	}
+
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// the air field lives in the fixed header, outside the rows, so this list owns
+		// its clicks (an EditBox does not take focus on its own). Handle the air field
+		// FIRST: its band can overlap a stale row rect (rows are drawn by last-frame
+		// geometry), which used to leave that row's field focused as well (two focuses).
+		if (this.airField.isMouseOver(mouseX, mouseY)) {
+			for (Row row : this.children()) {
+				for (EditBox field : row.fields()) field.setFocused(false);
+			}
+			this.airField.setFocused(true);
+			return McInput.mouseClicked(this.airField, mouseX, mouseY, button, false);
+		}
+		// a field the pointer is NOT on commits its draft — judged by the FIELD rect, not
+		// the row rect, or a click on a row's empty area would blur without committing
+		for (Row row : this.children()) {
+			boolean onField = false;
+			for (EditBox field : row.fields()) {
+				if (field.isMouseOver(mouseX, mouseY)) onField = true;
+				else field.setFocused(false);
+			}
+			if (!onField) row.commit();
+		}
+		this.airField.setFocused(false);
+		this.suppressFocusClear = true;
+		try {
+			return super.mouseClicked(mouseX, mouseY, button);
+		} finally {
+			this.suppressFocusClear = false;
+		}
+	}
+	//?}
+
+	@Override
 	public void setScrollAmount(double amount) {
-		double before = this.scrollAmount();
+		double before = McList.scrollAmount(this);
 		super.setScrollAmount(amount);
-		if (this.scrollAmount() == before || this.suppressFocusClear) return;
+		if (McList.scrollAmount(this) == before || this.suppressFocusClear) return;
 		// drop focus WITHOUT committing: an involuntary scroll must not write a
 		// half-typed offer/good draft (it still commits at the documented points:
 		// a deliberate focus change, a save, or screen close)
@@ -266,6 +403,40 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	/** Base type so the list can hold rows of several kinds. */
 	public abstract static class Row extends AbstractSelectionList.Entry<Row> {
 		protected int x, y, entryWidth, entryHeight;
+
+		// 26.1 replaced Entry.render(GuiGraphics,int,int,int,int,int,int,int,boolean,float) with
+		// Entry.extractContent(...): the row geometry is passed as render() arguments on
+		// <=1.21.11 but read from the entry on 26.1+. Both stash it and delegate to drawRow.
+		//? if >=26.1 {
+		/*@Override
+		public void extractContent(GuiGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = this.getX();
+			this.y = this.getY();
+			this.entryWidth = this.getWidth();
+			this.entryHeight = this.getHeight();
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}*/
+		//?} elif >=1.20 {
+		@Override
+		public void render(GuiGraphics context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}
+		//?} else {
+		/*@Override
+		public void render(com.mojang.blaze3d.vertex.PoseStack context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+				}*/
+		//?}
+
+		protected abstract void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks);
 
 		public EditBox[] fields() {
 			return new EditBox[0];
@@ -280,10 +451,17 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		void commit() {}
 
 		/** Whether the click landed on this row (used to skip committing it). */
-		boolean clickedIn(MouseButtonEvent click) {
+		//? if >=26.1 {
+		/*boolean clickedIn(MouseButtonEvent click) {
 			return click.x() > this.x && click.x() < this.x + this.entryWidth
 					&& click.y() > this.y && click.y() < this.y + this.entryHeight - 4;
+		}*/
+		//?} else {
+		boolean clickedIn(double mouseX, double mouseY) {
+			return mouseX > this.x && mouseX < this.x + this.entryWidth
+					&& mouseY > this.y && mouseY < this.y + this.entryHeight - 4;
 		}
+		//?}
 
 		@Nullable
 		EditBox focusedField() {
@@ -293,24 +471,20 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return null;
 		}
 
-		protected void prepare(GuiGraphicsExtractor context) {
-			this.x = this.getX();
-			this.y = this.getY();
-			this.entryWidth = this.getWidth();
-			this.entryHeight = this.getHeight();
+		protected void prepare(McGraphics context) {
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
 		}
 
-		protected void place(GuiGraphicsExtractor context, EditBox field, int x, int width,
+		protected void place(McGraphics context, EditBox field, int x, int width,
 				int mouseX, int mouseY, float deltaTicks) {
 			// the layout is the only authority on the width: re-raising it to MIN_FIELD
 			// here undid the narrow-row clamp and made the fields overlap
 			field.setWidth(Math.max(10, width));
 			field.setX(x);
-			field.setY(this.y + 3);
-			context.pose().pushMatrix();
-			field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(field, this.y + 3);
+			McRender.pushPose(context);
+			context.renderWidget(field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
 		protected static String fit(Font font, String text, int width) {
@@ -373,17 +547,28 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 
 		protected static EditBox field(String name, String value) {
-			EditBox box = new EditBox(Minecraft.getInstance().font, 0, 0, 40, 14, Component.literal(name));
+			EditBox box = new EditBox(Minecraft.getInstance().font, 0, 0, 40, 14, McText.literal(name));
 			box.setMaxLength(128);
 			box.setValue(value);
 			box.setResponder(text -> {});
 			return box;
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+			return handleMouseClicked(click.x(), click.y(), click.button(), doubled);
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			return handleMouseClicked(mouseX, mouseY, button, false);
+		}
+		//?}
+
+		private boolean handleMouseClicked(double mouseX, double mouseY, int button, boolean doubled) {
 			for (EditBox field : fields()) {
-				if (field.isMouseOver(click.x(), click.y()) && field.mouseClicked(click, doubled)) {
+				if (field.isMouseOver(mouseX, mouseY) && McInput.mouseClicked(field, mouseX, mouseY, button, doubled)) {
 					field.setFocused(true);
 					return true;
 				}
@@ -391,10 +576,21 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return false;
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
+			return handleMouseDragged(drag.x(), drag.y(), drag.button(), mouseX, mouseY);
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return handleMouseDragged(mouseX, mouseY, button, dragX, dragY);
+		}
+		//?}
+
+		private boolean handleMouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
 			for (EditBox field : fields()) {
-				if (field.isFocused() && field.mouseDragged(drag, mouseX, mouseY)) return true;
+				if (field.isFocused() && McInput.mouseDragged(field, mouseX, mouseY, button, dragX, dragY)) return true;
 			}
 			return false;
 		}
@@ -408,12 +604,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.labelKey = labelKey;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
-			String label = Component.translatable(this.labelKey).getString();
-			context.text(font, Component.literal(fit(font, label, Math.max(0, this.entryWidth - 8))),
+			String label = McText.translatable(this.labelKey).getString();
+			context.drawString(font, McText.literal(fit(font, label, Math.max(0, this.entryWidth - 8))),
 					this.x + 4, this.y + 6, 0xFF404040);
 		}
 	}
@@ -426,7 +621,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		 * cuts character by character (see SettingsListWidget's caches). */
 		private @Nullable String nameCache = null;
 		private int nameCacheWidth = -1;
-		private Component nameText = Component.empty();
+		private Component nameText = McText.empty();
 		private final EditBox costAField;
 		private final EditBox costBField;
 		private final EditBox countField;
@@ -480,8 +675,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			config.save();
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
 			int costWidth = costWidthFor(this.entryWidth);
@@ -492,11 +686,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			if (this.nameCache == null) this.nameCache = EnchantmentNamer.demandDisplayName(this.id);
 			if (nameWidth != this.nameCacheWidth) {
 				this.nameCacheWidth = nameWidth;
-				this.nameText = Component.literal(fit(font, this.nameCache, nameWidth));
+				this.nameText = McText.literal(fit(font, this.nameCache, nameWidth));
 			}
-			context.text(font, this.nameText, this.x + 4, this.y + 6, 0xFFFFFFFF);
+			context.drawString(font, this.nameText, this.x + 4, this.y + 6, 0xFFFFFFFF);
 			if (this.errorKey != null) {
-				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
+				context.drawString(font, McText.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
 			place(context, this.costAField, costAX, costWidth, mouseX, mouseY, deltaTicks);
 			place(context, this.costBField, costBX, costWidth, mouseX, mouseY, deltaTicks);
@@ -514,7 +708,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		/** See OfferRow's note: the fitted name is cached per width. */
 		private @Nullable String nameCache = null;
 		private int nameCacheWidth = -1;
-		private Component nameText = Component.empty();
+		private Component nameText = McText.empty();
 		private final EditBox resultCountField;
 		private final EditBox priceField;
 		private final EditBox costAField;
@@ -572,22 +766,32 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			config.save();
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-			if (super.mouseClicked(click, doubled)) return true;
-			if (click.y() <= this.y || click.y() >= this.y + this.entryHeight - 4) return false;
+			return super.mouseClicked(click, doubled) || handleMouseClicked(click.x(), click.y());
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			return super.mouseClicked(mouseX, mouseY, button) || handleMouseClicked(mouseX, mouseY);
+		}
+		//?}
+
+		private boolean handleMouseClicked(double mouseX, double mouseY) {
+			if (mouseY <= this.y || mouseY >= this.y + this.entryHeight - 4) return false;
 			int removeX = this.x + this.entryWidth - 2 - 16;
 			int toggleX = removeX - 2 - 14;
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			GoodSpec existing = config.goodFor(this.id);
 			if (existing == null) return false;
-			if (click.x() >= removeX && click.x() < removeX + 16) {
+			if (mouseX >= removeX && mouseX < removeX + 16) {
 				config.goods.remove(existing);
 				config.save();
 				if (this.rebuild != null) this.rebuild.run();
 				return true;
 			}
-			if (click.x() >= toggleX && click.x() < toggleX + 14) {
+			if (mouseX >= toggleX && mouseX < toggleX + 14) {
 				config.goods.set(config.goods.indexOf(existing), existing.withEnabled(!existing.enabled()));
 				config.save();
 				return true;
@@ -595,8 +799,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return false;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(this.id);
@@ -623,17 +826,17 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				if (this.nameCache == null) this.nameCache = EnchantmentNamer.demandDisplayName(this.id);
 				if (nameWidth != this.nameCacheWidth) {
 					this.nameCacheWidth = nameWidth;
-					this.nameText = Component.literal(fit(font, this.nameCache, nameWidth));
+					this.nameText = McText.literal(fit(font, this.nameCache, nameWidth));
 				}
-				context.text(font, this.nameText, this.x + 4, this.y + 6,
+				context.drawString(font, this.nameText, this.x + 4, this.y + 6,
 						enabled ? 0xFFFFFFFF : 0xFF808080);
 			}
 			if (this.errorKey != null) {
-				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
+				context.drawString(font, McText.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
-			context.text(font, Component.literal(enabled ? "\u25A3" : "\u25A2"), toggleX + 2, this.y + 6,
+			context.drawString(font, McText.literal(enabled ? "\u25A3" : "\u25A2"), toggleX + 2, this.y + 6,
 					enabled ? 0xFF00C000 : 0xFF808080);
-			context.text(font, Component.literal("\u2715"), removeX + 4, this.y + 6, 0xFFFF5555);
+			context.drawString(font, McText.literal("\u2715"), removeX + 4, this.y + 6, 0xFFFF5555);
 			place(context, this.costAField, costAX, costWidth, mouseX, mouseY, deltaTicks);
 			place(context, this.costBField, costBX, costWidth, mouseX, mouseY, deltaTicks);
 			place(context, this.resultCountField, amountX, NUM_WIDTH, mouseX, mouseY, deltaTicks);
@@ -660,12 +863,22 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return new EditBox[]{this.resultField};
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-			if (super.mouseClicked(click, doubled)) return true;
+			return super.mouseClicked(click, doubled) || handleMouseClicked(click.x(), click.y());
+		}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			return super.mouseClicked(mouseX, mouseY, button) || handleMouseClicked(mouseX, mouseY);
+		}
+		//?}
+
+		private boolean handleMouseClicked(double mouseX, double mouseY) {
 			int plusX = this.x + this.entryWidth - 2 - 14;
-			if (click.y() > this.y && click.y() < this.y + this.entryHeight - 4
-					&& click.x() >= plusX && click.x() < plusX + 14) {
+			if (mouseY > this.y && mouseY < this.y + this.entryHeight - 4
+					&& mouseX >= plusX && mouseX < plusX + 14) {
 				return this.add();
 			}
 			return false;
@@ -712,7 +925,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		/** Whether the id names no item at all (the registry is up once a screen is open). */
 		private static boolean resultItemMissing(ResourceLocation id) {
-			return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id).isEmpty();
+			return McRegistry.value(McBuiltIn.items(), id) == null;
 		}
 
 		/** Whether the id also names an enchantment: a good with the same id would shadow
@@ -722,24 +935,21 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			if (mc.level == null) return false;
 			// enchantments are a data-driven registry: only the world's RegistryAccess has
 			// them (BuiltInRegistries does not)
-			return mc.level.registryAccess()
-					.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
-					.get(id).isPresent();
+			return McRegistry.enchantments(mc.level).getOptional(id).isPresent();
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			prepare(context);
 			Font font = Minecraft.getInstance().font;
 			int plusX = this.x + this.entryWidth - 2 - 14;
 			int fieldWidth = Math.max(40, Math.min(100, plusX - FIELD_GAP - (this.x + 4) - 60));
 			int fieldX = plusX - FIELD_GAP - fieldWidth;
-			String label = Component.translatable("trademaster.offers.add_good").getString();
-			context.text(font, Component.literal(fit(font, label, Math.max(0, fieldX - FIELD_GAP - (this.x + 4)))),
+			String label = McText.translatable("trademaster.offers.add_good").getString();
+			context.drawString(font, McText.literal(fit(font, label, Math.max(0, fieldX - FIELD_GAP - (this.x + 4)))),
 					this.x + 4, this.y + 6, 0xFFE0E000);
-			context.text(font, Component.literal("+"), plusX + 4, this.y + 6, 0xFF00C000);
+			context.drawString(font, McText.literal("+"), plusX + 4, this.y + 6, 0xFF00C000);
 			if (this.errorKey != null) {
-				context.text(font, Component.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
+				context.drawString(font, McText.translatable(this.errorKey), this.x + 4, this.y + 16, 0xFFFF5555);
 			}
 			place(context, this.resultField, fieldX, fieldWidth, mouseX, mouseY, deltaTicks);
 		}

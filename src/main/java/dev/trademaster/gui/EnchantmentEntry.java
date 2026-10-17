@@ -1,23 +1,34 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.compat.McInput;
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McRender;
+import dev.trademaster.compat.McSound;
+import dev.trademaster.compat.McGraphics;
+import dev.trademaster.compat.McWidget;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.exec.EnchantmentNamer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+//? if >=1.20 {
+import net.minecraft.client.gui.GuiGraphics;
+//?}
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.input.MouseButtonEvent;
+//? if >=26.1 {
+/*import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;*/
+//?}
 import net.minecraft.core.Registry;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.enchantment.Enchantment;
-import org.joml.Matrix3x2fStack;
 
 public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEntry> {
 
@@ -38,7 +49,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	/** Redraw cache: extractContent runs for every visible row on every frame, so the
 	 * marked-name literal and its width are rebuilt only when the enable flag flips. */
 	private @Nullable Boolean cachedMarked = null;
-	private Component markedName = Component.empty();
+	private Component markedName = McText.empty();
 	private int markedWidth = 0;
 	/** Constant for the row's whole life: its id string, never changes. */
 	private final Component idText;
@@ -47,28 +58,28 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	private @Nullable Component maxLevelText;
 	private String maxLevelRaw = "";
 	private @Nullable Integer cachedMinLevel = null;
-	private Component minPriceText = Component.empty();
+	private Component minPriceText = McText.empty();
 	private String minPriceRaw = "";
 
 	public EnchantmentEntry(ResourceLocation id) {
 		this.id = id;
-		this.idText = Component.literal(id.toString());
+		this.idText = McText.literal(id.toString());
 		Registry<Enchantment> registry = enchantmentRegistry();
-		this.enchantment = registry == null ? null : registry.getValue(id);
+		this.enchantment = registry == null ? null : McRegistry.value(registry, id);
 		this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
 
 		EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
 		int level = target == null ? editableMaxLevel() : target.level();
 		int maxPrice = target == null ? 64 : target.maxPrice();
 
-		this.maxPriceField = new EditBox(Minecraft.getInstance().font, 0, 0, 24, 14, Component.literal("price"));
+		this.maxPriceField = new EditBox(Minecraft.getInstance().font, 0, 0, 24, 14, McText.literal("price"));
 		this.maxPriceField.setMaxLength(2);
 		this.maxPriceField.setValue(String.valueOf(maxPrice));
 		// keystrokes only mark the field dirty; commit happens once on focus
 		// loss in extractContent, instead of saving the config per keystroke
 		this.maxPriceField.setResponder(text -> this.priceDirty = true);
 
-		this.levelField = new EditBox(Minecraft.getInstance().font, 0, 0, 14, 14, Component.literal("level"));
+		this.levelField = new EditBox(Minecraft.getInstance().font, 0, 0, 14, 14, McText.literal("level"));
 		// 2 chars: stored levels >= 10 (datapack/mod enchantments) must display
 		// fully, or the focus-loss reconciliation loops with a save every frame
 		this.levelField.setMaxLength(2);
@@ -79,7 +90,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	private static Registry<Enchantment> enchantmentRegistry() {
 		Minecraft client = Minecraft.getInstance();
 		if (client.level == null) return null;
-		return client.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
+		return McRegistry.enchantments(client.level);
 	}
 
 	private int maxLevel() {
@@ -207,14 +218,40 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		return target;
 	}
 
-	@Override
-	public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
-		Matrix3x2fStack matrices = context.pose();
+	// 26.1 replaced Entry.render(GuiGraphics,int,int,int,int,int,int,int,boolean,float) with
+	// Entry.extractContent(...): the row geometry is passed as render() arguments on
+	// <=1.21.11 but read from the entry on 26.1+. Both stash it into this.x/y/entryWidth/
+	// entryHeight and delegate to drawRow.
+	//? if >=26.1 {
+	/*@Override
+	public void extractContent(GuiGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 		this.x = this.getX();
 		this.y = this.getY();
 		this.entryWidth = this.getWidth();
 		this.entryHeight = this.getHeight();
+		drawRow(new McGraphics(context), mouseX, mouseY, deltaTicks);
+	}*/
+	//?} elif >=1.20 {
+	@Override
+	public void render(GuiGraphics context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		this.x = left;
+		this.y = top;
+		this.entryWidth = width;
+		this.entryHeight = height;
+		drawRow(new McGraphics(context), mouseX, mouseY, deltaTicks);
+	}
+	//?} else {
+	/*@Override
+	public void render(com.mojang.blaze3d.vertex.PoseStack context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		this.x = left;
+		this.y = top;
+		this.entryWidth = width;
+		this.entryHeight = height;
+		drawRow(new McGraphics(context), mouseX, mouseY, deltaTicks);
+		}*/
+	//?}
 
+	private void drawRow(McGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		Font font = Minecraft.getInstance().font;
 		boolean enabled = enabled();
 
@@ -224,10 +261,10 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			// instead of a blank strip that silently swallows every interaction
 			if (this.enchantment == null) {
 				context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
-				context.text(font, Component.literal("[ ] " + EnchantmentNamer.displayName(this.id, this.translationKey)
-								+ " (" + Component.translatable("trademaster.settings.enchantment_unavailable").getString() + ")"),
+				context.drawString(font, McText.literal("[ ] " + EnchantmentNamer.displayName(this.id, this.translationKey)
+								+ " (" + McText.translatable("trademaster.settings.enchantment_unavailable").getString() + ")"),
 						this.x + 4, this.y + 4, 0xFF808080);
-				context.text(font, Component.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
+				context.drawString(font, McText.literal(this.id.toString()), this.x + 4, this.y + 12, 0xFF808080);
 			}
 			return;
 		}
@@ -260,11 +297,11 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		if (this.cachedMarked == null || this.cachedMarked != enabled) {
 			this.cachedMarked = enabled;
 			String name = EnchantmentNamer.displayName(this.id, this.translationKey);
-			this.markedName = Component.literal((enabled ? "[x] " : "[ ] ") + name);
+			this.markedName = McText.literal((enabled ? "[x] " : "[ ] ") + name);
 			this.markedWidth = font.width(this.markedName);
 		}
-		context.text(font, this.markedName, this.x + 4, this.y + 4, 0xFFFFFFFF);
-		context.text(font, this.idText, this.x + 4, this.y + 12, 0xFF808080);
+		context.drawString(font, this.markedName, this.x + 4, this.y + 4, 0xFFFFFFFF);
+		context.drawString(font, this.idText, this.x + 4, this.y + 12, 0xFF808080);
 
 		int right = this.x + this.entryWidth;
 		int minPrice = minPrice(target.level());
@@ -272,11 +309,11 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		if (this.cachedMinLevel == null || this.cachedMinLevel != minPrice) {
 			this.cachedMinLevel = minPrice;
 			this.minPriceRaw = "Min $" + minPrice;
-			this.minPriceText = Component.literal(this.minPriceRaw);
+			this.minPriceText = McText.literal(this.minPriceRaw);
 		}
 		if (this.maxLevelText == null) {
 			this.maxLevelRaw = "Max " + EnchantmentNamer.romanNumerals(maxLevel());
-			this.maxLevelText = Component.literal(this.maxLevelRaw);
+			this.maxLevelText = McText.literal(this.maxLevelRaw);
 		}
 		String minPriceText = this.minPriceRaw;
 		String maxLevelText = this.maxLevelRaw;
@@ -288,34 +325,43 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		int maxLevelX = minPriceX - 6 - font.width(maxLevelText);
 		int nameRight = this.x + 4 + this.markedWidth;
 		if (maxLevelX >= nameRight + 4) {
-			context.text(font, this.maxLevelText, maxLevelX, this.y + 6, 0xFFC0C0C0);
+			context.drawString(font, this.maxLevelText, maxLevelX, this.y + 6, 0xFFC0C0C0);
 			// min price above the 64 emerald cap: the target can never match
-			context.text(font, this.minPriceText, minPriceX, this.y + 6,
+			context.drawString(font, this.minPriceText, minPriceX, this.y + 6,
 					minPrice > 64 ? 0xFFFF5555 : 0xFFC0C0C0);
 		}
 
 		this.maxPriceField.setVisible(enabled);
 		this.levelField.setVisible(enabled);
 		if (enabled) {
-			matrices.pushMatrix();
+			McRender.pushPose(context);
 			int maxPriceX = right - 28;
 			int levelX = maxPriceX - 34;
-			context.text(font, Component.literal("L:"), levelX - 10, this.y + 4, 0xFFFFFFFF);
-			context.text(font, Component.literal("$:"), maxPriceX - 10, this.y + 4, 0xFFFFFFFF);
+			context.drawString(font, McText.literal("L:"), levelX - 10, this.y + 4, 0xFFFFFFFF);
+			context.drawString(font, McText.literal("$:"), maxPriceX - 10, this.y + 4, 0xFFFFFFFF);
 			this.levelField.setX(levelX);
-			this.levelField.setY(this.y + 1);
-			this.levelField.extractRenderState(context, mouseX, mouseY, deltaTicks);
+			McWidget.setY(this.levelField, this.y + 1);
+			context.renderWidget(this.levelField, mouseX, mouseY, deltaTicks);
 			this.maxPriceField.setX(maxPriceX);
-			this.maxPriceField.setY(this.y + 1);
-			this.maxPriceField.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			matrices.popMatrix();
+			McWidget.setY(this.maxPriceField, this.y + 1);
+			context.renderWidget(this.maxPriceField, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-		double mouseX = click.x();
-		double mouseY = click.y();
+		return handleMouseClicked(click.x(), click.y());
+	}*/
+	//?} else {
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		return handleMouseClicked(mouseX, mouseY);
+	}
+	//?}
+
+	private boolean handleMouseClicked(double mouseX, double mouseY) {
 		boolean inRowY = mouseY > this.y && mouseY < this.y + this.entryHeight - 4;
 		int right = this.x + this.entryWidth;
 		// touch halo around the tiny level/price boxes (14x14 / 24x14): a tap
@@ -340,7 +386,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 				return false;
 			}
 			setEnabled(!enabled());
-			AbstractWidget.playButtonClickSound(Minecraft.getInstance().getSoundManager());
+			McSound.playButtonClick();
 			return true;
 		}
 		return false;
@@ -357,23 +403,55 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		this.levelField.mouseMoved(mouseX, mouseY);
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseReleased(MouseButtonEvent click) {
-		return this.maxPriceField.mouseReleased(click) || this.levelField.mouseReleased(click);
-	}
-
+		return McInput.mouseReleased(this.maxPriceField, click.x(), click.y(), click.button())
+				|| McInput.mouseReleased(this.levelField, click.x(), click.y(), click.button());
+	}*/
+	//?} else {
 	@Override
+	public boolean mouseReleased(double mouseX, double mouseY, int button) {
+		return McInput.mouseReleased(this.maxPriceField, mouseX, mouseY, button)
+				|| McInput.mouseReleased(this.levelField, mouseX, mouseY, button);
+	}
+	//?}
+
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
+		return handleMouseDragged(drag.x(), drag.y(), drag.button(), mouseX, mouseY);
+	}*/
+	//?} else {
+	@Override
+	public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+		return handleMouseDragged(mouseX, mouseY, button, dragX, dragY);
+	}
+	//?}
+
+	private boolean handleMouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
 		// vanilla delivers the drag to this entry (the list's focused child after
 		// the press) but not to the nested field: without forwarding, EditBox's
 		// onDrag selection never runs and drag-select is dead
-		if (this.maxPriceField.isFocused()) return this.maxPriceField.mouseDragged(drag, mouseX, mouseY);
-		if (this.levelField.isFocused()) return this.levelField.mouseDragged(drag, mouseX, mouseY);
+		if (this.maxPriceField.isFocused()) return McInput.mouseDragged(this.maxPriceField, mouseX, mouseY, button, dragX, dragY);
+		if (this.levelField.isFocused()) return McInput.mouseDragged(this.levelField, mouseX, mouseY, button, dragX, dragY);
 		return false;
 	}
 
+	// 1.20.1's mouseScrolled has no horizontalAmount; gate the signature and share the body.
+	//? if >=1.21 {
 	@Override
 	public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+		return handleMouseScrolled(mouseX, mouseY, verticalAmount);
+	}
+	//?} else {
+	/*@Override
+	public boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
+		return handleMouseScrolled(mouseX, mouseY, verticalAmount);
+	}*/
+	//?}
+
+	public boolean handleMouseScrolled(double mouseX, double mouseY, double verticalAmount) {
 		EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(this.id);
 		if (target == null || !target.enabled()) return false;
 		if (this.maxPriceField.isMouseOver(mouseX, mouseY)) {

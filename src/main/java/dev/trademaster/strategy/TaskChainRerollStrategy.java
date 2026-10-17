@@ -12,7 +12,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.protocol.game.ServerboundMovePlayerPacket;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.world.entity.item.ItemEntity;
-import net.minecraft.world.entity.npc.villager.VillagerProfession;
+import dev.trademaster.compat.McVillager;
+import dev.trademaster.compat.McLevel;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McText;
+import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
 
@@ -49,16 +53,16 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		this.runner = new StepRunner()
 				.add(new BreakLecternStep())
 				.add(this.pickupStep)
-				.add(new WaitProfessionStep(VillagerProfession.NONE, "trademaster.error.wait-none-timeout"))
+				.add(new WaitProfessionStep(McVillager.none(), "trademaster.error.wait-none-timeout"))
 				.add(new PlaceLecternStep())
-				.add(new WaitProfessionStep(wanted, wanted.equals(VillagerProfession.NONE)
+				.add(new WaitProfessionStep(wanted, wanted.equals(McVillager.none())
 						? "trademaster.error.wait-none-timeout"
 						: "trademaster.error.wait-librarian-timeout"));
 	}
 
 	@Override
 	public StepResult tick() {
-		if (this.session == null) return StepResult.failed(Component.literal("TradeMaster: session not started"));
+		if (this.session == null) return StepResult.failed(McText.literal("TradeMaster: session not started"));
 		return this.runner.tick(this.session);
 	}
 
@@ -100,10 +104,10 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			Minecraft mc = Minecraft.getInstance();
 			LocalPlayer player = mc.player;
 			if (player == null || mc.level == null || mc.gameMode == null) {
-				return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+				return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 			}
 			this.ticks++;
-			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 200) return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 200) return StepResult.failed(McText.translatable("trademaster.error.reroll-timeout"));
 
 			BlockPos lecternPos = session.lecternPos;
 			// update the break gate EVERY tick (a present reading resets it); only a
@@ -117,7 +121,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			// Never break empty-handed: put an axe into the main hand first.
 			switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 				case NONE -> {
-					return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+					return StepResult.failed(McText.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 				}
 				case WORKING -> {
 					return StepResult.RUNNING;
@@ -125,7 +129,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 				case READY -> {}
 			}
 			if (TradeMasterConfig.INSTANCE.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
-				return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+				return StepResult.failed(McText.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 
 			if (TradeMasterConfig.INSTANCE.slowMode) {
@@ -191,8 +195,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 				this.lastPickupTarget = nearest;
 				Vec3 target = nearest.position();
 				session.movementGuard.permitTp(target);
-				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-						target.x, target.y, target.z, true, false));
+				McPackets.sendMovePlayerPos(mc.getConnection(), target.x, target.y, target.z, true, false);
 			}
 			return StepResult.RUNNING;
 		}
@@ -203,8 +206,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			Minecraft mc = Minecraft.getInstance();
 			if (session != null && mc.getConnection() != null) {
 				session.movementGuard.permitTp(this.tpReturnPos);
-				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-						this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+				McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			}
 			this.tpReturnPos = null;
 		}
@@ -223,11 +225,11 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		@Override
 		public StepResult tick(RunSession session) {
 			this.ticks++;
-			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 400) return StepResult.failed(Component.translatable(this.timeoutKey));
+			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 400) return StepResult.failed(McText.translatable(this.timeoutKey));
 			if (session.villager == null || !session.villager.isAlive()) {
-				return StepResult.failed(Component.translatable("trademaster.error.villager-gone"));
+				return StepResult.failed(McText.translatable("trademaster.error.villager-gone"));
 			}
-			return session.villager.getVillagerData().profession().is(this.wanted)
+			return McVillager.profession(session.villager).is(this.wanted)
 					? StepResult.DONE
 					: StepResult.RUNNING;
 		}
@@ -244,20 +246,20 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			Minecraft mc = Minecraft.getInstance();
 			LocalPlayer player = mc.player;
 			if (player == null || mc.level == null || mc.gameMode == null) {
-				return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+				return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 			}
 			this.ticks++;
 			if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 200) {
 				// most often the villager keeps occupying the spot: recoverable by
 				// dispatching it, like the guardian ENSURE path does
 				TaskChainRerollStrategy.this.placementBlocked = true;
-				return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+				return StepResult.failed(McText.translatable("trademaster.error.reroll-timeout"));
 			}
 
 			BlockPos lecternPos = session.lecternPos;
 			if (LecternRestock.isWorkBlockAt(mc.level, lecternPos)) return StepResult.DONE;
-			if (lecternPos.getY() >= mc.level.getMaxY()) {
-				return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));
+			if (lecternPos.getY() >= McLevel.maxY(mc.level)) {
+				return StepResult.failed(McText.translatable("trademaster.message.out_of_bounds"));
 			}
 
 			if (!ensureLook(player, lecternAim(lecternPos))) return StepResult.RUNNING;
@@ -280,7 +282,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 
 			if (!LecternRestock.offhandHasWorkItem(player)) {
 				if (!LecternRestock.restock(player)) {
-					return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
+					return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 				}
 				// restock clicks only take effect on the server next tick
 				return StepResult.RUNNING;
@@ -288,7 +290,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 
 			if (this.placeAttempts >= LecternRestock.MAX_PLACE_ATTEMPTS) {
 				TaskChainRerollStrategy.this.placementBlocked = true;
-				return StepResult.failed(Component.translatable("trademaster.message.place_failed"));
+				return StepResult.failed(McText.translatable("trademaster.message.place_failed"));
 			}
 
 			LecternRestock.placeLectern(mc, player, lecternPos);

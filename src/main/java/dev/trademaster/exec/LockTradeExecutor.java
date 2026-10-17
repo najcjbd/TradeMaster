@@ -5,7 +5,8 @@ import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
-import net.minecraft.world.inventory.ContainerInput;
+import dev.trademaster.compat.McClicks;
+import dev.trademaster.compat.McItem;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -93,7 +94,7 @@ public class LockTradeExecutor {
 			if (this.expected == null) {
 				if (stack.is(Items.ENCHANTED_BOOK)) count += stack.getCount();
 			} else if (resultMatches(this.expected, stack)
-					&& ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())) {
+					&& McItem.sameItemSameComponents(stack, this.expected.purchase().result())) {
 				count += stack.getCount();
 			}
 		}
@@ -171,7 +172,7 @@ public class LockTradeExecutor {
 					this.drifted = true;
 					return Result.FAILED;
 				}
-				client.gameMode.handleContainerInput(this.menu.containerId, 2, 0, ContainerInput.PICKUP, client.player);
+				McClicks.click(client.gameMode, this.menu.containerId, 2, 0, McClicks.Click.PICKUP, client.player);
 				this.pickupWaitTicks = 0;
 				this.stage = 2;
 			}

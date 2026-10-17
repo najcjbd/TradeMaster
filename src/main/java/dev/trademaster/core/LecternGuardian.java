@@ -1,5 +1,8 @@
 package dev.trademaster.core;
 
+import dev.trademaster.compat.McLevel;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McText;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
@@ -81,7 +84,7 @@ public class LecternGuardian {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (player == null || mc.level == null || mc.gameMode == null) {
-			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.session = session;
 		BlockPos lecternPos = session.lecternPos;
@@ -113,7 +116,7 @@ public class LecternGuardian {
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 20 * 20) {
 			if (!present && this.mode != Mode.BREAK_ONLY) this.placementBlocked = true;
-			return StepResult.failed(Component.translatable("trademaster.error.reroll-timeout"));
+			return StepResult.failed(McText.translatable("trademaster.error.reroll-timeout"));
 		}
 
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
@@ -124,7 +127,7 @@ public class LecternGuardian {
 			// REFRESH / BREAK_ONLY: break the lectern to drop the previous claim.
 			switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
 				case NONE -> {
-					return StepResult.failed(Component.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+					return StepResult.failed(McText.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 				}
 				case WORKING -> {
 					return StepResult.RUNNING;
@@ -132,7 +135,7 @@ public class LecternGuardian {
 				case READY -> {}
 			}
 			if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
-				return StepResult.failed(Component.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+				return StepResult.failed(McText.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
 			}
 			if (!this.announcedBreak) {
 				this.announcedBreak = true;
@@ -159,8 +162,8 @@ public class LecternGuardian {
 		// ticks to a legitimate placement).
 		if (this.mode != Mode.ENSURE && !brokenConfirmed) return StepResult.RUNNING;
 		this.brokenOnce = true;
-		if (lecternPos.getY() >= mc.level.getMaxY()) {
-			return StepResult.failed(Component.translatable("trademaster.message.out_of_bounds"));
+		if (lecternPos.getY() >= McLevel.maxY(mc.level)) {
+			return StepResult.failed(McText.translatable("trademaster.message.out_of_bounds"));
 		}
 
 		// REFRESH broke the lectern: collect the drop before re-placing, otherwise
@@ -172,8 +175,7 @@ public class LecternGuardian {
 		// Back from the pickup trip before any placement attempt.
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
 			session.movementGuard.permitTp(this.tpReturnPos);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			this.tpReturnPos = null;
 		}
 
@@ -202,7 +204,7 @@ public class LecternGuardian {
 
 		if (!LecternRestock.offhandHasWorkItem(player)) {
 			if (!LecternRestock.restock(player)) {
-				return StepResult.failed(Component.translatable("trademaster.message.lectern_lost"));
+				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}
 			// restock clicks only take effect on the server next tick
 			return StepResult.RUNNING;
@@ -210,7 +212,7 @@ public class LecternGuardian {
 
 		if (this.placeAttempts >= LecternRestock.MAX_PLACE_ATTEMPTS) {
 			this.placementBlocked = true;
-			return StepResult.failed(Component.translatable("trademaster.message.place_failed"));
+			return StepResult.failed(McText.translatable("trademaster.message.place_failed"));
 		}
 
 		LecternRestock.placeLectern(mc, player, lecternPos);
@@ -260,8 +262,7 @@ public class LecternGuardian {
 			this.lastPickupTarget = nearest;
 			Vec3 target = nearest.position();
 			session.movementGuard.permitTp(target);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					target.x, target.y, target.z, true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), target.x, target.y, target.z, true, false);
 		}
 		return true;
 	}
@@ -272,8 +273,7 @@ public class LecternGuardian {
 	private StepResult finishWithReturn(Minecraft mc, RunSession session) {
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
 			session.movementGuard.permitTp(this.tpReturnPos);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+			McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			this.tpReturnPos = null;
 		}
 		return StepResult.DONE;
@@ -291,8 +291,7 @@ public class LecternGuardian {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.getConnection() != null && this.session != null) {
 				this.session.movementGuard.permitTp(this.tpReturnPos);
-				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-						this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+				McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
 			}
 			this.tpReturnPos = null;
 		}

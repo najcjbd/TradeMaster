@@ -1,5 +1,9 @@
 package dev.trademaster.matching;
 
+import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McBuiltIn;
 import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeOfferSpec;
@@ -9,16 +13,12 @@ import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.Registry;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.EnchantmentTags;
-import net.minecraft.world.entity.npc.villager.Villager;
+import net.minecraft.world.entity.npc.Villager;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
-import net.minecraft.world.item.enchantment.ItemEnchantments;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.item.trading.MerchantOffers;
 import net.minecraft.network.chat.Component;
@@ -70,13 +70,13 @@ public class TradeMatcher {
 				return stack.is(this.result.getItem()) && stack.getCount() >= this.result.getCount();
 			}
 			if (!stack.is(Items.ENCHANTED_BOOK)) return false;
-			ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
+			var enchantments = McEnchantments.of(stack);
 			if (enchantments.size() != this.bookEnchantments.size()) return false;
 			for (MatchPart part : this.bookEnchantments) {
 				boolean found = false;
 				for (var entry : enchantments.entrySet()) {
-					ResourceLocation id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-					if (id != null && id.equals(part.id()) && entry.getIntValue() == part.level()) {
+					ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+					if (id != null && id.equals(part.id()) && entry.getValue() == part.level()) {
 						found = true;
 						break;
 					}
@@ -93,7 +93,7 @@ public class TradeMatcher {
 				ItemStack live = liveSlots.get(i);
 				ItemStack matched = this.costs.get(i);
 				if (live == null) live = ItemStack.EMPTY;
-				if (!ItemStack.isSameItemSameComponents(live, matched)) return false;
+				if (!McItem.sameItemSameComponents(live, matched)) return false;
 				if (live.getCount() != matched.getCount()) return false;
 			}
 			return true;
@@ -233,9 +233,9 @@ public class TradeMatcher {
 	public static boolean registryTradeable(ResourceLocation id) {
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.level == null) return true;
-		Registry<Enchantment> registry = mc.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-		Holder<Enchantment> holder = registry.get(id).orElse(null);
-		return holder != null && holder.is(EnchantmentTags.TRADEABLE);
+		Registry<Enchantment> registry = McRegistry.enchantments(mc.level);
+		Holder<Enchantment> holder = McRegistry.holder(registry, id);
+		return holder != null && McEnchantments.isTradeable(holder);
 	}
 
 	/** Whether an enchantment target can ever be offered: its vanilla minimum price must
@@ -287,7 +287,7 @@ public class TradeMatcher {
 			TradeOfferSpec.TradeCost cost = costs.get(slot);
 			if (cost == null || cost.item() == null) continue;
 			if (TradeMasterConfig.INSTANCE.isAirItem(cost.item())) continue;
-			if (BuiltInRegistries.ITEM.get(cost.item()).isEmpty()) continue;
+			if (McRegistry.value(McBuiltIn.items(), cost.item()) == null) continue;
 			// slot 1's count is ignored (capFor returns the price); a later slot with
 			// count 0 is "not required" and contributes no allowance
 			if (slot >= 1 && cost.count() == 0) continue;
@@ -318,7 +318,7 @@ public class TradeMatcher {
 			// guaranteed lock rejection (and re-match it forever after the retry cap)
 			if (offer.isOutOfStock()) continue;
 			ItemStack result = offer.getResult();
-			ResourceLocation resultItem = BuiltInRegistries.ITEM.getKey(result.getItem());
+			ResourceLocation resultItem = McBuiltIn.items().getKey(result.getItem());
 			// a configured good: any non-book result the player asked to reroll for.
 			// (An enchanted book result is always the enchantment path, even if some
 			// good names enchanted_book as its result.)
@@ -343,14 +343,14 @@ public class TradeMatcher {
 				continue;
 			}
 			if (!result.is(Items.ENCHANTED_BOOK)) continue;
-			var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(result);
+			var enchantments = McEnchantments.of(result);
 			if (enchantments.isEmpty()) continue;
 			List<MatchPart> bookEnchantments = new ArrayList<>();
 			List<MatchPart> parts = new ArrayList<>();
 			int budget = 0;
 			for (var entry : enchantments.entrySet()) {
-				ResourceLocation id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-				int level = entry.getIntValue();
+				ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+				int level = entry.getValue();
 				if (id != null) bookEnchantments.add(new MatchPart(id, level));
 				if (id == null) continue;
 				// qualifying is decided by the live config (enabled + level satisfied),
@@ -880,7 +880,7 @@ public class TradeMatcher {
 		Map<ResourceLocation, Integer> charged = new HashMap<>();
 		for (ItemStack stack : OfferCosts.slots(offer)) {
 			if (stack == null || stack.isEmpty()) continue;
-			ResourceLocation item = BuiltInRegistries.ITEM.getKey(stack.getItem());
+			ResourceLocation item = McBuiltIn.items().getKey(stack.getItem());
 			if (item == null || config.isAirItem(item)) continue;
 			// something the specs never declared: buying it would cost an item the
 			// player did not agree to pay

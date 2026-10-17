@@ -1,5 +1,9 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.compat.McPlayer;
+import dev.trademaster.compat.McPackets;
+import dev.trademaster.compat.McText;
+import dev.trademaster.compat.McInteract;
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
@@ -9,7 +13,6 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.phys.BlockHitResult;
@@ -53,12 +56,12 @@ public class ButtonPresser {
 			// restoreSlot only needs player.connection: keep the exit symmetric
 			// with ChestDepositor's early guard even in the disconnect window
 			if (player != null) restoreSlot(player);
-			return StepResult.failed(Component.literal("TradeMaster: player/level unavailable"));
+			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.ticks++;
 		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 100) {
 			restoreSlot(player);
-			return StepResult.failed(Component.translatable("trademaster.error.button-timeout"));
+			return StepResult.failed(McText.translatable("trademaster.error.button-timeout"));
 		}
 
 		// The stored position must actually hold a button; clicking the UP face of
@@ -66,7 +69,7 @@ public class ButtonPresser {
 		BlockState state = mc.level.getBlockState(this.buttonPos);
 		if (!(state.getBlock() instanceof ButtonBlock)) {
 			restoreSlot(player);
-			return StepResult.failed(Component.translatable("trademaster.message.button_missing"));
+			return StepResult.failed(McText.translatable("trademaster.message.button_missing"));
 		}
 
 		if (this.pressed) {
@@ -85,7 +88,7 @@ public class ButtonPresser {
 			}
 			if (this.confirmTicks > 40) {
 				restoreSlot(player);
-				return StepResult.failed(Component.translatable("trademaster.message.button_not_pressed"));
+				return StepResult.failed(McText.translatable("trademaster.message.button_not_pressed"));
 			}
 			// the use packet may have been dropped, or the button was still
 			// powered from a recent manual touch: retry a few times
@@ -106,7 +109,7 @@ public class ButtonPresser {
 			// failing with a misleading reroll-timeout
 			if (++this.poweredWaitTicks > 60) {
 				restoreSlot(player);
-				return StepResult.failed(Component.translatable("trademaster.message.button_still_powered"));
+				return StepResult.failed(McText.translatable("trademaster.message.button_still_powered"));
 			}
 			return StepResult.RUNNING;
 		}
@@ -116,18 +119,18 @@ public class ButtonPresser {
 
 		if (!this.switchedSlot) {
 			this.switchedSlot = true;
-			this.originalSlot = player.getInventory().getSelectedSlot();
+			this.originalSlot = McPlayer.selectedSlot(player);
 			int empty = findEmptyHotbarSlot(player);
 			if (empty >= 0 && empty != this.originalSlot) {
 				Interactions.selectHotbarSlot(player, empty);
 			// Defensive, unreachable today (audited 2026-09-19): a sneaking player
 			// returns earlier in the pipeline, so isShiftKeyDown() is always false.
 			} else if (empty < 0 && player.isShiftKeyDown()
-					&& player.getInventory().getSelectedItem().getItem() instanceof BlockItem) {
+					&& McPlayer.selectedItem(player).getItem() instanceof BlockItem) {
 				// only sneak makes the held block win over the button interaction:
 				// pressing while sneaking with a placeable would put it on the
 				// button's face and wreck the rig layout
-				return StepResult.failed(Component.translatable("trademaster.message.presser_no_empty_slot"));
+				return StepResult.failed(McText.translatable("trademaster.message.presser_no_empty_slot"));
 			}
 			return StepResult.RUNNING;
 		}
@@ -151,9 +154,8 @@ public class ButtonPresser {
 			case WALL -> state.getValue(ButtonBlock.FACING);
 		};
 		BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.buttonPos), face, this.buttonPos, false);
-		mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
-		player.swing(InteractionHand.MAIN_HAND, true);
-		player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+		McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+		McPackets.swing(player, InteractionHand.MAIN_HAND);
 	}
 
 	private static int findEmptyHotbarSlot(LocalPlayer player) {
@@ -172,7 +174,7 @@ public class ButtonPresser {
 	}
 
 	private void restoreSlot(LocalPlayer player) {
-		if (this.originalSlot >= 0 && player.getInventory().getSelectedSlot() != this.originalSlot) {
+		if (this.originalSlot >= 0 && McPlayer.selectedSlot(player) != this.originalSlot) {
 			Interactions.selectHotbarSlot(player, this.originalSlot);
 		}
 		this.originalSlot = -1;

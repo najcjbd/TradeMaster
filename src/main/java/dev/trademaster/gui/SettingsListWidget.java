@@ -1,20 +1,33 @@
 package dev.trademaster.gui;
 
+//? if >=26.1 {
+/*import net.minecraft.client.input.CharacterEvent;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;*/
+//?}
+import dev.trademaster.compat.McList;
+import dev.trademaster.compat.McPlayer;
+import dev.trademaster.compat.McRender;
+import dev.trademaster.compat.McClient;
+import dev.trademaster.compat.McInput;
 import dev.trademaster.compat.McIds;
+import dev.trademaster.compat.McSound;
+import dev.trademaster.compat.McGraphics;
+import dev.trademaster.compat.McWidget;
+import dev.trademaster.compat.McText;
 
 import dev.trademaster.config.DurationParser;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RerollController;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
+//? if >=1.20 {
+import net.minecraft.client.gui.GuiGraphics;
+//?}
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
-import net.minecraft.client.input.CharacterEvent;
-import net.minecraft.client.input.KeyEvent;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
@@ -25,8 +38,49 @@ import java.util.function.Supplier;
 
 public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget.Row> {
 
+	/** The list's left edge: 1.20.1 exposes protected x0/y0; 1.20.2+ inherits
+	 * AbstractContainerWidget's getX/getY. */
+	private int listLeft() {
+		//? if >=1.20.2 {
+		return this.getX();
+		//?} else {
+		/*return this.x0;*/
+		//?}
+	}
+
+	private int listTop() {
+		//? if >=1.20.2 {
+		return this.getY();
+		//?} else {
+		/*return this.y0;*/
+		//?}
+	}
+
+	/** Row height: 26.1 renamed AbstractSelectionList.itemHeight to defaultEntryHeight. */
+	private int entryRowHeight() {
+		//? if >=26.1 {
+		/*return this.defaultEntryHeight;*/
+		//?} else {
+		return this.itemHeight;
+		//?}
+	}
+
+	/** Claims the scrollbar area for mouse routing. 26.1 exposes a hit helper; earlier
+	 * versions draw the bar inside the list bounds, so the base isMouseOver covers it. */
+	private boolean overScrollbar(double x, double y) {
+		//? if >=26.1 {
+		/*return this.isOverScrollbar(x, y);*/
+		//?} else {
+		return false;
+		//?}
+	}
+
 	public SettingsListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
+		//? if >=1.20.2 {
 		super(client, width, height, top, itemHeight);
+		//?} else {
+		/*super(client, width, height, top, top + height, itemHeight);*/
+		//?}
 		// the label/value caches below hold TRANSLATED components: drop them whenever
 		// the screen is (re)built, or a client language change would keep serving the
 		// old strings (the list is recreated on every open, resize and tab switch)
@@ -34,13 +88,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 
 		addEntry(new CycleRow("trademaster.settings.mechanism",
-				() -> c.rerollMechanism.getDisplayName(),
+				() -> c.rerollMechanism.displayName(),
 				cycle -> c.rerollMechanism = dev.trademaster.config.RerollMechanism.valueOf(nextEnum(c.rerollMechanism.name(), dev.trademaster.config.RerollMechanism.values(), cycle))));
 		addEntry(new CycleRow("trademaster.settings.nonBookDisposal",
-				() -> c.nonBookDisposal.getDisplayName(),
+				() -> c.nonBookDisposal.displayName(),
 				cycle -> c.nonBookDisposal = dev.trademaster.config.NonBookDisposal.valueOf(nextEnum(c.nonBookDisposal.name(), dev.trademaster.config.NonBookDisposal.values(), cycle))));
 		addEntry(new CycleRow("trademaster.settings.detection",
-				() -> c.detectionMode.getDisplayName(),
+				() -> c.detectionMode.displayName(),
 				cycle -> c.detectionMode = dev.trademaster.config.DetectionMode.valueOf(nextEnum(c.detectionMode.name(), dev.trademaster.config.DetectionMode.values(), cycle))));
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
@@ -57,7 +111,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			c.autoDisableAfterLock = v;
 			if (v) c.huntCheaper = false;
 		}));
-		addEntry(new HuntRow(), 44);
+		//? if >=26.1 {
+		/*addEntry(new HuntRow(), 44);*/
+		//?} else {
+		HuntRow huntRow = new HuntRow();
+		huntRow.ownHeight = 44;
+		addEntry(huntRow);
+		//?}
 		addEntry(new IntRow("trademaster.settings.lockMaxRetries", () -> c.lockMaxRetries, v -> c.lockMaxRetries = v, -1, 999));
 		addEntry(new IntRow("trademaster.settings.offhandSwapRetries", () -> c.offhandSwapRetries, v -> c.offhandSwapRetries = v, -1, 999));
 		addEntry(new IntRow("trademaster.settings.postDispatchBreakRetries", () -> c.postDispatchBreakRetries, v -> c.postDispatchBreakRetries = v, -1, 999));
@@ -112,7 +172,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		addEntry(new ActionRow("trademaster.settings.addChest", () -> {
 			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
 					pos -> c.addChest(pos.immutable()));
-			if (began) Minecraft.getInstance().gui.setScreen(null);
+			if (began) McClient.setScreen(Minecraft.getInstance(), null);
 			return began;
 		}));
 	}
@@ -162,65 +222,93 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		// out-of-world coordinates would make presses/detection target a place the
 		// server rejects or that is beyond the world border — refuse them at parse
 		if (Math.abs(values[0]) > 30_000_000 || Math.abs(values[2]) > 30_000_000) return null;
-		if (player != null && (values[1] < player.level().dimensionType().minY()
-				|| values[1] >= player.level().dimensionType().minY() + player.level().dimensionType().height())) return null;
+		if (player != null && (values[1] < dev.trademaster.compat.McEntity.level(player).dimensionType().minY()
+				|| values[1] >= dev.trademaster.compat.McEntity.level(player).dimensionType().minY() + dev.trademaster.compat.McEntity.level(player).dimensionType().height())) return null;
 		return new BlockPos(values[0], values[1], values[2]);
 	}
 
+		//? if >=1.20.2 {
 	@Override
-	protected void extractListBackground(GuiGraphicsExtractor context) {
+	protected void renderListBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }
+	//?} elif >=1.20 {
+	/*@Override
+	protected void renderBackground(GuiGraphics context) { drawListBackground(new McGraphics(context)); }*/
+	//?} else {
+	/*@Override
+	protected void renderBackground(com.mojang.blaze3d.vertex.PoseStack context) { drawListBackground(new McGraphics(context)); }*/
+	//?}
+
+	private void drawListBackground(McGraphics context) {
 		this.setSelected(null);
 		context.fill(5, 27, this.width + 5, 44, 0xAFC7C0C0);
-		context.text(Minecraft.getInstance().font,
-				Component.translatable("trademaster.tab.settings"), 9, 32, 0xFF202020);
-	}
+		context.drawString(Minecraft.getInstance().font,
+				McText.translatable("trademaster.tab.settings"), 9, 32, 0xFF202020);
+		}
 
+
+	//? if >=1.20.2 {
 	@Override
-	protected void extractListSeparators(GuiGraphicsExtractor context) {}
+	protected void renderListSeparators(GuiGraphics context) {}
+	//?}
 
+	//? if >=1.20.2 {
 	@Override
 	protected void updateWidgetNarration(NarrationElementOutput builder) {}
+	//?} else {
+	/*@Override
+	public void updateNarration(NarrationElementOutput builder) {}*/
+	//?}
 
 	@Override
 	public int getRowWidth() { return this.width - 12; }
 
+	//? if >=1.21.2 {
 	@Override
 	protected int scrollBarX() { return this.width; }
+	//?} else {
+	/*@Override
+	protected int getScrollbarPosition() { return this.width; }*/
+	//?}
 
 	@Override
 	public boolean isMouseOver(double x, double y) {
 		// The scrollbar sits on the widget's right edge, outside the bounds the
 		// Screen uses to route mouse events; claim the scrollbar area explicitly
 		// so scrollbar clicks/drags reach this widget.
-		return super.isMouseOver(x, y) || this.isOverScrollbar(x, y);
+		return super.isMouseOver(x, y) || this.overScrollbar(x, y);
 	}
 
 	@Override
 	public int getRowTop(int index) {
 		// +2 matches the list's getFirstEntryY(); heights are summed per row
 		// because the hunt row is taller than the default 22px
-		int top = this.getY() + 2 - (int) this.scrollAmount();
+		int top = this.listTop() + 2 - (int) McList.scrollAmount(this);
 		java.util.List<Row> rows = this.children();
 		for (int i = 0; i < index && i < rows.size(); i++) {
-			top += rows.get(i).getHeight();
+			top += rows.get(i).rowHeight();
 		}
 		return top;
 	}
 
+	// 1.19.2's AbstractSelectionList.getRowBottom is private; override it only where it is
+	// accessible (1.20+).
+	//? if >=1.20 {
 	@Override
 	public int getRowBottom(int index) {
-		return this.getRowTop(index) + this.children().get(index).getHeight();
+		return this.getRowTop(index) + this.children().get(index).rowHeight();
 	}
+	//?}
 
 	@Override
 	public int getRowLeft() {
-		return this.getX() + this.width / 2 - this.getRowWidth() / 2 - 1;
+		return this.listLeft() + this.width / 2 - this.getRowWidth() / 2 - 1;
 	}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean keyPressed(KeyEvent input) {
 		for (Row row : this.children()) {
-			if (row.handleKey(input)) return true;
+			if (row.handleKey(input.key(), McInput.scancode(input), input.modifiers())) return true;
 		}
 		return super.keyPressed(input);
 	}
@@ -228,7 +316,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 	@Override
 	public boolean keyReleased(KeyEvent input) {
 		for (Row row : this.children()) {
-			row.handleRelease(input);
+			row.handleRelease(input.key(), McInput.scancode(input), input.modifiers());
 		}
 		return super.keyReleased(input);
 	}
@@ -237,10 +325,36 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 	public boolean charTyped(CharacterEvent input) {
 		if (!input.isAllowedChatCharacter()) return false;
 		for (Row row : this.children()) {
-			if (row.handleChar(input)) return true;
+			if (row.handleChar((char) input.codepoint())) return true;
 		}
 		return super.charTyped(input);
+	}*/
+	//?} else {
+	@Override
+	public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+		for (Row row : this.children()) {
+			if (row.handleKey(keyCode, scanCode, modifiers)) return true;
+		}
+		return super.keyPressed(keyCode, scanCode, modifiers);
 	}
+
+	@Override
+	public boolean keyReleased(int keyCode, int scanCode, int modifiers) {
+		for (Row row : this.children()) {
+			row.handleRelease(keyCode, scanCode, modifiers);
+		}
+		return super.keyReleased(keyCode, scanCode, modifiers);
+	}
+
+	@Override
+	public boolean charTyped(char c, int modifiers) {
+		if (!McInput.isAllowedChatCharacter(c)) return false;
+		for (Row row : this.children()) {
+			if (row.handleChar(c)) return true;
+		}
+		return super.charTyped(c, modifiers);
+	}
+	//?}
 
 	/** Clicking a partially clipped row makes the list auto-scroll it fully into
 	 * view (setFocused -> scrollToEntry): that alignment scroll must not trigger
@@ -250,23 +364,21 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	/** IME preedit (Android/IM soft keyboards): the screen delivers it to the focused
 	 * widget, which is this list, so hand it to the row whose field is focused —
-	 * EditBox.preeditUpdated has no focus guard and must not run on other rows. */
-	@Override
+	 * EditBox.preeditUpdated has no focus guard and must not run on other rows. 26.1-only. */
+	//? if >=26.1 {
+	/*@Override
 	public boolean preeditUpdated(net.minecraft.client.input.PreeditEvent input) {
 		for (Row row : this.children()) {
 			if (row.handlePreedit(input)) return true;
 		}
 		return false;
-	}
+	}*/
+	//?}
 
-	@Override
+	//? if >=26.1 {
+	/*@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
-		// Commit the rows the pointer is NOT on BEFORE super runs: a click on [Remove]
-		// deletes a chest inside super.mouseClicked, which shifts the rows after it —
-		// their originalPos guard would then silently discard an in-flight draft.
-		// A row whose own field IS under the pointer keeps editing: committing there
-		// would push a half-typed value ("2" on the way to "20") into the live config.
-		reconcileRowsNotUnderPointer(click);
+		reconcileRowsNotUnderPointer(click.x(), click.y());
 		boolean handled;
 		this.suppressFocusClear = true;
 		try {
@@ -275,33 +387,52 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.suppressFocusClear = false;
 		}
 		return handled;
+	}*/
+	//?} else {
+	@Override
+	public boolean mouseClicked(double mouseX, double mouseY, int button) {
+		// Commit the rows the pointer is NOT on BEFORE super runs: a click on [Remove]
+		// deletes a chest inside super.mouseClicked, which shifts the rows after it —
+		// their originalPos guard would then silently discard an in-flight draft.
+		// A row whose own field IS under the pointer keeps editing: committing there
+		// would push a half-typed value ("2" on the way to "20") into the live config.
+		reconcileRowsNotUnderPointer(mouseX, mouseY);
+		boolean handled;
+		this.suppressFocusClear = true;
+		try {
+			handled = super.mouseClicked(mouseX, mouseY, button);
+		} finally {
+			this.suppressFocusClear = false;
+		}
+		return handled;
 	}
+	//?}
 
 	/** Blur semantics for a click: every field the pointer is not on commits its draft
 	 * and loses focus; the field under the pointer is left alone. */
-	private void reconcileRowsNotUnderPointer(MouseButtonEvent click) {
+	private void reconcileRowsNotUnderPointer(double mouseX, double mouseY) {
 		for (Row row : this.children()) {
-			if (row instanceof DurationRow duration && !duration.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof DurationRow duration && !duration.field.isMouseOver(mouseX, mouseY)) {
 				duration.reconcileOnFocusLoss();
 				duration.field.setFocused(false);
 			}
-			if (row instanceof PosRow pos && !pos.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof PosRow pos && !pos.field.isMouseOver(mouseX, mouseY)) {
 				pos.reconcileOnFocusLoss();
 				pos.field.setFocused(false);
 			}
-			if (row instanceof DeltaRow delta && !delta.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof DeltaRow delta && !delta.field.isMouseOver(mouseX, mouseY)) {
 				delta.reconcileOnFocusLoss();
 				delta.field.setFocused(false);
 			}
-			if (row instanceof DirectionRow direction && !direction.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof DirectionRow direction && !direction.field.isMouseOver(mouseX, mouseY)) {
 				direction.reconcileOnFocusLoss();
 				direction.field.setFocused(false);
 			}
-			if (row instanceof CurseListRow curses && !curses.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof CurseListRow curses && !curses.field.isMouseOver(mouseX, mouseY)) {
 				curses.reconcileOnFocusLoss();
 				curses.field.setFocused(false);
 			}
-			if (row instanceof ChestRow chest && !chest.field.isMouseOver(click.x(), click.y())) {
+			if (row instanceof ChestRow chest && !chest.field.isMouseOver(mouseX, mouseY)) {
 				chest.reconcileOnFocusLoss();
 				chest.field.setFocused(false);
 			}
@@ -310,9 +441,9 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 	@Override
 	public void setScrollAmount(double amount) {
-		double before = this.scrollAmount();
+		double before = McList.scrollAmount(this);
 		super.setScrollAmount(amount);
-		if (this.scrollAmount() == before || this.suppressFocusClear) return;
+		if (McList.scrollAmount(this) == before || this.suppressFocusClear) return;
 		// a focused field scrolled off-screen keeps swallowing keyboard input
 		// invisibly: drop focus whenever the viewport actually moves (wheel noise at
 		// the scroll boundaries must not kill focus mid-typing). clearFieldFocus() blurs
@@ -331,12 +462,57 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 	public abstract static class Row extends AbstractSelectionList.Entry<Row> {
 		protected int x, y, entryWidth, entryHeight;
 
-		public boolean handleKey(KeyEvent input) { return false; }
-		public void handleRelease(KeyEvent input) {}
-		public boolean handleChar(CharacterEvent input) { return false; }
+		/** Row height: 26.1 tracks it in the Entry (addEntry(E,int)); before that the list
+		 * has no per-entry height, so the row carries its own (default 22, hunt row 44). */
+		//? if >=26.1 {
+		/*int rowHeight() { return this.getHeight(); }*/
+		//?} else {
+		int ownHeight = 22;
+		int rowHeight() { return this.ownHeight; }
+		//?}
 
-		/** IME preedit forward (Android/IM keyboards): see the list-level override. */
-		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) { return false; }
+		// 26.1 replaced Entry.render(GuiGraphics,int,int,int,int,int,int,int,boolean,float) with
+		// Entry.extractContent(...): the row geometry is passed as render() arguments on
+		// <=1.21.11 but read from the entry on 26.1+. Both stash it and delegate to drawRow.
+		//? if >=26.1 {
+		/*@Override
+		public void extractContent(GuiGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = this.getX();
+			this.y = this.getY();
+			this.entryWidth = this.getWidth();
+			this.entryHeight = this.getHeight();
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}*/
+		//?} elif >=1.20 {
+		@Override
+		public void render(GuiGraphics context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+		}
+		//?} else {
+		/*@Override
+		public void render(com.mojang.blaze3d.vertex.PoseStack context, int index, int top, int left, int width, int height, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			this.x = left;
+			this.y = top;
+			this.entryWidth = width;
+			this.entryHeight = height;
+			drawRow(new McGraphics(context), mouseX, mouseY, hovered, deltaTicks);
+				}*/
+		//?}
+
+		protected abstract void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks);
+
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) { return false; }
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {}
+		public boolean handleChar(char c) { return false; }
+
+		/** IME preedit forward (Android/IM keyboards): see the list-level override. 26.1-only. */
+		//? if >=26.1 {
+		/*public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) { return false; }*/
+		//?}
 		/** Drops the row's EditBox focus (viewport scrolled away); no-op for rows without a field. */
 		void clearFieldFocus() {}
 
@@ -345,7 +521,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		void flushEdits() {}
 
 		protected static void playClick() {
-			AbstractWidget.playButtonClickSound(Minecraft.getInstance().getSoundManager());
+			McSound.playButtonClick();
 		}
 
 		/** Reserved right area on rows hosting a 100px EditBox: field + margin + gap, so drawn text stays visible. */
@@ -361,14 +537,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		protected String fitValueText(Component label, String value, String suffix, int rightInset) {
 			Font font = Minecraft.getInstance().font;
 			String full = value + suffix;
-			// entryWidth is only assigned during drawBase: before the first draw
-			// fall back to the list-assigned width instead of truncating to "..."
-			int width = this.entryWidth > 0 ? this.entryWidth : this.getWidth();
+			// entryWidth is assigned by the gated Entry override before every draw pass
+			int width = this.entryWidth;
 			if (width <= 0) return full;
 			int available = width - rightInset - font.width(label) - 18;
 			if (font.width(full) <= available) return full;
 			int room = available - font.width(suffix) - font.width("...");
-			return font.substrByWidth(Component.literal(value), Math.max(0, room)).getString() + "..." + suffix;
+			return font.substrByWidth(McText.literal(value), Math.max(0, room)).getString() + "..." + suffix;
 		}
 
 		/** Touch-friendly hit zone: +/-4px tolerance and at least 44px wide (touch target guideline). */
@@ -394,10 +569,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		protected static String valueText(boolean value) {
 			if (value) {
-				if (enabledText == null) enabledText = Component.translatable("trademaster.button.enabled").getString();
+				if (enabledText == null) enabledText = McText.translatable("trademaster.button.enabled").getString();
 				return enabledText;
 			}
-			if (disabledText == null) disabledText = Component.translatable("trademaster.button.disabled").getString();
+			if (disabledText == null) disabledText = McText.translatable("trademaster.button.disabled").getString();
 			return disabledText;
 		}
 
@@ -411,20 +586,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		protected static Component label(String key) {
 			Component cached = LABELS.get(key);
 			if (cached != null) return cached;
-			Component made = Component.translatable(key);
+			Component made = McText.translatable(key);
 			LABELS.put(key, made);
 			return made;
 		}
 
-		protected void drawBase(GuiGraphicsExtractor context, String labelKey, String valueText, int valueColor) {
+		protected void drawBase(McGraphics context, String labelKey, String valueText, int valueColor) {
 			drawBase(context, label(labelKey), valueText, valueColor, 10);
 		}
 
-		protected void drawBase(GuiGraphicsExtractor context, String labelKey, String valueText, int valueColor, int rightInset) {
+		protected void drawBase(McGraphics context, String labelKey, String valueText, int valueColor, int rightInset) {
 			drawBase(context, label(labelKey), valueText, valueColor, rightInset);
 		}
 
-		protected void drawBase(GuiGraphicsExtractor context, Component label, String valueText, int valueColor) {
+		protected void drawBase(McGraphics context, Component label, String valueText, int valueColor) {
 			drawBase(context, label, valueText, valueColor, 10);
 		}
 
@@ -436,21 +611,17 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		protected Component valueComponent(String valueText) {
 			if (!valueText.equals(this.cachedValueText)) {
 				this.cachedValueText = valueText;
-				this.cachedValueComponent = Component.literal(valueText);
+				this.cachedValueComponent = McText.literal(valueText);
 			}
 			return this.cachedValueComponent;
 		}
 
-		protected void drawBase(GuiGraphicsExtractor context, Component label, String valueText, int valueColor, int rightInset) {
-			this.x = this.getX();
-			this.y = this.getY();
-			this.entryWidth = this.getWidth();
-			this.entryHeight = this.getHeight();
+		protected void drawBase(McGraphics context, Component label, String valueText, int valueColor, int rightInset) {
 			Font font = Minecraft.getInstance().font;
 			context.fill(this.x, this.y, this.x + this.entryWidth, this.y + this.entryHeight - 4, 0x1AC7C0C0);
-			context.text(font, label, this.x + 6, this.y + 6, 0xFFFFFFFF);
+			context.drawString(font, label, this.x + 6, this.y + 6, 0xFFFFFFFF);
 			int textWidth = font.width(valueText);
-			context.text(font, valueComponent(valueText), this.x + this.entryWidth - rightInset - textWidth, this.y + 6, valueColor);
+			context.drawString(font, valueComponent(valueText), this.x + this.entryWidth - rightInset - textWidth, this.y + 6, valueColor);
 		}
 	}
 
@@ -465,15 +636,15 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.setter = setter;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			boolean value = this.getter.get();
 			drawBase(context, this.labelKey,
 					valueText(value),
 					value ? 0xFF00C000 : 0xFFC00000);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				boolean before = this.getter.get();
@@ -484,7 +655,22 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return true;
 			}
 			return false;
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				boolean before = this.getter.get();
+				this.setter.accept(!before);
+				// a refused toggle (hunt blocked by auto-disable or a running
+				// pipeline) must not play the confirm sound
+				if (this.getter.get() != before) playClick();
+				return true;
+			}
+			return false;
+				}
+		//?}
+
 	}
 
 	/** Hunt-cheaper row: the BoolRow toggle plus a small always-visible warning
@@ -516,8 +702,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		private static void chatRed(String key) {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.player != null) {
-				mc.player.sendSystemMessage(Component.literal("[Trade Master] ")
-						.append(Component.translatable(key).withStyle(net.minecraft.ChatFormatting.RED)));
+				McPlayer.sendSystemMessage(mc.player, McText.literal("[Trade Master] ")
+						.append(McText.translatable(key).withStyle(net.minecraft.ChatFormatting.RED)));
 			}
 		}
 
@@ -526,19 +712,18 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		private int cachedCaptionWidth = -1;
 		private java.util.List<net.minecraft.util.FormattedCharSequence> cachedCaptionLines = java.util.List.of();
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
-			super.extractContent(context, mouseX, mouseY, hovered, deltaTicks);
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			super.drawRow(context, mouseX, mouseY, hovered, deltaTicks);
 			Font font = Minecraft.getInstance().font;
 			int wrap = Math.max(40, this.entryWidth - 12);
 			if (wrap != this.cachedCaptionWidth) {
 				this.cachedCaptionWidth = wrap;
 				this.cachedCaptionLines = font.split(
-						Component.translatable("trademaster.settings.huntCheaper.caption"), wrap);
+						McText.translatable("trademaster.settings.huntCheaper.caption"), wrap);
 			}
 			java.util.List<net.minecraft.util.FormattedCharSequence> lines = this.cachedCaptionLines;
 			for (int i = 0; i < lines.size() && i < 3; i++) {
-				context.text(font, lines.get(i), this.x + 6, this.y + 14 + i * 9, 0xFF909090);
+				context.drawString(font, lines.get(i), this.x + 6, this.y + 14 + i * 9, 0xFF909090);
 			}
 		}
 	}
@@ -554,12 +739,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.setter = setter;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			drawBase(context, this.labelKey, "< " + this.getter.get() + " >", 0xFFE0E000);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				boolean forward = click.x() > this.x + this.entryWidth / 2.0;
@@ -568,7 +753,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return true;
 			}
 			return false;
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				boolean forward = mouseX > this.x + this.entryWidth / 2.0;
+				this.setter.accept(forward);
+				playClick();
+				return true;
+			}
+			return false;
+				}
+		//?}
+
 	}
 
 	private static class IntRow extends Row {
@@ -585,12 +783,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.max = max;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			drawBase(context, this.labelKey, "< " + this.getter.get() + " >", 0xFFE0E000);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				int delta = click.x() > this.x + this.entryWidth / 2.0 ? 1 : -1;
@@ -599,7 +797,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return true;
 			}
 			return false;
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				int delta = mouseX > this.x + this.entryWidth / 2.0 ? 1 : -1;
+				this.setter.accept(Mth.clamp(this.getter.get() + delta, this.min, this.max));
+				playClick();
+				return true;
+			}
+			return false;
+				}
+		//?}
+
 	}
 
 	/** Free-text duration input; accepts "3600", "1h", "30min", "1m", "90s" and compounds. */
@@ -624,7 +835,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.setter = setter;
 			this.minTicks = minTicks;
 			this.maxTicks = maxTicks;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 80, 14, Component.literal("timeout"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 80, 14, McText.literal("timeout"));
 			this.field.setMaxLength(16);
 			this.field.setValue(DurationParser.format(getter.get()));
 			this.field.setResponder(text -> this.pendingApply = true);
@@ -642,35 +853,56 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.applyDraft();
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			int parsed = DurationParser.parse(this.field.getValue());
 			boolean valid = parsed >= this.minTicks && parsed <= this.maxTicks;
 			drawBase(context, this.labelKey,
-					fitValueText(Component.translatable(this.labelKey), DurationParser.format(this.getter.get()), "", DURATION_RIGHT_INSET),
+					fitValueText(McText.translatable(this.labelKey), DurationParser.format(this.getter.get()), "", DURATION_RIGHT_INSET),
 					valid ? 0xFFE0E000 : 0xFFC00000, DURATION_RIGHT_INSET);
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			// the drag lands on the row (the list's focused child), not the nested
 			// field: forward it so EditBox's onDrag selection works
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			// the drag lands on the row (the list's focused child), not the nested
+			// field: forward it so EditBox's onDrag selection works
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		/** Losing focus with unparsable or out-of-range text restores the stored
 		 * value, so the field never keeps showing a value that was never applied. */
@@ -696,24 +928,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	private class PosRow extends Row {
@@ -745,7 +979,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.setter = setter;
 			this.slot = slot;
 			this.clearable = clearable;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("position"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("position"));
 			this.field.setMaxLength(40);
 			// pre-fill with the stored value (before the responder exists) so a
 			// one-component tweak does not require retyping the whole row
@@ -766,8 +1000,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			});
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			// unset optional positions show neutral yellow, missing required ones red
 			int color = this.getter.get() == null
 					? (this.clearable ? 0xFFE0E000 : 0xFFC00000)
@@ -776,23 +1009,24 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			// right-anchor: a fixed -320 offset pushes the field offscreen on
 			// narrow (Android/FCL) widths, and the delta row has no picker fallback
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
 		private String suffix() {
-			return this.slot == null ? "" : "  [" + Component.translatable("trademaster.button.pick_in_game").getString() + "]";
+			return this.slot == null ? "" : "  [" + McText.translatable("trademaster.button.pick_in_game").getString() + "]";
 		}
 
 		private String fittedText() {
 			BlockPos pos = this.getter.get();
 			String value = pos == null ? "-" : pos.getX() + ", " + pos.getY() + ", " + pos.getZ();
-			return fitValueText(Component.translatable(this.labelKey), value, this.suffix(), FIELD_RIGHT_INSET);
+			return fitValueText(McText.translatable(this.labelKey), value, this.suffix(), FIELD_RIGHT_INSET);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
@@ -804,19 +1038,50 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 					// a refused pick (run in progress) must keep the settings screen
 					// open: closing it would strand the user in-game with no pick armed
 					if (PositionPicker.begin(this.slot, this.setter)) {
-						Minecraft.getInstance().gui.setScreen(null);
+						McClient.setScreen(Minecraft.getInstance(), null);
 					}
 					return true;
 				}
 				return false;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				if (this.slot != null && this.clickInValueText(mouseX)) {
+					playClick();
+					// a refused pick (run in progress) must keep the settings screen
+					// open: closing it would strand the user in-game with no pick armed
+					if (PositionPicker.begin(this.slot, this.setter)) {
+						McClient.setScreen(Minecraft.getInstance(), null);
+					}
+					return true;
+				}
+				return false;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		private boolean clickInValueText(double clickX) {
 			String suffix = this.suffix();
@@ -879,24 +1144,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	/** Region extension (dx dy dz); signed values define direction, no ~ relative support. */
@@ -914,7 +1181,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.labelKey = labelKey;
 			this.getter = getter;
 			this.setter = setter;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("delta"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("delta"));
 			this.field.setMaxLength(40);
 			BlockPos initialDelta = getter.get();
 			this.field.setValue(initialDelta == null ? "" : initialDelta.getX() + ", " + initialDelta.getY() + ", " + initialDelta.getZ());
@@ -959,35 +1226,54 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			return Math.abs(pos.getX()) <= 64 && Math.abs(pos.getY()) <= 64 && Math.abs(pos.getZ()) <= 64;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			BlockPos delta = this.getter.get();
 			String value = delta == null ? "-" : delta.getX() + ", " + delta.getY() + ", " + delta.getZ();
 			drawBase(context, this.labelKey,
-					fitValueText(Component.translatable(this.labelKey), value, "", FIELD_RIGHT_INSET),
+					fitValueText(McText.translatable(this.labelKey), value, "", FIELD_RIGHT_INSET),
 					delta == null ? 0xFFC00000 : 0xFF00C000, FIELD_RIGHT_INSET);
 			// right-anchor: a fixed -320 offset pushes the field offscreen on
 			// narrow (Android/FCL) widths, and the delta row has no picker fallback
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		/** Losing focus with unparsable or out-of-range text restores the stored
 		 * delta, so the field never keeps showing a value that was never applied. */
@@ -1016,24 +1302,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	/** Curse-book drop direction (yaw, pitch); blank = unset. Yaw semantics:
@@ -1047,7 +1335,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		DirectionRow() {
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("direction"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("direction"));
 			this.field.setMaxLength(24);
 			this.field.setValue(format(c.curseDropYaw, c.curseDropPitch));
 			this.field.setResponder(text -> {
@@ -1111,34 +1399,53 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			}
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			boolean set = c.curseDropYaw != null && c.curseDropPitch != null;
 			String value = set ? format(c.curseDropYaw, c.curseDropPitch) : "-";
 			drawBase(context, "trademaster.settings.curseDropDirection",
-					fitValueText(Component.translatable("trademaster.settings.curseDropDirection"), value, "", FIELD_RIGHT_INSET),
+					fitValueText(McText.translatable("trademaster.settings.curseDropDirection"), value, "", FIELD_RIGHT_INSET),
 					set ? 0xFF00C000 : 0xFFE0E000, FIELD_RIGHT_INSET);
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		/** Losing focus with unparsable text restores the stored direction, so the
 		 * field never keeps showing a value that was never applied. */
@@ -1166,24 +1473,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	/** Custom curse enchantment ids (mod curses outside the vanilla curse tag);
@@ -1197,7 +1506,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		CurseListRow() {
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("curses"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("curses"));
 			this.field.setMaxLength(256);
 			this.field.setValue(String.join(", ", c.customCurseEnchantments));
 			this.field.setResponder(text -> this.pendingApply = true);
@@ -1220,7 +1529,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
 			for (String token : text.split("[,\\s]+")) {
 				if (token.isEmpty()) continue;
-				net.minecraft.resources.ResourceLocation id = net.minecraft.resources.McIds.tryParse(token);
+				net.minecraft.resources.ResourceLocation id = McIds.tryParse(token);
 				if (id != null && !"minecraft".equals(id.getNamespace())) {
 					ids.add(id.toString());
 				}
@@ -1228,33 +1537,52 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			return ids;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			String value = c.customCurseEnchantments.isEmpty() ? "-" : String.join(", ", c.customCurseEnchantments);
 			drawBase(context, "trademaster.settings.customCurses",
-					fitValueText(Component.translatable("trademaster.settings.customCurses"), value, "", FIELD_RIGHT_INSET),
+					fitValueText(McText.translatable("trademaster.settings.customCurses"), value, "", FIELD_RIGHT_INSET),
 					0xFFE0E000, FIELD_RIGHT_INSET);
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.field.mouseClicked(click, doubled)) {
 				this.field.setFocused(true);
 				return true;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		/** Normalize on focus loss: invalid tokens and forbidden vanilla ids
 		 * vanish from the field, matching what is actually stored. */
@@ -1278,24 +1606,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	/** One bound overflow chest; type coordinates to move it, click the [Remove] label to remove it. */
@@ -1320,7 +1650,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		ChestRow(int index, Runnable rebuild) {
 			this.index = index;
 			this.rebuild = rebuild;
-			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("chest"));
+			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("chest"));
 			this.field.setMaxLength(40);
 			BlockPos initialChest = TradeMasterConfig.INSTANCE.chestPositions.get(index);
 			this.originalPos = initialChest;
@@ -1352,18 +1682,17 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.applyDraft();
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
-			drawBase(context, Component.translatable("trademaster.settings.chestPos", this.index + 1),
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			drawBase(context, McText.translatable("trademaster.settings.chestPos", this.index + 1),
 					this.fittedText(),
 					this.currentPos() == null ? 0xFFC00000 : 0xFF00C000, FIELD_RIGHT_INSET);
 			// right-anchor: a fixed -320 offset pushes the field offscreen on
 			// narrow (Android/FCL) widths, and the delta row has no picker fallback
 			this.field.setX(this.x + this.entryWidth - this.field.getWidth() - 10);
-			this.field.setY(this.y + 2);
-			context.pose().pushMatrix();
-			this.field.extractRenderState(context, mouseX, mouseY, deltaTicks);
-			context.pose().popMatrix();
+			McWidget.setY(this.field, this.y + 2);
+			McRender.pushPose(context);
+			context.renderWidget(this.field, mouseX, mouseY, deltaTicks);
+			McRender.popPose(context);
 		}
 
 		private @Nullable BlockPos currentPos() {
@@ -1377,15 +1706,16 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		private String removeLabel() {
-			return "[" + Component.translatable("trademaster.button.remove").getString() + "]";
+			return "[" + McText.translatable("trademaster.button.remove").getString() + "]";
 		}
 
 		private String fittedText() {
-			return fitValueText(Component.translatable("trademaster.settings.chestPos", this.index + 1),
+			return fitValueText(McText.translatable("trademaster.settings.chestPos", this.index + 1),
 					this.valueText(), "  " + this.removeLabel(), FIELD_RIGHT_INSET);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (this.removed) return false;
 			if (this.field.mouseClicked(click, doubled)) {
@@ -1413,12 +1743,52 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return false;
 			}
 			return false;
-		}
-
+				}*/
+		//?} else {
 		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (this.removed) return false;
+			if (McInput.mouseClicked(this.field, mouseX, mouseY, button, false)) {
+				this.field.setFocused(true);
+				return true;
+			}
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+				if (this.index < c.chestPositions.size() && this.clickInRemoveLabel(mouseX)) {
+					if (!this.originalPos.equals(this.currentPos())) {
+						// a removal earlier in this tick already shifted the list (the
+						// rebuild is deferred to the next tick): this row no longer
+						// describes the chest at its index — rebuild instead of
+						// deleting the wrong chest
+						this.rebuild.run();
+						return false;
+					}
+					playClick();
+					this.removed = true;
+					c.chestPositions.remove(this.index);
+					c.save();
+					this.rebuild.run();
+					return true;
+				}
+				return false;
+			}
+			return false;
+				}
+		//?}
+
+
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseDragged(MouseButtonEvent drag, double mouseX, double mouseY) {
 			return !this.removed && this.field.isFocused() && this.field.mouseDragged(drag, mouseX, mouseY);
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+			return !this.removed && this.field.isFocused() && McInput.mouseDragged(this.field, mouseX, mouseY, button, dragX, dragY);
+				}
+		//?}
+
 
 		private boolean clickInRemoveLabel(double clickX) {
 			Font font = Minecraft.getInstance().font;
@@ -1451,24 +1821,26 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}
 
 		@Override
-		public boolean handleKey(KeyEvent input) {
-			return this.field.isFocused() && this.field.keyPressed(input);
+		public boolean handleKey(int keyCode, int scanCode, int modifiers) {
+			return this.field.isFocused() && McInput.keyPressed(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public void handleRelease(KeyEvent input) {
-			this.field.keyReleased(input);
+		public void handleRelease(int keyCode, int scanCode, int modifiers) {
+			McInput.keyReleased(this.field, keyCode, scanCode, modifiers);
 		}
 
 		@Override
-		public boolean handleChar(CharacterEvent input) {
-			return this.field.isFocused() && this.field.charTyped(input);
+		public boolean handleChar(char c) {
+			return this.field.isFocused() && McInput.charTyped(this.field, c, 0);
 		}
 
-		@Override
+		//? if >=26.1 {
+		/*@Override
 		public boolean handlePreedit(net.minecraft.client.input.PreeditEvent input) {
 			return this.field.isFocused() && this.field.preeditUpdated(input);
-		}
+		}*/
+		//?}
 	}
 
 	private static class ActionRow extends Row {
@@ -1482,12 +1854,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			this.action = action;
 		}
 
-		@Override
-		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+		public void drawRow(McGraphics context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
 			drawBase(context, this.labelKey, "[+]", 0xFFE0E000);
 		}
 
-		@Override
+				//? if >=26.1 {
+		/*@Override
 		public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 			if (click.x() > this.x && click.x() < this.x + this.entryWidth && click.y() > this.y && click.y() < this.y + this.entryHeight - 4) {
 				// the action itself may refuse (the picker rejects while a run is
@@ -1497,6 +1869,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return true;
 			}
 			return false;
-		}
+				}*/
+		//?} else {
+		@Override
+		public boolean mouseClicked(double mouseX, double mouseY, int button) {
+			if (mouseX > this.x && mouseX < this.x + this.entryWidth && mouseY > this.y && mouseY < this.y + this.entryHeight - 4) {
+				// the action itself may refuse (the picker rejects while a run is
+				// active): only sound when it actually ran, like BoolRow does
+				boolean ran = this.action.getAsBoolean();
+				if (ran) playClick();
+				return true;
+			}
+			return false;
+				}
+		//?}
+
 	}
 }

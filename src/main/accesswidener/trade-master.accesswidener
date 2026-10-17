@@ -1,0 +1,14 @@
+accessWidener	v2	named
+
+# AbstractSelectionList.Entry is protected: every list widget's row class extends it.
+accessible class net/minecraft/client/gui/components/AbstractSelectionList$Entry
+
+# Screen.renderables is private: the screen re-draws its children in extractRenderState.
+accessible field net/minecraft/client/gui/screens/Screen renderables Ljava/util/List;
+
+# ClientLevel.getBlockStatePredictionHandler is package-private: the restock path reads
+# the prediction sequence to wait out a stale client-side block state.
+accessible method net/minecraft/client/multiplayer/ClientLevel getBlockStatePredictionHandler ()Lnet/minecraft/client/multiplayer/prediction/BlockStatePredictionHandler;
+
+# AbstractWidget.setFocused is protected before 1.19.4; the mod toggles EditBox focus directly.
+accessible method net/minecraft/client/gui/components/AbstractWidget setFocused (Z)V
