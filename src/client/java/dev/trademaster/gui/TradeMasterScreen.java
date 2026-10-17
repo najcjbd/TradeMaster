@@ -300,6 +300,8 @@ public class TradeMasterScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		// right-click is not an edit gesture: do not clear deferrals or blur drafts
+		if (click.button() != 0) return super.mouseClicked(click, doubled);
 		if (this.enchantmentsList != null) {
 			EnchantmentEntry hit = this.enchantmentsList.entryAt(click.x(), click.y());
 			for (var entry : this.enchantmentsList.children()) {

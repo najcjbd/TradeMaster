@@ -311,7 +311,15 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		c.nonBookDisposal = (NonBookDisposal) this.optNonBookDisposal.getOptionListValue();
 		c.reserveCheaperTraders = this.optReserveCheaper.getBooleanValue();
 		c.minLockEmeralds = this.optMinLockEmeralds.getIntegerValue();
-		c.basePriceAsSalePrice = this.optBasePriceAsSalePrice.getBooleanValue();
+		boolean basisRequested = this.optBasePriceAsSalePrice.getBooleanValue();
+		if (basisRequested != c.basePriceAsSalePrice && RerollController.isRunning()) {
+			// hunt marks were recorded in the old basis; switching mid-run would
+			// reinterpret them, so refuse and put the checkbox back
+			this.optBasePriceAsSalePrice.setBooleanValue(c.basePriceAsSalePrice);
+			chatRed("trademaster.message.price_basis_locked");
+		} else {
+			c.basePriceAsSalePrice = basisRequested;
+		}
 		c.timeoutEnabled = this.optTimeoutEnabled.getBooleanValue();
 		c.timeoutTicks = this.optTimeout.getIntegerValue();
 		c.phaseTimeoutsEnabled = this.optPhaseTimeouts.getBooleanValue();

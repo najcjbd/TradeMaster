@@ -143,13 +143,19 @@ public class TradeMatcher {
 				// (which only know enabled targets). A DISABLED target must not shadow a
 				// legitimate good match, or every such match would be reverted forever.
 				EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(id);
-				if (target != null && target.enabled()) continue;
+				if (target != null && target.enabled()) {
+					// the row can also be switched off WITHOUT disabling it: an AIR
+					// spec result, or an enchantment no longer in the live registry
+					if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(id).result())) return true;
+					if (!registryTradeable(id)) return true;
+					continue;
+				}
 				// a good is switched off in its own list, and is absent from the
 				// enchantment map: without this branch every good match would look
 				// "gone" and be reverted right after it was found
 				GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 				if (good != null) {
-					if (!good.enabled()) return true;
+					if (!good.enabled() || !goodMatchable(good)) return true;
 					continue;
 				}
 				return true;

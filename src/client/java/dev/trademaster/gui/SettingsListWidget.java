@@ -23,6 +23,15 @@ import java.util.function.Supplier;
 
 public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget.Row> {
 
+	/** A red chat notice for a refused setting change. */
+	private static void chatRed(String key) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) {
+			mc.player.sendSystemMessage(Component.literal("[Trade Master] ")
+					.append(Component.translatable(key).withStyle(net.minecraft.ChatFormatting.RED)));
+		}
+	}
+
 	public SettingsListWidget(Minecraft client, int width, int height, int top, int itemHeight, Runnable rebuild) {
 		super(client, width, height, top, itemHeight);
 		// the label/value caches below hold TRANSLATED components: drop them whenever
@@ -43,7 +52,15 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
 		addEntry(new IntRow("trademaster.settings.minLockEmeralds", () -> c.minLockEmeralds, v -> c.minLockEmeralds = v, 1, 64));
-		addEntry(new BoolRow("trademaster.settings.basePriceAsSalePrice", () -> c.basePriceAsSalePrice, v -> c.basePriceAsSalePrice = v));
+		addEntry(new BoolRow("trademaster.settings.basePriceAsSalePrice", () -> c.basePriceAsSalePrice, v -> {
+			// hunt marks store prices in the basis active at purchase time; switching
+			// mid-run would reinterpret them (duplicate buys / stalled hunt)
+			if (RerollController.isRunning()) {
+				chatRed("trademaster.message.price_basis_locked");
+				return;
+			}
+			c.basePriceAsSalePrice = v;
+		}));
 		addEntry(new BoolRow("trademaster.settings.multiEnchantProtection", () -> c.multiEnchantProtection, v -> c.multiEnchantProtection = v));
 		addEntry(new BoolRow("trademaster.settings.timeoutEnabled", () -> c.timeoutEnabled, v -> c.timeoutEnabled = v));
 		addEntry(new DurationRow("trademaster.settings.timeoutTicks", () -> c.timeoutTicks, v -> c.timeoutTicks = v, 1200));
