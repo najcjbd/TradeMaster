@@ -20,7 +20,7 @@ public final class McPlayer {
 	/** The selected hotbar slot (0-8). */
 	public static int selectedSlot(Player player) {
 		//? if >=1.21.5 {
-		/*return McPlayer.selectedSlot(player);*/
+		/*return player.getInventory().getSelectedSlot();*/
 		//?} else {
 		return player.getInventory().selected;
 		//?}
@@ -29,7 +29,7 @@ public final class McPlayer {
 	/** Selects a hotbar slot (0-8). */
 	public static void setSelectedSlot(Player player, int slot) {
 		//? if >=1.21.5 {
-		/*McPlayer.setSelectedSlot(player, slot);*/
+		/*player.getInventory().setSelectedSlot(slot);*/
 		//?} else {
 		player.getInventory().selected = slot;
 		//?}
@@ -38,7 +38,7 @@ public final class McPlayer {
 	/** The stack in the selected hotbar slot. */
 	public static ItemStack selectedItem(Player player) {
 		//? if >=1.21.5 {
-		/*return McPlayer.selectedItem(player);*/
+		/*return player.getInventory().getSelectedItem();*/
 		//?} else {
 		return player.getInventory().getSelected();
 		//?}
@@ -53,13 +53,22 @@ public final class McPlayer {
 		//?}
 	}
 
-	/** Whether {@code pos} is within {@code range} of the player (the pre-26.1 fallback
-	 * is the centre-distance test {@code isWithinBlockInteractionRange} performs). */
+	/** Whether {@code pos} is within the player's block reach plus {@code range}. 26.1
+	 * renamed {@code canInteractWithBlock}; the same eye-to-block-box test exists from
+	 * 1.21. Before that the 4.5-block vanilla reach is reproduced explicitly rather than
+	 * using a centre-distance test, which was far stricter than the game itself. */
 	public static boolean withinBlockInteractionRange(Player player, BlockPos pos, double range) {
 		//? if >=26.1 {
 		/*return player.isWithinBlockInteractionRange(pos, range);*/
+		//?} elif >=1.21 {
+		return player.canInteractWithBlock(pos, range);
 		//?} else {
-		return player.distanceToSqr(net.minecraft.world.phys.Vec3.atCenterOf(pos)) <= range * range;
+		/*double reach = 4.5 + range;
+		net.minecraft.world.phys.Vec3 eye = player.getEyePosition();
+		double dx = Math.max(0.0, Math.max(pos.getX() - eye.x, eye.x - (pos.getX() + 1)));
+		double dy = Math.max(0.0, Math.max(pos.getY() - eye.y, eye.y - (pos.getY() + 1)));
+		double dz = Math.max(0.0, Math.max(pos.getZ() - eye.z, eye.z - (pos.getZ() + 1)));
+		return dx * dx + dy * dy + dz * dz < reach * reach;*/
 		//?}
 	}
 

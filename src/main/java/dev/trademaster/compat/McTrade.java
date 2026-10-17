@@ -2,7 +2,7 @@ package dev.trademaster.compat;
 
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.trading.MerchantOffers;
-//? if >=1.21.2 {
+//? if >=1.21 {
 import net.minecraft.world.item.trading.ItemCost;
 //?}
 
@@ -21,10 +21,10 @@ public final class McTrade {
 		//?}
 	}
 
-	/** Whether {@code raw} is the type of an offer's cost-slot field. 1.21.2 changed the
+	/** Whether {@code raw} is the type of an offer's cost-slot field. 1.21 changed the
 	 * cost fields from {@code ItemStack} to {@code ItemCost}. */
 	public static boolean isCostType(java.lang.reflect.Type raw) {
-		//? if >=1.21.2 {
+		//? if >=1.21 {
 		return raw == ItemCost.class;
 		//?} else {
 		/*return raw == ItemStack.class;*/
@@ -34,7 +34,7 @@ public final class McTrade {
 	/** The stack a cost-slot value represents (an {@code ItemCost} or an {@code ItemStack}),
 	 * or null when it is neither. */
 	public static ItemStack costAsStack(Object value) {
-		//? if >=1.21.2 {
+		//? if >=1.21 {
 		return value instanceof ItemCost cost ? cost.itemStack() : null;
 		//?} else {
 		/*return value instanceof ItemStack stack ? stack : null;*/

@@ -22,9 +22,11 @@ public final class McPackets {
 		//?}
 	}
 
-	/** Swings visibly and notifies the server. 26.3's swing() takes the animation and sends
-	 * the swing itself (ServerboundSwingPacket was removed); before that the packet is sent
-	 * explicitly, as the mod has always done. */
+	/** Swings visibly. 26.3 removed {@code ServerboundSwingPacket} and moved the swing
+	 * animation into {@code swing(hand, animation, boolean)}; on a client that call only
+	 * starts the LOCAL animation (the packet it may broadcast is server-side), so there is
+	 * nothing left to send explicitly. Before 26.3 the swing was announced with an explicit
+	 * swing packet, as the mod has always done. */
 	public static void swing(LocalPlayer player, InteractionHand hand) {
 		//? if >=26.3 {
 		/*player.swing(hand, net.minecraft.world.item.component.SwingAnimation.DEFAULT, true);*/
@@ -44,7 +46,8 @@ public final class McPackets {
 		//?}
 	}
 
-	/** Sends only the swing packet (26.3 removed it: swing() carries the animation). */
+	/** Sends only the swing packet. 26.3 has no swing packet at all (the swing is a local
+	 * animation plus a server-side broadcast), so this is a no-op there. */
 	public static void sendSwingPacket(LocalPlayer player, InteractionHand hand) {
 		//? if <26.3 {
 		player.connection.send(new ServerboundSwingPacket(hand));

@@ -41,13 +41,15 @@ public final class McRegistry {
 	}
 
 	/** Wraps a registry value as a Holder. {@code Registry.wrapAsHolder} exists from 1.19.3;
-	 * before that {@code Holder.direct} is used (losing tag membership, which the pre-1.21
-	 * callers do not rely on). */
+	 * before that the registry's own holder is resolved through the value's key, so tag
+	 * membership is preserved instead of being lost with {@code Holder.direct}. */
 	public static <T> net.minecraft.core.Holder<T> wrap(Registry<T> registry, T value) {
 		//? if >=1.19.3 {
 		return registry.wrapAsHolder(value);
 		//?} else {
-		/*return net.minecraft.core.Holder.direct(value);*/
+		/*return registry.getResourceKey(value)
+				.flatMap(registry::getHolder)
+				.orElseGet(() -> net.minecraft.core.Holder.direct(value));*/
 		//?}
 	}
 

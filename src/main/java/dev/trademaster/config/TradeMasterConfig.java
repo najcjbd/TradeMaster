@@ -243,7 +243,7 @@ public final class TradeMasterConfig {
 		LinkedHashMap<ResourceLocation, EnchantmentTarget> merged = new LinkedHashMap<>();
 		List<ResourceLocation> ids = new ArrayList<>();
 		for (ResourceLocation id : registry.keySet()) {
-			if (!McRegistry.isInTag(registry, McEnchantTags.tradeable(), id)) continue;
+			if (!McEnchantTags.isTradeable(registry, id)) continue;
 			ids.add(id);
 		}
 		ids.sort(ResourceLocation::compareTo);
@@ -330,7 +330,7 @@ public final class TradeMasterConfig {
 		if (doublePriceCacheSource != registry) {
 			var cache = new java.util.LinkedHashSet<ResourceLocation>();
 			for (ResourceLocation candidate : registry.keySet()) {
-				if (McRegistry.isInTag(registry, McEnchantTags.doubleTradePrice(), candidate)) {
+				if (McEnchantTags.isDoubleTradePrice(registry, candidate)) {
 					cache.add(candidate);
 				}
 			}

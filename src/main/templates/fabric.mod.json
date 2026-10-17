@@ -5,11 +5,21 @@
   "version": "${mod_version}",
   "description": "${mod_description}",
   "authors": ["${mod_author}"],
+  "contact": {
+    "homepage": "https://github.com/najcjbd/TradeMaster",
+    "sources": "https://github.com/najcjbd/TradeMaster"
+  },
   "license": "${mod_license}",
+  "icon": "assets/trade-master/icon.png",
   "environment": "client",
   "entrypoints": {
     "client": [
       "dev.trademaster.loaders.fabric.FabricClientEntrypoint"
     ]
+  },
+  "depends": {
+    "fabricloader": ">=${fabric_loader_version}",
+    "minecraft": "${minecraft_version}",
+    "fabric-api": ">=${fabric_api_version}"
   }
 }

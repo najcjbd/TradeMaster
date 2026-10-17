@@ -246,6 +246,10 @@ public final class RerollController {
 
 	public static void toggle() {
 		if (isRunning()) stopManual();
+		// a refused start asks for the lectern-sphere fallback to be confirmed: pressing
+		// start again confirms it. 1.18.2 has no client command API, so the second press
+		// is the only way to accept the fallback there.
+		else if (regionFallbackPending) confirmRegionFallback();
 		else start();
 	}
 

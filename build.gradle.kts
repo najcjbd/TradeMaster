@@ -1,3 +1,10 @@
+import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
+import java.util.zip.ZipOutputStream
+
 plugins {
     id("dev.isxander.modstitch.base") version "0.8.5"
 }
@@ -36,6 +43,13 @@ modstitch {
         modAuthor = "mknbt"
         modLicense = "GPL-3.0"
         modDescription = "Fully configurable librarian enchantment-book rerolling pipeline."
+
+        // fabric.mod.json pins the EXACT Minecraft version and the node's loader/API
+        // floors: each jar is built against one game version, so a different one must
+        // not be loaded with it.
+        replacementProperties.put("minecraft_version", minecraft)
+        prop("deps.fabric_loader") { replacementProperties.put("fabric_loader_version", it) }
+        prop("deps.fabric_api") { replacementProperties.put("fabric_api_version", it.substringBefore('+')) }
     }
 
     // Fabric Loom (Fabric targets).
@@ -102,4 +116,35 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+}
+
+// Fabric Loader 0.16.x (every target <=1.21.8) only understands the classic access-widener
+// header, while Loom 1.15 writes the newer "classTweaker v1" form. The entry syntax is the
+// same, so rewrite just the header in the final jar for those targets (26.x uses Loader
+// 0.19.3, which accepts classTweaker as-is).
+val nodeLoaderVersion = findProperty("deps.fabric_loader") as? String
+if (modstitch.isLoom && nodeLoaderVersion != null && nodeLoaderVersion.startsWith("0.16")) {
+    modstitch.finalJarTask.configure {
+        doLast {
+            val jarFile = archiveFile.get().asFile
+            val tmp = File(jarFile.parentFile, jarFile.name + ".awtmp")
+            ZipFile(jarFile).use { zin ->
+                ZipOutputStream(tmp.outputStream()).use { zout ->
+                    for (entry in zin.entries()) {
+                        val data = zin.getInputStream(entry).use { it.readBytes() }
+                        zout.putNextEntry(ZipEntry(entry.name))
+                        if (entry.name == "trade-master.accesswidener") {
+                            val text = String(data, Charsets.UTF_8)
+                            zout.write(text.replaceFirst(Regex("^classTweaker\\s+v1\\s+"), "accessWidener v2 ")
+                                    .toByteArray(Charsets.UTF_8))
+                        } else {
+                            zout.write(data)
+                        }
+                        zout.closeEntry()
+                    }
+                }
+            }
+            Files.move(tmp.toPath(), jarFile.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
 }
