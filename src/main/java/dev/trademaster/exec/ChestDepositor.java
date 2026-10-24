@@ -270,6 +270,7 @@ public class ChestDepositor implements BookDisposal {
 					this.swapWaitTicks = -1;
 					this.lastBookCount = -1;
 					this.noProgressTicks = 0;
+					this.emptyConfirmTicks = 0;
 					this.switchedSlot = false;
 					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 					this.state = State.SEEK;
@@ -631,10 +632,11 @@ public class ChestDepositor implements BookDisposal {
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		// keep the record when the guards fail: a late sync may make the undo valid
 		// on the next attempt (EVALUATE gives it a short grace). Counts matter too:
-		// the staged slot was empty/non-book, so any extra books there came from the
-		// player splitting/merging and the whole stack must not be swapped out.
+		// a PARTIAL QUICK_MOVE can leave FEWER books than were staged (that is still
+		// the mod's stack, so restore it), but a LARGER stack means the player merged
+		// extra books in and must not be swapped out wholesale.
 		if (!inSlot.isEmpty() && (!McItem.sameItemSameComponents(inSlot, book)
-				|| inSlot.getCount() != book.getCount())) return false;
+				|| inSlot.getCount() > book.getCount())) return false;
 		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)
 				|| player.getOffhandItem().getCount() != displaced.getCount()) return false;
 		this.stagedHotbarSlot = -1;

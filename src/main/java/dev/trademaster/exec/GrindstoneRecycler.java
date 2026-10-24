@@ -753,7 +753,7 @@ public class GrindstoneRecycler implements BookDisposal {
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		boolean stagedBookLanded = !book.isEmpty()
 				&& McItem.sameItemSameComponents(inSlot, book)
-				&& inSlot.getCount() == book.getCount();
+				&& inSlot.getCount() <= book.getCount();
 		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK) && !stagedBookLanded) return false;
 		// the offhand must still carry exactly what the swap displaced (count too:
 		// a player split/merge would otherwise swap the whole foreign stack away)
