@@ -27,6 +27,9 @@ public final class PositionPicker {
 
 	private static @Nullable Slot pendingSlot = null;
 	private static @Nullable Consumer<BlockPos> pendingSetter = null;
+	/** Optional check run before a captured position is accepted (duplicate chest);
+	 * a rejected capture keeps the pick armed. */
+	private static @Nullable java.util.function.Predicate<BlockPos> pendingValidator = null;
 	/** Dimension the pick was armed in: coordinates captured in another dimension
 	 * would point the rig at unreachable blocks. */
 	private static @Nullable net.minecraft.resources.ResourceKey<net.minecraft.world.level.Level> armedDimension = null;
@@ -36,6 +39,11 @@ public final class PositionPicker {
 	/** Arms the picker. @return true when armed — false when refused (a run is
 	 * in progress), in which case the caller must NOT leave the settings screen. */
 	public static boolean begin(Slot slot, Consumer<BlockPos> setter) {
+		return begin(slot, setter, null);
+	}
+
+	public static boolean begin(Slot slot, Consumer<BlockPos> setter,
+			@Nullable java.util.function.Predicate<BlockPos> validator) {
 		// same PASS-callback problem as the hotkey path: an armed pick during a
 		// run would silently never capture, so refuse to arm it
 		if (RerollController.isRunning()) {
@@ -45,6 +53,7 @@ public final class PositionPicker {
 		boolean replacing = pendingSlot != null;
 		pendingSlot = slot;
 		pendingSetter = setter;
+		pendingValidator = validator;
 		armedDimension = Minecraft.getInstance().level != null ? Minecraft.getInstance().level.dimension() : null;
 		message(Component.translatable(replacing ? "trademaster.pick.replaced" : "trademaster.pick.prompt")
 				.withStyle(ChatFormatting.YELLOW));
@@ -94,11 +103,16 @@ public final class PositionPicker {
 			message(Component.translatable("trademaster.pick.wrong_dimension").withStyle(ChatFormatting.RED));
 			return InteractionResult.PASS;
 		}
+		if (pendingValidator != null && !pendingValidator.test(pos.immutable())) {
+			message(Component.translatable("trademaster.pick.rejected").withStyle(ChatFormatting.RED));
+			return InteractionResult.FAIL;
+		}
 		pendingSetter.accept(pos.immutable());
 		TradeMasterConfig.INSTANCE.save();
 		message(Component.translatable("trademaster.pick.captured", pos.toShortString()).withStyle(ChatFormatting.GREEN));
 		pendingSlot = null;
 		pendingSetter = null;
+		pendingValidator = null;
 		armedDimension = null;
 		return InteractionResult.FAIL;
 	}
@@ -116,6 +130,7 @@ public final class PositionPicker {
 		if (pendingSlot == null) return;
 		pendingSlot = null;
 		pendingSetter = null;
+		pendingValidator = null;
 		armedDimension = null;
 		message(Component.translatable("trademaster.pick.cancelled").withStyle(ChatFormatting.RED));
 	}
@@ -127,6 +142,7 @@ public final class PositionPicker {
 		if (pendingSlot == null) return;
 		pendingSlot = null;
 		pendingSetter = null;
+		pendingValidator = null;
 		armedDimension = null;
 		message(Component.translatable("trademaster.pick.cancelled_running").withStyle(ChatFormatting.RED));
 	}
@@ -145,6 +161,10 @@ public final class PositionPicker {
 	}
 
 	private static void applyTo(Slot slot, BlockPos pos) {
+		if (pendingValidator != null && !pendingValidator.test(pos)) {
+			message(Component.translatable("trademaster.pick.rejected").withStyle(ChatFormatting.RED));
+			return;
+		}
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 		switch (slot) {
 			case LECTERN -> c.lecternPos = pos;

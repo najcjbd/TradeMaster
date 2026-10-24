@@ -69,6 +69,8 @@ public class ChestDepositor implements BookDisposal {
 	private int swapWaitTicks = -1;
 	/** Offhand-swap retries spent on the current chest (R32-04). */
 	private int swapAttempts = 0;
+	/** Ticks spent waiting for a late sync before giving up on the offhand-stage undo. */
+	private int undoGraceTicks = 0;
 	/** A rejected swap scheduled for resend after a short delay. */
 	private boolean swapRetryPending = false;
 	private int swapRetryDelay = 0;
@@ -361,7 +363,11 @@ public class ChestDepositor implements BookDisposal {
 					return StepResult.RUNNING;
 				}
 				if (countDisposables(player) == 0) {
-					undoOffhandStage(player);
+					// a landed-but-unsynced staging swap may still be in flight: give
+					// the sync a short grace before giving up on the undo
+					if (!undoOffhandStage(player) && this.undoGraceTicks++ < 20) {
+						return StepResult.RUNNING;
+					}
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
 				}
@@ -494,6 +500,8 @@ public class ChestDepositor implements BookDisposal {
 					if (player.getInventory().getSelectedSlot() != this.dropSlot
 							|| !ItemStack.isSameItemSameComponents(
 									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+						// re-staging means a NEW stack attempt: give it its own retry
+						this.dropResent = false;
 						this.state = State.DROP_STAGE;
 						return StepResult.RUNNING;
 					}
@@ -569,7 +577,7 @@ public class ChestDepositor implements BookDisposal {
 	 * that was staged (all chests refused it — the swap-back restores the original
 	 * state), AND the offhand still holds a non-book. Anything else means the world moved
 	 * on — leave it alone. */
-	private void undoOffhandStage(LocalPlayer player) {
+	private boolean undoOffhandStage(LocalPlayer player) {
 		int slot = this.stagedHotbarSlot;
 		ItemStack displaced = this.stagedDisplaced;
 		ItemStack book = this.stagedBook;
@@ -579,13 +587,13 @@ public class ChestDepositor implements BookDisposal {
 			this.stagedHotbarSlot = -1;
 			this.stagedDisplaced = ItemStack.EMPTY;
 			this.stagedBook = ItemStack.EMPTY;
-			return;
+			return true;
 		}
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		// keep the record when the guards fail: a late sync may still make the undo
-		// valid on the next attempt; clearing first lost it forever
-		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return;
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		// valid on the next attempt (EVALUATE gives it a short grace)
+		if (!inSlot.isEmpty() && !ItemStack.isSameItemSameComponents(inSlot, book)) return false;
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return false;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
 		this.stagedBook = ItemStack.EMPTY;
@@ -595,6 +603,7 @@ public class ChestDepositor implements BookDisposal {
 		player.connection.send(new ServerboundPlayerActionPacket(
 				ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 				BlockPos.ZERO, Direction.DOWN));
+		return true;
 	}
 
 	/** Puts the player's hand back where it was before the deposit started

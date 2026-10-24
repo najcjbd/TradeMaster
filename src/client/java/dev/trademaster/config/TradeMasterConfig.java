@@ -96,6 +96,8 @@ public final class TradeMasterConfig {
 	public boolean isAirItem(@Nullable Identifier id) {
 		if (id == null) return true;
 		String text = id.toString();
+		// the canonical sentinel is ALWAYS air, even if the user emptied the list
+		if ("minecraft:air".equals(text)) return true;
 		for (String air : this.airItems) {
 			if (air == null || air.isBlank()) continue;
 			if (air.trim().equalsIgnoreCase(text)) return true;

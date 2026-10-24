@@ -134,8 +134,11 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			addEntry(new ChestRow(i, rebuild));
 		}
 		addEntry(new ActionRow("trademaster.settings.addChest", () -> {
+			// no slot left: refuse the arm (the row plays the deny sound)
+			if (c.chestPositions.size() >= TradeMasterConfig.MAX_CHESTS) return false;
 			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
-					pos -> c.addChest(pos.immutable()));
+					pos -> c.addChest(pos.immutable()),
+					pos -> !c.chestPositions.contains(pos));
 			if (began) Minecraft.getInstance().gui.setScreen(null);
 			return began;
 		}));

@@ -469,9 +469,11 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		boolean hunt = TradeMasterConfig.INSTANCE.huntCheaper;
 		ConfigPersistence.load(TradeMasterConfig.INSTANCE);
 		if (RerollController.isRunning()) {
-			// run-locked settings must not change under a live needs table
+			// run-locked settings must not change under a live needs table; the
+			// auto-disable/hunt mutex still wins over a restored hunt flag
 			TradeMasterConfig.INSTANCE.basePriceAsSalePrice = basis;
-			TradeMasterConfig.INSTANCE.huntCheaper = hunt;
+			TradeMasterConfig.INSTANCE.huntCheaper =
+					hunt && !TradeMasterConfig.INSTANCE.autoDisableAfterLock;
 		}
 	}
 

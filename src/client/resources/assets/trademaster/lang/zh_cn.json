@@ -72,6 +72,7 @@
   "trademaster.pick.captured": "已捕获坐标：%s",
   "trademaster.pick.cancelled": "已取消坐标选取",
   "trademaster.pick.cancelled_running": "已取消坐标选取：流水线正在运行",
+  "trademaster.pick.rejected": "该位置无法使用（已绑定或箱子数量已满）",
   "trademaster.pick.busy": "流水线运行中，无法选取坐标",
   "trademaster.pick.replaced": "选取目标已切换，之前的选取已取消",
   "trademaster.pick.all_set": "所有坐标均已设置，请在设置页修改",

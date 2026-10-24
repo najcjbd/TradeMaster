@@ -115,19 +115,18 @@ class MatchingGateTest {
 	}
 
 	@Test
-	void aGoodSharingAnEnabledTargetIdIsRejected() {
+	void aGoodSharingAnyTargetIdIsRejected() {
 		Identifier composter = Identifier.withDefaultNamespace("composter");
 		GoodSpec good = new GoodSpec(composter, 1, true, 10, TradeOfferSpec.defaultGoodCosts());
 		c().enchantments.clear();
 		// no target with that id: the good is fine
 		assertTrue(TradeMatcher.goodMatchable(good));
-		// an ENABLED target with the same id would share one needs queue (the good would
-		// inflate the target's budget and its price slot): the good must be refused
+		// ANY same-id target refuses the good: target-first, and the id-keyed
+		// vouchers/marks cannot distinguish the two kinds
 		c().enchantments.put(composter, new EnchantmentTarget(composter, true, 1, 20));
 		assertFalse(TradeMatcher.goodMatchable(good));
-		// a DISABLED target does not collide, so the good is usable again
 		c().enchantments.put(composter, new EnchantmentTarget(composter, false, 1, 20));
-		assertTrue(TradeMatcher.goodMatchable(good));
+		assertFalse(TradeMatcher.goodMatchable(good));
 	}
 
 	@Test

@@ -289,8 +289,9 @@ public class TradeMatcher {
 		// and the target would inflate each other's budget and the target's price slot would
 		// be read from the good. The Offers tab refuses such a good already; a hand-edited
 		// file lands here (and the start warning names it).
-		EnchantmentTarget sameId = TradeMasterConfig.INSTANCE.enchantments.get(good.id());
-		if (sameId != null && sameId.enabled()) return false;
+		// target-first: any same-id enchantment makes the good unmatchable (the id-keyed
+		// vouchers/marks cannot distinguish the kinds)
+		if (TradeMasterConfig.INSTANCE.enchantments.containsKey(good.id())) return false;
 		return specHasPayableSlot(good.spec());
 	}
 

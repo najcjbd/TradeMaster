@@ -59,13 +59,21 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		super(client, width, height, top, itemHeight);
 		this.rebuild = rebuild;
 
-		// leave room for the "Air items" caption at x=8: the field used to cover it
-		int airFieldX = 8 + client.font.width(Component.translatable("trademaster.column.air_items")) + 4;
+		// leave room for the "Air items" caption at x=8, but never let the field leave
+		// the list on very narrow screens
+		int captionWidth = client.font.width(Component.translatable("trademaster.column.air_items"));
+		int airFieldX = Math.min(8 + captionWidth + 4, Math.max(8, this.width - 40));
+		int airFieldWidth = Math.max(30, this.width - 5 - airFieldX);
+		if (airFieldWidth > this.width - airFieldX - 140) {
+			airFieldWidth = Math.max(30, this.width - airFieldX - 140);
+		}
 		this.airField = new EditBox(client.font, airFieldX, AIR_Y,
-				Math.max(60, this.width - airFieldX - 140), 14, Component.literal("air items"));
-		// a realistic air list can exceed 256 chars; truncation would silently drop ids
-		this.airField.setMaxLength(4096);
-		this.airField.setValue(String.join(", ", TradeMasterConfig.INSTANCE.airItems));
+				airFieldWidth, 14, Component.literal("air items"));
+		// size the cap from the stored list: a big hand-edited list must not be
+		// silently truncated when the field is seeded (or on the next commit)
+		String joinedAir = String.join(", ", TradeMasterConfig.INSTANCE.airItems);
+		this.airField.setMaxLength(Math.max(4096, joinedAir.length() + 1));
+		this.airField.setValue(joinedAir);
 		for (var entry : TradeMasterConfig.INSTANCE.enchantments.entrySet()) {
 			this.addEntry(new OfferRow(entry.getKey()));
 		}
@@ -161,11 +169,20 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			if (token.isBlank()) continue;
 			// ids are lowercase: "AIR" must become minecraft:air instead of being dropped
 			Identifier id = Identifier.tryParse(token.trim().toLowerCase(java.util.Locale.ROOT));
-			if (id != null && !items.contains(id.toString())) items.add(id.toString());
+			if (id == null) continue;
+			// a RESULT id must not become "not charged": the same list also gates the
+			// target/good result checks and would silently disable them
+			if (id.equals(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK)
+					|| config.goodFor(id) != null) continue;
+			if (!items.contains(id.toString())) items.add(id.toString());
 		}
+		String airSentinel = "minecraft:air";
+		if (!items.contains(airSentinel)) items.add(0, airSentinel);
 		config.airItems.clear();
 		config.airItems.addAll(items);
-		this.airField.setValue(String.join(", ", config.airItems));
+		String joined = String.join(", ", config.airItems);
+		this.airField.setMaxLength(Math.max(4096, joined.length() + 1));
+		this.airField.setValue(joined);
 		config.save();
 	}
 
