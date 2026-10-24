@@ -880,7 +880,16 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				return true;
 			}
 			if (mouseX >= toggleX && mouseX < toggleX + 14) {
-				config.goods.set(config.goods.indexOf(existing), existing.withEnabled(!existing.enabled()));
+				boolean enable = !existing.enabled();
+				if (enable) {
+					// same enable-time collision gate as the enchantments tab
+					String conflict = AliasListWidget.enableConflict(this.id, true);
+					if (conflict != null) {
+						message(McText.translatable(conflict).withStyle(net.minecraft.ChatFormatting.RED));
+						return true;
+					}
+				}
+				config.goods.set(config.goods.indexOf(existing), existing.withEnabled(enable));
 				config.save();
 				return true;
 			}

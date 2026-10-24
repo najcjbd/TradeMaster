@@ -10,7 +10,6 @@ import dev.trademaster.compat.McPlayer;
 import dev.trademaster.compat.McRender;
 import dev.trademaster.compat.McClient;
 import dev.trademaster.compat.McInput;
-import dev.trademaster.compat.McIds;
 import dev.trademaster.compat.McSound;
 import dev.trademaster.compat.McGraphics;
 import dev.trademaster.compat.McWidget;
@@ -1648,7 +1647,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
 			for (String token : text.split("[,\\s]+")) {
 				if (token.isEmpty()) continue;
-				net.minecraft.resources.ResourceLocation id = McIds.tryParse(token);
+				net.minecraft.resources.ResourceLocation id = TradeMasterConfig.parseId(token);
 				if (id != null && !"minecraft".equals(id.getNamespace())) {
 					ids.add(id.toString());
 				}

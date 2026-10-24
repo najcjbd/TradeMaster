@@ -106,10 +106,17 @@ public final class DetectionHub {
 		lastSuppressedContainerId = -1;
 	}
 
-	public static boolean shouldInterceptMerchantScreen() {
+	/** One consistent read of the merchant-screen policy. The hub and the
+	 * suppress decision come from the SAME {@code armed} snapshot: with two
+	 * separate reads a disarm/re-arm in between could cancel a stale screen
+	 * while binding the NEW hub's expectedContainerId to it, making that hub
+	 * reject its own offers packet once. */
+	public record ScreenInterception(@Nullable DetectionHub hub, boolean suppress) {}
+
+	public static ScreenInterception screenInterception() {
 		DetectionHub hub = armed;
-		if (hub != null && hub.interceptScreens) return true;
-		return System.nanoTime() < suppressMerchantScreensUntilNanos;
+		if (hub != null && hub.interceptScreens) return new ScreenInterception(hub, true);
+		return new ScreenInterception(null, System.nanoTime() < suppressMerchantScreensUntilNanos);
 	}
 
 	// ---- mixin feeds -------------------------------------------------------
@@ -120,20 +127,13 @@ public final class DetectionHub {
 		Minecraft.getInstance().execute(() -> hub.feedPacket(offers, containerId));
 	}
 
-	/** The hub armed right now, for a caller that must bind to the hub of ITS packet
-	 * and not to whatever is armed later: the feed below is marshalled onto the main
-	 * thread, so an open packet delayed past a re-arm would otherwise bind its
-	 * containerId to the NEXT check's hub. */
-	public static @Nullable DetectionHub armedHub() {
-		return armed;
-	}
-
 	/** PACKET channel: a merchant screen open was suppressed; the latest one is the
 	 * answer to our own interact (a duplicate interact can open a second screen
 	 * whose offers are the ones still in flight) and fixes the expected container id.
 	 *
-	 * @param hub the hub captured when the packet ARRIVED (see {@link #armedHub()});
-	 * null means nothing was armed then, so only the static leftover marker is set. */
+	 * @param hub the hub captured by {@link #screenInterception()} when the packet
+	 * ARRIVED; null means nothing was armed then, so only the static leftover
+	 * marker is set. */
 	public static void onMerchantScreenSuppressed(@Nullable DetectionHub hub, int containerId) {
 		// a STALE hub (disarmed, or replaced by a later re-arm) must not act: disarm() clears
 		// the marker on purpose, and re-writing a stale one would make the NEXT check (with no

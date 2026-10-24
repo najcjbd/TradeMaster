@@ -1,6 +1,7 @@
 package dev.trademaster.gui;
 
 import dev.trademaster.compat.McInput;
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.compat.McRegistry;
 import dev.trademaster.compat.McRender;
 import dev.trademaster.compat.McSound;
@@ -113,6 +114,21 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		if (target == null) {
 			if (this.enchantment == null) return; // no registry: cannot build a sane default
 			target = new EnchantmentTarget(this.id, false, editableMaxLevel(), 64);
+		}
+		if (enabled) {
+			// enabling can introduce a name/alias that the deduction index cannot
+			// attribute (it drops every name shared by two ids): refuse instead of
+			// silently breaking named-villager deduction for both sides
+			String conflict = AliasListWidget.enableConflict(this.id, false);
+			if (conflict != null) {
+				Minecraft mc = Minecraft.getInstance();
+				if (mc.player != null) {
+					McPlayer.sendSystemMessage(mc.player, McText.literal("[Trade Master] ")
+							.append(McText.translatable(conflict)
+									.withStyle(net.minecraft.ChatFormatting.RED)));
+				}
+				return;
+			}
 		}
 		if (!enabled) {
 			// hidden fields must not keep focus: charTyped only checks isFocused,
