@@ -78,6 +78,11 @@ public class ChestDepositor implements BookDisposal {
 	private int swapAttempts = 0;
 	/** Ticks spent waiting for a late sync before giving up on the offhand-stage undo. */
 	private int undoGraceTicks = 0;
+	/** Consecutive ticks the open chest has scanned empty. A QUICK_MOVE is applied
+	 * LOCALLY first, so an empty scan can still be a prediction; holding the chest
+	 * open for a short server grace lets a rejected click's full-content sync bring
+	 * the book back before the pass is declared over. */
+	private int emptyConfirmTicks = 0;
 	/** A rejected swap scheduled for resend after a short delay. */
 	private boolean swapRetryPending = false;
 	private int swapRetryDelay = 0;
@@ -353,10 +358,18 @@ public class ChestDepositor implements BookDisposal {
 						// shown up in the scan); fall through and let EVALUATE decide
 						this.offhandSwapped = true;
 					}
+					// the empty scan is a PREDICTION: handleContainerInput applies the
+					// click locally before the server can reject it. Keep the chest open
+					// for a short grace (the same 20 ticks the grindstone stash uses) so
+					// a rejected final click is corrected by the menu's full-content sync;
+					// closing earlier would strand that correction and leave hasFreeSlot
+					// reading a slot the server never freed.
+					if (++this.emptyConfirmTicks < 20) return StepResult.RUNNING;
 					player.closeContainer();
 					this.state = State.EVALUATE;
 					return StepResult.RUNNING;
 				}
+				this.emptyConfirmTicks = 0;
 				if (scan.count() == this.lastBookCount) {
 					// Nothing moved since the last click. That can mean the chest
 					// accepts no more books, but on a laggy server the move can also
@@ -580,6 +593,7 @@ public class ChestDepositor implements BookDisposal {
 		this.swapRetryDelay = 0;
 		this.lastBookCount = -1;
 		this.noProgressTicks = 0;
+		this.emptyConfirmTicks = 0;
 		this.delay = TradeMasterConfig.INSTANCE.interactDelay;
 		return StepResult.RUNNING;
 	}
@@ -616,9 +630,13 @@ public class ChestDepositor implements BookDisposal {
 		}
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		// keep the record when the guards fail: a late sync may make the undo valid
-		// on the next attempt (EVALUATE gives it a short grace)
-		if (!inSlot.isEmpty() && !McItem.sameItemSameComponents(inSlot, book)) return false;
-		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)) return false;
+		// on the next attempt (EVALUATE gives it a short grace). Counts matter too:
+		// the staged slot was empty/non-book, so any extra books there came from the
+		// player splitting/merging and the whole stack must not be swapped out.
+		if (!inSlot.isEmpty() && (!McItem.sameItemSameComponents(inSlot, book)
+				|| inSlot.getCount() != book.getCount())) return false;
+		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)
+				|| player.getOffhandItem().getCount() != displaced.getCount()) return false;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
 		this.stagedBook = ItemStack.EMPTY;

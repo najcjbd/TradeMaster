@@ -97,30 +97,28 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// look/axe guards below can return early: "10 consecutive absent reads" must mean
 		// 10 consecutive TICKS, not 10 calls
 		boolean brokenConfirmed = this.breakGate.observe(mc.level, lecternPos);
-		// aim at the lectern itself: a lectern block covers the block below it, so
-		// in normal play the crosshair rests on the lectern — servers that validate
-		// the look direction refuse a break aimed anywhere else
-		Vec3 aimAt = Vec3.atCenterOf(lecternPos);
 
-		if (!this.look.tick(player, aimAt)) return StepResult.RUNNING;
-
-		// Never break empty-handed: put an axe into the main hand first.
-		switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
-			case NONE -> {
-				return StepResult.failed(McText.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
-			}
-			case WORKING -> {
-				return StepResult.RUNNING;
-			}
-			case READY -> {}
-		}
-		if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
-			return StepResult.failed(McText.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
-		}
-
-		// update the break gate EVERY tick so a present reading resets it; only a
-		// server-confirmed break may proceed to placement
 		if (LecternRestock.isWorkBlockAt(mc.level, lecternPos)) {
+			// aim at the lectern itself: a lectern block covers the block below it, so
+			// in normal play the crosshair rests on the lectern — servers that validate
+			// the look direction refuse a break aimed anywhere else
+			Vec3 aimAt = Vec3.atCenterOf(lecternPos);
+			if (!this.look.tick(player, aimAt)) return StepResult.RUNNING;
+
+			// Never break empty-handed: put an axe into the main hand first.
+			switch (LecternRestock.bringToolToHand(mc, player, RigTarget.stateAt(mc.level, lecternPos))) {
+				case NONE -> {
+					return StepResult.failed(McText.translatable(RigTarget.toolRequiredKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+				}
+				case WORKING -> {
+					return StepResult.RUNNING;
+				}
+				case READY -> {}
+			}
+			if (config.preventAxeBreaking && LecternRestock.toolNearlyBroken(player)) {
+				return StepResult.failed(McText.translatable(RigTarget.toolBreakingKey(RigTarget.stateAt(mc.level, lecternPos), player)));
+			}
+
 			// slow mode paces the break as well as the place
 			if (config.slowMode) {
 				if (this.breakDelayCounter > 0) {
@@ -134,7 +132,10 @@ public class AxeRerollStrategy implements RerollStrategy {
 		}
 
 		// client-side absent: wait for the server to confirm the break before placing, or
-		// a rejected break (rolled back within a round trip) would be placed over
+		// a rejected break (rolled back within a round trip) would be placed over. The
+		// tool/durability guards are deliberately ABOVE only: once the lectern is gone,
+		// an axe that just crossed the nearly-broken threshold must not discard the
+		// successful break (and the roll that follows it).
 		if (!brokenConfirmed) return StepResult.RUNNING;
 
 		// Lectern is gone: optional teleport to the villager, then place. Never

@@ -174,7 +174,15 @@ public final class PositionPicker {
 			case SUMMON_BUTTON -> c.summonButtonPos = pos;
 			case SEND_AWAY_BUTTON -> c.sendAwayButtonPos = pos;
 			case DISPENSER -> c.dispenserPos = pos;
-			case CHEST -> c.chestPositions.add(pos.immutable());
+			case CHEST -> {
+				// unreachable from the hotkey today (it only yields the three required
+				// positions), but this mapping must keep the [+] picker's invariants:
+				// the MAX_CHESTS cap and no duplicates
+				if (!c.addChest(pos.immutable())) {
+					message(McText.translatable("trademaster.pick.rejected").withStyle(ChatFormatting.RED));
+					return;
+				}
+			}
 			case GRINDSTONE -> c.grindstonePos = pos;
 		}
 		c.save();

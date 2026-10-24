@@ -866,8 +866,23 @@ public final class RerollController {
 				return;
 			}
 			enter(Phase.PRECHECK);
-		} else if (result.step() == RerollStrategy.Step.FAILED
-				|| result.step() == RerollStrategy.Step.FAILED_FULL) {
+			return;
+		}
+		if (result.step() == RerollStrategy.Step.FAILED_FULL) {
+			// FAILED_FULL only means "no chest/drop slot would take the rest": the
+			// pass may already have stored books and freed a slot. Treat it like
+			// tickLock/tickName do — clean up and re-check — instead of stopping a
+			// run that can proceed. (FAILED_FULL skips the disposer's own restore.)
+			depositor.abortCleanly();
+			depositor = null;
+			if (!Preconditions.hasFreeSlot(player)) {
+				stop(result.reason(), ChatFormatting.RED);
+				return;
+			}
+			enter(Phase.PRECHECK);
+			return;
+		}
+		if (result.step() == RerollStrategy.Step.FAILED) {
 			stop(result.reason(), ChatFormatting.RED);
 		}
 	}
@@ -929,14 +944,14 @@ public final class RerollController {
 				return false;
 			}
 			case HAS_CART -> {
-				dispenserCheck = null;
+				releaseCheck();
 				dispenserFailedAttempts = 0;
 				return true;
 			}
 			case NO_CART -> {
 				// transient by design: the clone command refills the dispenser. The open
 				// itself worked, so the consecutive-failure counter starts over.
-				dispenserCheck = null;
+				releaseCheck();
 				dispenserFailedAttempts = 0;
 				dispenserWaitTicks = 20 * 60;
 				debug("summon: dispenser has no minecart yet, retrying in a minute");
@@ -945,15 +960,16 @@ public final class RerollController {
 			case NO_DISPENSER -> {
 				// the position holds no dispenser (wrong coordinate, or the block was
 				// replaced): the open can never succeed, so say so and stop
-				dispenserCheck = null;
+				releaseCheck();
 				stop(McText.translatable("trademaster.message.dispenser_not_a_dispenser"),
 						ChatFormatting.RED);
 				return false;
 			}
 			case FAILED -> {
 				// the open was refused or timed out: a few times may be lag, for ever is a
-				// walled-off / broken dispenser
-				dispenserCheck = null;
+				// walled-off / broken dispenser. releaseCheck also closes a menu whose
+				// delayed open packet arrived after the wait timed out.
+				releaseCheck();
 				if (++dispenserFailedAttempts >= 3) {
 					stop(McText.translatable("trademaster.message.dispenser_open_failed"),
 							ChatFormatting.RED);
@@ -2281,7 +2297,7 @@ public final class RerollController {
 					closeMerchantMenuIfOpen(Minecraft.getInstance());
 					// name the slot that cannot be paid; the emerald wording stays as the
 					// fallback when the offer vanished before we could look at it
-					Component lack = hit.offerIndex() < snapshot.offers().size()
+					Component lack = player != null && hit.offerIndex() < snapshot.offers().size()
 							? Preconditions.shortfall(player, OfferCosts.pricingSlots(snapshot.offers().get(hit.offerIndex())))
 							: null;
 					stop(lack != null ? lack

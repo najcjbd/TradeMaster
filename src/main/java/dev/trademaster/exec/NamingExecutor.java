@@ -64,10 +64,19 @@ public class NamingExecutor {
 	private Stage stage = Stage.FIND_ANVIL;
 	private int stageTicks = 0;
 	private @Nullable BlockPos anvilPos = null;
+	/** containerId of the anvil menu THIS executor opened; a menu that was already
+	 * open before our interact (the player's own anvil) is never driven. */
+	private int openedContainerId = -1;
+	/** The use packet for the current open attempt has been sent, so the next
+	 * AnvilMenu answers it. */
+	private boolean openSent = false;
 	private int tagInvSlot = -1;
 	private int resultInvSlot = -1;
 	/** Inventory slot swapped against the selected hotbar slot during EQUIP, if any. */
 	private int equipSwapSlot = -1;
+	/** Hotbar slot the EQUIP swap moved the tag INTO. The RESTORE swap must use the
+	 * same button even if the player changes the selection meanwhile. */
+	private int equipDestSlot = -1;
 	/** Hotbar slot selected before EQUIP switched to a hotbar name tag; restored afterwards. */
 	private int equipOriginalSlot = -1;
 	/** Whether the RESTORE swap-back click has been sent. */
@@ -261,7 +270,9 @@ public class NamingExecutor {
 		}
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 		McClicks.click(mc.gameMode, 0, this.equipSwapSlot,
-				McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
+				this.equipDestSlot >= 0 ? this.equipDestSlot : McPlayer.selectedSlot(player),
+				McClicks.Click.SWAP, player);
+		this.equipDestSlot = -1;
 	}
 
 	private void next(Stage stage) {
@@ -301,7 +312,15 @@ public class NamingExecutor {
 	}
 
 	private Result tickOpenAnvil(Minecraft mc, LocalPlayer player) {
-		if (player.containerMenu instanceof AnvilMenu) {
+		if (player.containerMenu instanceof AnvilMenu menu) {
+			if (!this.openSent) {
+				// an anvil already open BEFORE our use packet is not ours (the
+				// player's own, or another mod's): never rename in it. Wait for it
+				// to close; the stage timeout reports the failure instead.
+				return Result.RUNNING;
+			}
+			this.openedContainerId = menu.containerId;
+			this.openSent = false;
 			next(Stage.INSERT_TAG);
 			return Result.RUNNING;
 		}
@@ -324,11 +343,13 @@ public class NamingExecutor {
 		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
 		McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
+		this.openSent = true;
 		return Result.RUNNING;
 	}
 
 	private Result tickInsertTag(Minecraft mc, LocalPlayer player) {
-		if (!(player.containerMenu instanceof AnvilMenu menu)) return failed("tag-menu");
+		if (!(player.containerMenu instanceof AnvilMenu menu)
+				|| menu.containerId != this.openedContainerId) return failed("tag-menu");
 		if (this.tagInvSlot < 0) {
 			this.tagInvSlot = findNameTag(player);
 			if (this.tagInvSlot < 0) return failed("tag-none");
@@ -377,7 +398,8 @@ public class NamingExecutor {
 
 	/** {@code mc} is unused (kept for call-site parity) — audited 2026-09-19. */
 	private Result tickRename(Minecraft mc, LocalPlayer player) {
-		if (!(player.containerMenu instanceof AnvilMenu menu)) return failed("rename-menu");
+		if (!(player.containerMenu instanceof AnvilMenu menu)
+				|| menu.containerId != this.openedContainerId) return failed("rename-menu");
 		if (this.stageTicks == 1 || this.stageTicks == 20) {
 			menu.setItemName(this.name);
 			player.connection.send(new ServerboundRenameItemPacket(this.name));
@@ -395,7 +417,8 @@ public class NamingExecutor {
 	}
 
 	private Result tickTake(Minecraft mc, LocalPlayer player) {
-		if (!(player.containerMenu instanceof AnvilMenu menu)) return failed("take-menu");
+		if (!(player.containerMenu instanceof AnvilMenu menu)
+				|| menu.containerId != this.openedContainerId) return failed("take-menu");
 		// the result slot fills even without enough XP, but mayPickup would reject
 		// the take on both sides: report the real reason instead of a dead 20-tick
 		// wait ending in a misleading "take-tag"
@@ -439,6 +462,7 @@ public class NamingExecutor {
 				Interactions.selectHotbarSlot(player, this.resultInvSlot);
 			}
 			this.equipSwapSlot = -1;
+			this.equipDestSlot = -1;
 			this.look.reset();
 			next(Stage.APPLY);
 			return Result.RUNNING;
@@ -448,10 +472,12 @@ public class NamingExecutor {
 			// ends up in the main hand. Unlike the old PICKUP approach this works
 			// with a full hotbar and never leaves the tag stuck on the cursor;
 			// the previous item lands in the tag's old slot and is swapped back
-			// after naming.
+			// after naming. Remember the destination: RESTORE must use the SAME
+			// hotbar button even if the player changes the selection meanwhile.
 			this.equipSwapSlot = this.resultInvSlot;
+			this.equipDestSlot = McPlayer.selectedSlot(player);
 			McClicks.click(mc.gameMode, 0, this.resultInvSlot,
-					McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
+					this.equipDestSlot, McClicks.Click.SWAP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
@@ -513,6 +539,7 @@ public class NamingExecutor {
 
 	private Result tickRestore(Minecraft mc, LocalPlayer player) {
 		if (this.equipSwapSlot < 0) {
+			this.equipDestSlot = -1;
 			if (this.equipOriginalSlot >= 0) {
 				Interactions.selectHotbarSlot(player, this.equipOriginalSlot);
 				this.equipOriginalSlot = -1;
@@ -528,13 +555,17 @@ public class NamingExecutor {
 		if (!this.restoreSwapped) {
 			this.restoreSwapped = true;
 			// the tag was consumed by the naming interact; swap the previous
-			// item (e.g. the axe) back into the selected hotbar slot
+			// item (e.g. the axe) back into the slot the EQUIP swap used, not
+			// whatever happens to be selected now
+			int dest = this.equipDestSlot >= 0
+					? this.equipDestSlot : McPlayer.selectedSlot(player);
 			McClicks.click(mc.gameMode, 0, this.equipSwapSlot,
-					McPlayer.selectedSlot(player), McClicks.Click.SWAP, player);
+					dest, McClicks.Click.SWAP, player);
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
 		this.equipSwapSlot = -1;
+		this.equipDestSlot = -1;
 		return this.pendingFail != null ? Result.FAILED : Result.DONE;
 	}
 

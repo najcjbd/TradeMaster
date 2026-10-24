@@ -1796,8 +1796,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				// the SAME invariants the [+] picker enforces: a real chest and no
 				// duplicate; otherwise keep the stored binding (the field is re-synced)
 				Minecraft mc = Minecraft.getInstance();
-				boolean isChest = mc.level != null
-						&& mc.level.getBlockState(stored).getBlock()
+				// an unloaded chunk reads VOID_AIR, which says nothing about the
+				// block at that position: only enforce the chest check where the
+				// level can actually answer, or a legitimate edit for a far chest
+				// would be silently reverted
+				boolean loaded = mc.level != null && mc.level.hasChunkAt(stored);
+				boolean isChest = !loaded
+						|| mc.level.getBlockState(stored).getBlock()
 								instanceof net.minecraft.world.level.block.ChestBlock;
 				boolean duplicate = false;
 				for (int i = 0; i < c.chestPositions.size(); i++) {
