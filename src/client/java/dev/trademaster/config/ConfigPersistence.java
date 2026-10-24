@@ -491,6 +491,26 @@ public final class ConfigPersistence {
 			// the sentinel is structural (specs write it): never let a file drop it
 			String airSentinel = "minecraft:air";
 			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
+			// BEFORE reading goods: a good whose result is in airItems would be dropped by
+			// the isAirItem check below. Remove those ids (and the book result) first, like
+			// the Offers tab does. Target spec results are LEFT in the list: pointing a
+			// target's spec result at an air marker is the supported switch-off.
+			java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
+			forbiddenAir.add(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK.toString());
+			JsonElement rawGoods = offers.get("goods");
+			if (rawGoods != null && rawGoods.isJsonArray()) {
+				for (JsonElement e : rawGoods.getAsJsonArray()) {
+					if (!e.isJsonObject()) continue;
+					JsonElement r = e.getAsJsonObject().get("result");
+					if (r == null || !r.isJsonPrimitive()) continue;
+					Identifier id = Identifier.tryParse(r.getAsString());
+					if (id != null) forbiddenAir.add(id.toString());
+				}
+			}
+			if (c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id))) {
+				TradeMaster.LOGGER.warn("Removed result ids from offers.airItems (they would disable goods/book trades)");
+			}
+			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
 			JsonObject specs = getSection(offers, "specs");
 			if (specs != null) {
 				c.tradeSpecs.clear();
@@ -600,22 +620,6 @@ public final class ConfigPersistence {
 			c.villagerRegionDelta = null;
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
-
-		// the air list also gates RESULT checks: a result id in it would silently
-		// disable that target/good (and the good is dropped on the next save)
-		java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
-		forbiddenAir.add(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK.toString());
-		for (GoodSpec good : c.goods) {
-			if (good.id() != null) forbiddenAir.add(good.id().toString());
-		}
-		for (EnchantmentTarget target : c.enchantments.values()) {
-			Identifier result = c.specFor(target.id()).result();
-			if (result != null) forbiddenAir.add(result.toString());
-		}
-		if (c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id))) {
-			TradeMaster.LOGGER.warn("Removed result ids from offers.airItems (they would disable targets/goods)");
-		}
-		if (!c.airItems.contains("minecraft:air")) c.airItems.add("minecraft:air");
 
 		MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}

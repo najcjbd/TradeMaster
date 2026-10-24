@@ -472,8 +472,9 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 			// run-locked settings must not change under a live needs table; the
 			// auto-disable/hunt mutex still wins over a restored hunt flag
 			TradeMasterConfig.INSTANCE.basePriceAsSalePrice = basis;
+			// only ENABLING hunt is run-locked; a reloaded disable is allowed by the UI
 			TradeMasterConfig.INSTANCE.huntCheaper =
-					hunt && !TradeMasterConfig.INSTANCE.autoDisableAfterLock;
+					hunt && TradeMasterConfig.INSTANCE.huntCheaper;
 		}
 	}
 

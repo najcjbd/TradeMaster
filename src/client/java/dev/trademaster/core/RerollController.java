@@ -232,9 +232,8 @@ public final class RerollController {
 			// floor must too or the precheck under-demands emeralds
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
 			if (target != null) {
-				// a DISABLED target's hunt is paused: its old mark must not raise the
-				// precheck's emerald floor
-				if (!target.enabled()) continue;
+				// a DISABLED or currently UNMATCHABLE target's hunt is paused
+				if (!target.enabled() || !TradeMatcher.targetMatchable(target)) continue;
 				int budget = Math.min(entry.getValue() - 1, target.maxPrice());
 				if (budget > max) max = budget;
 				continue;
@@ -1872,8 +1871,11 @@ public final class RerollController {
 	private static void voucherUnprovenPurchase(RunSession s) {
 		if (s.matchedTrade == null) return;
 		s.lockedIds.addAll(s.matchedTrade.matchedIds());
-		rememberProduced(s.lockedResults, s.matchedTrade.purchase().result());
-		voucherEmergencyBook(s, lockExecutor == null ? null : lockExecutor.expected());
+		// the executor may have attempted an EMERGENCY book instead of the matched one
+		TradeMatcher.MatchedTrade expected = lockExecutor == null ? null : lockExecutor.expected();
+		rememberProduced(s.lockedResults,
+				expected != null ? expected.purchase().result() : s.matchedTrade.purchase().result());
+		voucherEmergencyBook(s, expected);
 	}
 
 	/** An EMERGENCY buy purchases a DIFFERENT book than the matched one (the matched book

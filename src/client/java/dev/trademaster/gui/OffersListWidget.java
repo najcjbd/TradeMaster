@@ -192,7 +192,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 		String joined = String.join(", ", config.airItems);
 		this.airField.setMaxLength(1_000_000);
-		this.airField.setValue(joined);
+		// do not reset the caret/selection when the text is already current
+		if (!this.airField.getValue().equals(joined)) this.airField.setValue(joined);
 		if (rejected) {
 			message(Component.translatable("trademaster.offers.air_rejected")
 					.withStyle(net.minecraft.ChatFormatting.RED));
@@ -519,7 +520,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			TradeOfferSpec updated = new TradeOfferSpec(List.copyOf(costs),
 					existing == null ? TradeOfferSpec.ENCHANTED_BOOK : existing.result());
-			if (updated.equals(existing)) return;
+			// compare with the EFFECTIVE spec: a fresh target already equals the defaults
+			if (updated.equals(config.specFor(this.id))) return;
 			config.tradeSpecs.put(this.id, updated);
 			config.save();
 		}
