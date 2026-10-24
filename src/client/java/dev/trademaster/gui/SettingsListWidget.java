@@ -138,7 +138,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			if (c.chestPositions.size() >= TradeMasterConfig.MAX_CHESTS) return false;
 			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
 					pos -> c.addChest(pos.immutable()),
-					pos -> !c.chestPositions.contains(pos));
+					pos -> {
+						Minecraft mc = Minecraft.getInstance();
+						return mc.level != null
+								&& mc.level.getBlockState(pos).getBlock()
+										instanceof net.minecraft.world.level.block.ChestBlock
+								&& !c.chestPositions.contains(pos);
+					});
 			if (began) Minecraft.getInstance().gui.setScreen(null);
 			return began;
 		}));

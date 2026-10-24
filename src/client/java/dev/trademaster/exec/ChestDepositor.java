@@ -291,8 +291,13 @@ public class ChestDepositor implements BookDisposal {
 							// (stop() tears the depositor down via abortCleanly)
 							return StepResult.failed(Component.translatable("trademaster.message.swap_rejected"));
 						}
-						// chest has no space: fall through to the old path
-						// (close + EVALUATE + advance to the next chest)
+						// chest has no space: advance to the NEXT chest. Clearing
+						// offhandSwapped lets it restage an offhand book (or deposit
+						// the staged one if the swap landed). EVALUATE cannot see the
+						// offhand, so it must not be used here.
+						this.offhandSwapped = false;
+						if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+						return advance(mc, player);
 					} else {
 						return StepResult.RUNNING;
 					}
@@ -319,6 +324,7 @@ public class ChestDepositor implements BookDisposal {
 					// hotbar slots cannot all be books and the search always finds one.
 					if (swapSlot >= 0) {
 							this.offhandSwapped = true;
+							this.undoGraceTicks = 0;
 							this.stagedHotbarSlot = swapSlot;
 							this.stagedBook = player.getOffhandItem().copy();
 							this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
@@ -365,7 +371,10 @@ public class ChestDepositor implements BookDisposal {
 				if (countDisposables(player) == 0) {
 					// a landed-but-unsynced staging swap may still be in flight: give
 					// the sync a short grace before giving up on the undo
-					if (!undoOffhandStage(player) && this.undoGraceTicks++ < 20) {
+					boolean lateSyncPossible = ItemStack.isSameItemSameComponents(
+							player.getOffhandItem(), this.stagedBook);
+					if (!undoOffhandStage(player) && lateSyncPossible
+							&& this.undoGraceTicks++ < 20) {
 						return StepResult.RUNNING;
 					}
 					restoreHotbarSelection(player);
@@ -549,6 +558,7 @@ public class ChestDepositor implements BookDisposal {
 		this.openRetries = 0;
 		this.switchedSlot = false;
 		this.offhandSwapped = false;
+		this.undoGraceTicks = 0;
 		this.swapWaitTicks = -1;
 		this.swapAttempts = 0;
 		this.swapRetryPending = false;

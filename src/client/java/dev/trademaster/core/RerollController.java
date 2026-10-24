@@ -231,7 +231,10 @@ public final class RerollController {
 			// priceOf/specOf and admission already resolve it that way, so the hunt
 			// floor must too or the precheck under-demands emeralds
 			EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(entry.getKey());
-			if (target != null && target.enabled()) {
+			if (target != null) {
+				// a DISABLED target's hunt is paused: its old mark must not raise the
+				// precheck's emerald floor
+				if (!target.enabled()) continue;
 				int budget = Math.min(entry.getValue() - 1, target.maxPrice());
 				if (budget > max) max = budget;
 				continue;
@@ -239,14 +242,12 @@ public final class RerollController {
 			// a custom good's hunt is capped by its own price
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
 			if (good != null) {
+				if (!good.enabled() || !TradeMatcher.goodMatchable(good)) continue;
 				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
 				if (goodBudget > max) max = goodBudget;
 				continue;
 			}
-			// an unknown target (disabled/removed mid-run) is left uncapped rather
-			// than pretending a 64 cap
-			int budget = entry.getValue() - 1;
-			if (budget > max) max = budget;
+			// a target removed mid-run has no demand at all: skip its mark
 		}
 		return max;
 	}
@@ -1933,13 +1934,15 @@ public final class RerollController {
 			s.lockedIds.addAll(s.matchedTrade.matchedIds());
 			// remember every distinct stack this trade yields (item AND components), so the
 			// disposal only ever takes a stack that IS one of this run's outputs
-			rememberProduced(s.lockedResults, s.matchedTrade.purchase().result());
+			// the stack that entered the inventory is the EXECUTOR's trade (an emergency
+			// book may have been bought instead of the matched one)
+			rememberProduced(s.lockedResults,
+					bought != null ? bought.purchase().result() : s.matchedTrade.purchase().result());
 			// hunt-cheaper: the locked enchantment stays live; mark its price so
 			// future matches only accept a strictly cheaper copy. Only a purchase
 			// with exactly one matched part has a price attributable to one target —
 			// a combo's price cannot seed a per-target ratchet
-			boolean boughtTheMatch = bought == null || bought == s.matchedTrade;
-			if (boughtTheMatch && TradeMasterConfig.INSTANCE.huntCheaper
+			if (TradeMasterConfig.INSTANCE.huntCheaper
 					&& s.matchedTrade.purchase().parts().size() == 1) {
 				// The hunt mark only ever moves DOWN: it records the price actually
 				// paid, and only when that is strictly cheaper than the current mark.
@@ -1952,7 +1955,7 @@ public final class RerollController {
 				if (prevMark == null || paid < prevMark) {
 					huntMarkedPrices.put(s.matchedTrade.id(), paid);
 				}
-			} else if (boughtTheMatch && TradeMasterConfig.INSTANCE.huntCheaper
+			} else if (TradeMasterConfig.INSTANCE.huntCheaper
 					&& s.matchedTrade.purchase().parts().size() >= 2) {
 				// the purchased book carries several matched enchantments: its price
 				// cannot be attributed, so record the combo itself as a temporary
@@ -2502,6 +2505,7 @@ public final class RerollController {
 		List<String> uncosted = new ArrayList<>();
 		List<String> blankPrice = new ArrayList<>();
 		List<String> goods = new ArrayList<>();
+		List<String> shadowed = new ArrayList<>();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			if (!TradeMatcher.registryTradeable(target.id())) {
 				unavailable.add(target.id().toString());
@@ -2530,6 +2534,10 @@ public final class RerollController {
 			}
 		}
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			if (TradeMasterConfig.INSTANCE.enchantments.containsKey(good.id())) {
+				shadowed.add(good.id().toString());
+				continue;
+			}
 			if (!TradeMatcher.goodMatchable(good)) {
 				goods.add(good.id().toString());
 				continue;
@@ -2546,6 +2554,10 @@ public final class RerollController {
 		}
 		if (!goods.isEmpty()) {
 			chat(Component.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+		if (!shadowed.isEmpty()) {
+			chat(Component.translatable("trademaster.message.shadowed_goods", String.join(", ", shadowed))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!uncosted.isEmpty()) {
@@ -2884,12 +2896,13 @@ public final class RerollController {
 			if (offer.isOutOfStock()) continue;
 			if (!offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
 			// a book whose enchantments have no registry keys cannot be fingerprinted
-			boolean hasKeyed = false;
-			for (var holder : net.minecraft.world.item.enchantment.EnchantmentHelper
-					.getEnchantmentsForCrafting(offer.getResult()).keySet()) {
-				if (holder.unwrapKey().isPresent()) { hasKeyed = true; break; }
+			var altEnchantments = net.minecraft.world.item.enchantment.EnchantmentHelper
+					.getEnchantmentsForCrafting(offer.getResult());
+			boolean allKeyed = !altEnchantments.isEmpty();
+			for (var holder : altEnchantments.keySet()) {
+				if (holder.unwrapKey().isEmpty()) { allKeyed = false; break; }
 			}
-			if (!hasKeyed) continue;
+			if (!allKeyed) continue;
 			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
 			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) continue;

@@ -601,6 +601,22 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
+		// the air list also gates RESULT checks: a result id in it would silently
+		// disable that target/good (and the good is dropped on the next save)
+		java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
+		forbiddenAir.add(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK.toString());
+		for (GoodSpec good : c.goods) {
+			if (good.id() != null) forbiddenAir.add(good.id().toString());
+		}
+		for (EnchantmentTarget target : c.enchantments.values()) {
+			Identifier result = c.specFor(target.id()).result();
+			if (result != null) forbiddenAir.add(result.toString());
+		}
+		if (c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id))) {
+			TradeMaster.LOGGER.warn("Removed result ids from offers.airItems (they would disable targets/goods)");
+		}
+		if (!c.airItems.contains("minecraft:air")) c.airItems.add("minecraft:air");
+
 		MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 

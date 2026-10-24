@@ -84,6 +84,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	private int prePlain = 0;
 	/** Menu slot of the book currently being pushed into a chest; -1 = not started. */
 	private int stashSlot = -1;
+	/** containerId of the chest menu stashSlot belongs to; another menu must never
+	 * receive the QUICK_MOVE with the same index. */
+	private int stashContainerId = -1;
 	/** Chest list index currently tried for a stash. */
 	private int chestIndex = 0;
 	/** Hotbar slot the staged curse book sits in for the directional drop. */
@@ -418,6 +421,7 @@ public class GrindstoneRecycler implements BookDisposal {
 			case CHEST_AWAIT -> {
 				if (player.containerMenu instanceof ChestMenu) {
 					this.stashSlot = -1;
+					this.stashContainerId = player.containerMenu.containerId;
 					this.waitTicks = 0;
 					this.state = State.CHEST_MOVE;
 				} else if (player.containerMenu != player.inventoryMenu) {
@@ -432,6 +436,14 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 			case CHEST_MOVE -> {
 				if (!(player.containerMenu instanceof ChestMenu)) {
+					this.state = State.CHEST_SEEK;
+					return StepResult.RUNNING;
+				}
+				// the index belongs to the chest WE opened, never to a replacement menu
+				if (player.containerMenu.containerId != this.stashContainerId) {
+					this.stashSlot = -1;
+					player.closeContainer();
+					this.look.reset();
 					this.state = State.CHEST_SEEK;
 					return StepResult.RUNNING;
 				}

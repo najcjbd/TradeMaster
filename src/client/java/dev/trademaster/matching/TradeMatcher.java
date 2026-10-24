@@ -221,7 +221,9 @@ public class TradeMatcher {
 	 * goods are keyed by their result item, so the enchantment-only gates below must
 	 * not be applied to them. */
 	public static boolean isGood(Identifier id) {
-		return TradeMasterConfig.INSTANCE.goodFor(id) != null;
+		// target-first: a same-id enchantment owns the id even when a good shares it
+		return !TradeMasterConfig.INSTANCE.enchantments.containsKey(id)
+				&& TradeMasterConfig.INSTANCE.goodFor(id) != null;
 	}
 
 	/** The price slot's amount for a demand: the good's max price, or the target's.
@@ -290,7 +292,8 @@ public class TradeMatcher {
 		// be read from the good. The Offers tab refuses such a good already; a hand-edited
 		// file lands here (and the start warning names it).
 		// target-first: any same-id enchantment makes the good unmatchable (the id-keyed
-		// vouchers/marks cannot distinguish the kinds)
+		// vouchers/marks cannot distinguish the kinds). New ones are refused by the
+		// Offers tab; old files keep the row inert and the start warning names it.
 		if (TradeMasterConfig.INSTANCE.enchantments.containsKey(good.id())) return false;
 		return specHasPayableSlot(good.spec());
 	}
@@ -372,6 +375,12 @@ public class TradeMatcher {
 			if (!result.is(Items.ENCHANTED_BOOK)) continue;
 			var enchantments = EnchantmentHelper.getEnchantmentsForCrafting(result);
 			if (enchantments.isEmpty()) continue;
+			// every holder must have a registry key: a mixed book cannot be fingerprinted
+			boolean allKeyed = true;
+			for (var holder : enchantments.keySet()) {
+				if (holder.unwrapKey().isEmpty()) { allKeyed = false; break; }
+			}
+			if (!allKeyed) continue;
 			List<MatchPart> bookEnchantments = new ArrayList<>();
 			List<MatchPart> parts = new ArrayList<>();
 			int budget = 0;
