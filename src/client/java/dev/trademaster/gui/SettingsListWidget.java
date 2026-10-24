@@ -1267,7 +1267,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			java.util.LinkedHashSet<String> ids = new java.util.LinkedHashSet<>();
 			for (String token : text.split("[,\\s]+")) {
 				if (token.isEmpty()) continue;
-				net.minecraft.resources.Identifier id = net.minecraft.resources.Identifier.tryParse(token);
+				net.minecraft.resources.Identifier id = TradeMasterConfig.parseId(token);
 				if (id != null && !"minecraft".equals(id.getNamespace())) {
 					ids.add(id.toString());
 				}

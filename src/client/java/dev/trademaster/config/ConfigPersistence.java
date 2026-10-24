@@ -187,6 +187,12 @@ public final class ConfigPersistence {
 	/** Serialises the model into {@code root} (merging, see {@link #save}). Package-private
 	 * so a test can round-trip the model through JSON without a FabricLoader config dir. */
 	static void writeFrom(TradeMasterConfig c, JsonObject root) {
+		writeFrom(c, root, true);
+	}
+
+	/** @param includeHotkeys false skips the maLiLib keybind write, the only part that
+	 * needs a live Minecraft/maLiLib and therefore cannot run in a headless test */
+	static void writeFrom(TradeMasterConfig c, JsonObject root, boolean includeHotkeys) {
 		root.addProperty("configVersion", CONFIG_VERSION);
 
 		JsonObject mechanism = sectionForWrite(root, "mechanism");
@@ -320,16 +326,24 @@ public final class ConfigPersistence {
 		root.add("enchantments", enchantments);
 
 		// merge the adapter's keys into the on-disk object: same reason as above
-		JsonObject hotkeys = sectionForWrite(root, "hotkeys");
-		for (Map.Entry<String, JsonElement> entry : MaliLibAdapter.writeHotkeys().entrySet()) {
-			hotkeys.add(entry.getKey(), entry.getValue());
+		if (includeHotkeys) {
+			JsonObject hotkeys = sectionForWrite(root, "hotkeys");
+			for (Map.Entry<String, JsonElement> entry : MaliLibAdapter.writeHotkeys().entrySet()) {
+				hotkeys.add(entry.getKey(), entry.getValue());
+			}
+			root.add("hotkeys", hotkeys);
 		}
-		root.add("hotkeys", hotkeys);
 	}
 
 	/** Reads {@code root} into the model (see {@link #load}). Package-private so a test can
 	 * round-trip the model through JSON without a FabricLoader config dir. */
 	static void readInto(TradeMasterConfig c, JsonObject root) {
+		readInto(c, root, true);
+	}
+
+	/** @param includeHotkeys false skips the maLiLib keybind read, the only part that
+	 * needs a live Minecraft/maLiLib and therefore cannot run in a headless test */
+	static void readInto(TradeMasterConfig c, JsonObject root, boolean includeHotkeys) {
 		JsonObject mechanism = sectionOrRoot(root, "mechanism");
 		if (mechanism != null) {
 			c.rerollMechanism = readEnum(mechanism, "reroll", c.rerollMechanism);
@@ -621,7 +635,7 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
-		MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
+		if (includeHotkeys) MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 
 	/** Tolerates hand-edited files where a section has the wrong JSON type

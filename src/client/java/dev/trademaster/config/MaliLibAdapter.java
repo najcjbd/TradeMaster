@@ -141,96 +141,99 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 	}
 
 	private void buildOptions() {
-		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
+		// Constructor values are maLiLib's reset targets: they must be the MOD's
+		// defaults (a fresh model), never the values loaded when this screen was
+		// first opened. refreshFromModel() below/at get() then sets the live values.
+		TradeMasterConfig d = TradeMasterConfig.defaults();
 		this.genericOptions.clear();
 
-		this.optReroll = labeled(new ConfigOptionList("rerollMechanism", c.rerollMechanism, "", ""),
+		this.optReroll = labeled(new ConfigOptionList("rerollMechanism", d.rerollMechanism, "", ""),
 				"trademaster.settings.mechanism");
-		this.optDetection = labeled(new ConfigOptionList("detectionMode", c.detectionMode, "", ""),
+		this.optDetection = labeled(new ConfigOptionList("detectionMode", d.detectionMode, "", ""),
 				"trademaster.settings.detection");
-		this.optNonBookDisposal = labeled(new ConfigOptionList("nonBookDisposal", c.nonBookDisposal, "", ""),
+		this.optNonBookDisposal = labeled(new ConfigOptionList("nonBookDisposal", d.nonBookDisposal, "", ""),
 				"trademaster.settings.nonBookDisposal");
 
-		this.optReserveCheaper = labeled(new ConfigBoolean("reserveCheaperTraders", c.reserveCheaperTraders, "", ""),
+		this.optReserveCheaper = labeled(new ConfigBoolean("reserveCheaperTraders", d.reserveCheaperTraders, "", ""),
 				"trademaster.settings.reserveCheaperTraders");
-		this.optMinLockEmeralds = labeled(new ConfigInteger("minLockEmeralds", c.minLockEmeralds, 1, 64, "", ""),
+		this.optMinLockEmeralds = labeled(new ConfigInteger("minLockEmeralds", d.minLockEmeralds, 1, 64, "", ""),
 				"trademaster.settings.minLockEmeralds");
-		this.optBasePriceAsSalePrice = labeled(new ConfigBoolean("basePriceAsSalePrice", c.basePriceAsSalePrice, "", ""),
+		this.optBasePriceAsSalePrice = labeled(new ConfigBoolean("basePriceAsSalePrice", d.basePriceAsSalePrice, "", ""),
 				"trademaster.settings.basePriceAsSalePrice");
-		this.optTimeoutEnabled = labeled(new ConfigBoolean("timeoutEnabled", c.timeoutEnabled, "", ""),
+		this.optTimeoutEnabled = labeled(new ConfigBoolean("timeoutEnabled", d.timeoutEnabled, "", ""),
 				"trademaster.settings.timeoutEnabled");
-		this.optTimeout = labeled(new ConfigInteger("timeoutTicks", c.timeoutTicks, 1200, Integer.MAX_VALUE, "", ""),
+		this.optTimeout = labeled(new ConfigInteger("timeoutTicks", d.timeoutTicks, 1200, Integer.MAX_VALUE, "", ""),
 				"trademaster.settings.timeoutTicks");
-		this.optPhaseTimeouts = labeled(new ConfigBoolean("phaseTimeoutsEnabled", c.phaseTimeoutsEnabled, "", ""),
+		this.optPhaseTimeouts = labeled(new ConfigBoolean("phaseTimeoutsEnabled", d.phaseTimeoutsEnabled, "", ""),
 				"trademaster.settings.phaseTimeoutsEnabled");
-		this.optVillagerCheckInterval = labeled(new ConfigInteger("villagerCheckInterval", c.villagerCheckInterval, 1, 72000, "", ""),
+		this.optVillagerCheckInterval = labeled(new ConfigInteger("villagerCheckInterval", d.villagerCheckInterval, 1, 72000, "", ""),
 				"trademaster.settings.villagerCheckInterval");
-		this.optLecternHealGrace = labeled(new ConfigInteger("lecternHealGrace", c.lecternHealGrace, 20, 1200, "", ""),
+		this.optLecternHealGrace = labeled(new ConfigInteger("lecternHealGrace", d.lecternHealGrace, 20, 1200, "", ""),
 				"trademaster.settings.lecternHealGrace");
-		this.optProfessionHealCapEnabled = labeled(new ConfigBoolean("professionHealCapEnabled", c.professionHealCapEnabled, "", ""),
+		this.optProfessionHealCapEnabled = labeled(new ConfigBoolean("professionHealCapEnabled", d.professionHealCapEnabled, "", ""),
 				"trademaster.settings.professionHealCapEnabled");
-		this.optProfessionHealCap = labeled(new ConfigInteger("professionHealCap", c.professionHealCap, 1, 20, "", ""),
+		this.optProfessionHealCap = labeled(new ConfigInteger("professionHealCap", d.professionHealCap, 1, 20, "", ""),
 				"trademaster.settings.professionHealCap");
-		this.optAutoDisable = labeled(new ConfigBoolean("autoDisableAfterLock", c.autoDisableAfterLock, "", ""),
+		this.optAutoDisable = labeled(new ConfigBoolean("autoDisableAfterLock", d.autoDisableAfterLock, "", ""),
 				"trademaster.settings.autoDisableAfterLock");
-		this.optHuntCheaper = labeled(new ConfigBoolean("huntCheaper", c.huntCheaper, "", ""),
+		this.optHuntCheaper = labeled(new ConfigBoolean("huntCheaper", d.huntCheaper, "", ""),
 				"trademaster.settings.huntCheaper");
-		this.optLockMaxRetries = labeled(new ConfigInteger("lockMaxRetries", c.lockMaxRetries, -1, 999, "", ""),
+		this.optLockMaxRetries = labeled(new ConfigInteger("lockMaxRetries", d.lockMaxRetries, -1, 999, "", ""),
 				"trademaster.settings.lockMaxRetries");
-		this.optOffhandSwapRetries = labeled(new ConfigInteger("offhandSwapRetries", c.offhandSwapRetries, -1, 999, "", ""),
+		this.optOffhandSwapRetries = labeled(new ConfigInteger("offhandSwapRetries", d.offhandSwapRetries, -1, 999, "", ""),
 				"trademaster.settings.offhandSwapRetries");
-		this.optPostDispatchBreakRetries = labeled(new ConfigInteger("postDispatchBreakRetries", c.postDispatchBreakRetries, -1, 999, "", ""),
+		this.optPostDispatchBreakRetries = labeled(new ConfigInteger("postDispatchBreakRetries", d.postDispatchBreakRetries, -1, 999, "", ""),
 				"trademaster.settings.postDispatchBreakRetries");
-		this.optMultiEnchantProtection = labeled(new ConfigBoolean("multiEnchantProtection", c.multiEnchantProtection, "", ""),
+		this.optMultiEnchantProtection = labeled(new ConfigBoolean("multiEnchantProtection", d.multiEnchantProtection, "", ""),
 				"trademaster.settings.multiEnchantProtection");
-		this.optDisplayRolls = labeled(new ConfigBoolean("displayRolls", c.displayRolls, "", ""),
+		this.optDisplayRolls = labeled(new ConfigBoolean("displayRolls", d.displayRolls, "", ""),
 				"trademaster.settings.displayRolls");
-		this.optDebugLog = labeled(new ConfigBoolean("debugLog", c.debugLog, "", ""),
+		this.optDebugLog = labeled(new ConfigBoolean("debugLog", d.debugLog, "", ""),
 				"trademaster.settings.debugLog");
 
-		this.optNaming = labeled(new ConfigBoolean("namingEnabled", c.namingEnabled, "", ""),
+		this.optNaming = labeled(new ConfigBoolean("namingEnabled", d.namingEnabled, "", ""),
 				"trademaster.settings.namingEnabled");
-		this.optForceNamePriceOne = labeled(new ConfigBoolean("forceNamePriceOne", c.forceNamePriceOne, "", ""),
+		this.optForceNamePriceOne = labeled(new ConfigBoolean("forceNamePriceOne", d.forceNamePriceOne, "", ""),
 				"trademaster.settings.forceNamePriceOne");
 
-		this.optLegit = labeled(new ConfigBoolean("legitMode", c.legitMode, "", ""),
+		this.optLegit = labeled(new ConfigBoolean("legitMode", d.legitMode, "", ""),
 				"trademaster.settings.legitMode");
-		this.optSlow = labeled(new ConfigBoolean("slowMode", c.slowMode, "", ""),
+		this.optSlow = labeled(new ConfigBoolean("slowMode", d.slowMode, "", ""),
 				"trademaster.settings.slowMode");
-		this.optTp = labeled(new ConfigBoolean("tpToVillager", c.tpToVillager, "", ""),
+		this.optTp = labeled(new ConfigBoolean("tpToVillager", d.tpToVillager, "", ""),
 				"trademaster.settings.tpToVillager");
-		this.optTpItem = labeled(new ConfigBoolean("tpToItem", c.tpToItem, "", ""),
+		this.optTpItem = labeled(new ConfigBoolean("tpToItem", d.tpToItem, "", ""),
 				"trademaster.settings.tpToItem");
-		this.optProtectAxe = labeled(new ConfigBoolean("preventAxeBreaking", c.preventAxeBreaking, "", ""),
+		this.optProtectAxe = labeled(new ConfigBoolean("preventAxeBreaking", d.preventAxeBreaking, "", ""),
 				"trademaster.settings.preventAxeBreaking");
-		this.optStopOnMove = labeled(new ConfigBoolean("stopOnPlayerMove", c.stopOnPlayerMove, "", ""),
+		this.optStopOnMove = labeled(new ConfigBoolean("stopOnPlayerMove", d.stopOnPlayerMove, "", ""),
 				"trademaster.settings.stopOnPlayerMove");
-		this.optPlaceDelay = labeled(new ConfigInteger("placeDelay", c.placeDelay, 0, 20, "", ""),
+		this.optPlaceDelay = labeled(new ConfigInteger("placeDelay", d.placeDelay, 0, 20, "", ""),
 				"trademaster.settings.placeDelay");
-		this.optInteractDelay = labeled(new ConfigInteger("interactDelay", c.interactDelay, 0, 20, "", ""),
+		this.optInteractDelay = labeled(new ConfigInteger("interactDelay", d.interactDelay, 0, 20, "", ""),
 				"trademaster.settings.interactDelay");
 
-		this.optLecternPos = labeled(new ConfigString("lecternPos", posToString(c.lecternPos), "", ""),
+		this.optLecternPos = labeled(new ConfigString("lecternPos", posToString(d.lecternPos), "", ""),
 				"trademaster.settings.lecternPos");
-		this.optSummonButtonPos = labeled(new ConfigString("summonButtonPos", posToString(c.summonButtonPos), "", ""),
+		this.optSummonButtonPos = labeled(new ConfigString("summonButtonPos", posToString(d.summonButtonPos), "", ""),
 				"trademaster.settings.summonButtonPos");
-		this.optSendAwayButtonPos = labeled(new ConfigString("sendAwayButtonPos", posToString(c.sendAwayButtonPos), "", ""),
+		this.optSendAwayButtonPos = labeled(new ConfigString("sendAwayButtonPos", posToString(d.sendAwayButtonPos), "", ""),
 				"trademaster.settings.sendAwayButtonPos");
-		this.optRegionOrigin = labeled(new ConfigString("villagerRegionOrigin", posToString(c.villagerRegionOrigin), "", ""),
+		this.optRegionOrigin = labeled(new ConfigString("villagerRegionOrigin", posToString(d.villagerRegionOrigin), "", ""),
 				"trademaster.settings.villagerRegionOrigin");
-		this.optRegionDelta = labeled(new ConfigString("villagerRegionDelta", posToString(c.villagerRegionDelta), "", ""),
+		this.optRegionDelta = labeled(new ConfigString("villagerRegionDelta", posToString(d.villagerRegionDelta), "", ""),
 				"trademaster.settings.villagerRegionDelta");
-		this.optSphereRadius = labeled(new ConfigInteger("villagerSphereRadius", c.villagerSphereRadius, 1, 64, "", ""),
+		this.optSphereRadius = labeled(new ConfigInteger("villagerSphereRadius", d.villagerSphereRadius, 1, 64, "", ""),
 				"trademaster.settings.villagerSphereRadius");
-		this.optGrindstone = labeled(new ConfigBoolean("grindstoneEnabled", c.grindstoneEnabled, "", ""),
+		this.optGrindstone = labeled(new ConfigBoolean("grindstoneEnabled", d.grindstoneEnabled, "", ""),
 				"trademaster.settings.grindstoneEnabled");
-		this.optGrindstoneOpenRetries = labeled(new ConfigInteger("grindstoneOpenRetries", c.grindstoneOpenRetries, -1, 999, "", ""),
+		this.optGrindstoneOpenRetries = labeled(new ConfigInteger("grindstoneOpenRetries", d.grindstoneOpenRetries, -1, 999, "", ""),
 				"trademaster.settings.grindstoneOpenRetries");
-		this.optGrindstonePos = labeled(new ConfigString("grindstonePos", posToString(c.grindstonePos), "", ""),
+		this.optGrindstonePos = labeled(new ConfigString("grindstonePos", posToString(d.grindstonePos), "", ""),
 				"trademaster.settings.grindstonePos");
-		this.optCurseDropDir = labeled(new ConfigString("curseDropDirection", directionToString(c.curseDropYaw, c.curseDropPitch), "", ""),
+		this.optCurseDropDir = labeled(new ConfigString("curseDropDirection", directionToString(d.curseDropYaw, d.curseDropPitch), "", ""),
 				"trademaster.settings.curseDropDirection");
-		this.optCustomCurses = labeled(new ConfigString("customCurses", String.join(", ", c.customCurseEnchantments), "", ""),
+		this.optCustomCurses = labeled(new ConfigString("customCurses", String.join(", ", d.customCurseEnchantments), "", ""),
 				"trademaster.settings.customCurses");
 
 		this.genericOptions.addAll(List.of(
@@ -396,7 +399,7 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 			if (text != null) {
 				for (String token : text.split("[,\\s]+")) {
 					if (token.isEmpty()) continue;
-					Identifier id = Identifier.tryParse(token);
+					Identifier id = TradeMasterConfig.parseId(token);
 					// vanilla ids are forbidden: vanilla curses come from the curse tag
 					if (id != null && !"minecraft".equals(id.getNamespace())) {
 						c.customCurseEnchantments.add(id.toString());
@@ -497,14 +500,15 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		return this.genericOptions;
 	}
 
-	/** True while maLiLib's own config screen is open. maLiLib only pushes the
-	 * widgets' pending edits into the model when that screen CLOSES
+	/** True while OUR maLiLib config screen (the Mod Menu entry) is open. maLiLib only
+	 * pushes the widgets' pending edits into the model when that screen CLOSES
 	 * (GuiConfigsBase.removed -> applyPendingModifications -> onSettingsChanged ->
-	 * onConfigsChanged -> our applyToModel), so a run started meanwhile would
-	 * snapshot the pre-edit values. Our own screen is not a GuiConfigsBase: it
-	 * flushes its drafts itself. */
+	 * onConfigsChanged -> our applyToModel), so a run started meanwhile would snapshot
+	 * the pre-edit values. Our in-game screen is a different class and flushes its
+	 * drafts itself. Other maLiLib mods' config screens are not ours and must not
+	 * block a run. */
 	public static boolean isConfigScreenOpen() {
-		return Minecraft.getInstance().gui.screen() instanceof GuiConfigsBase;
+		return Minecraft.getInstance().gui.screen() instanceof ConfigGui;
 	}
 
 	private static void chatRed(String key) {

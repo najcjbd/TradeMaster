@@ -46,6 +46,26 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				.forEach(id -> this.addEntry(new AliasRow(id)));
 	}
 
+	/** Refusal key if enabling {@code id} now would make one of its deduction names
+	 * ambiguous with another ENABLED target/good. Uses the SAME check the alias editor
+	 * applies to a draft, including the registry path and nameHistory: enabling a row
+	 * that was prepared while disabled must not silently break the deduction index
+	 * (which drops every name shared by two ids). Returns null when the enable is safe. */
+	public static @Nullable String enableConflict(Identifier id, boolean good) {
+		if (good) {
+			GoodSpec spec = TradeMasterConfig.INSTANCE.goodFor(id);
+			if (spec == null) return null;
+			String refusal = AliasRow.conflictKey(id, spec.displayName());
+			return refusal != null ? refusal : AliasRow.conflictKey(id, spec.path());
+		}
+		// exact key the index uses for a target's display name (not
+		// demandDisplayName, which prefers a same-id good)
+		String refusal = AliasRow.conflictKey(id,
+				EnchantmentNamer.displayName(id,
+						"enchantment." + id.getNamespace() + "." + id.getPath()));
+		return refusal != null ? refusal : AliasRow.conflictKey(id, id.getPath());
+	}
+
 	@Override
 	protected void extractListBackground(GuiGraphicsExtractor context) {
 		this.setSelected(null);
@@ -261,7 +281,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		 * path, or a name recorded in nameHistory — the deduction matches villagers by
 		 * name, and a collision drops BOTH sides from the index. Comparisons use the
 		 * same sanitizer the naming path uses. */
-		private static @Nullable String conflictKey(Identifier id, String value) {
+		static @Nullable String conflictKey(Identifier id, String value) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			// the SAME two transformations the index applies: sanitize ('+' -> '*',
 			// digits -> superscripts) AND canonical (collapse whitespace runs). Both

@@ -222,6 +222,13 @@ public final class TradeMasterConfig {
 
 	private TradeMasterConfig() {}
 
+	/** A fresh model holding the factory defaults. maLiLib keeps each option's
+	 * constructor value as its reset target, so the adapter must feed it these
+	 * defaults, not whatever was loaded when the screen first opened. */
+	static TradeMasterConfig defaults() {
+		return new TradeMasterConfig();
+	}
+
 	/** True between beginBatch/endBatch: save() is deferred to the end of the batch. */
 	private boolean batchSave = false;
 

@@ -6,11 +6,9 @@ import com.google.gson.JsonObject;
  * Config test scaffolding (same package, so it can reach the package-private
  * {@code writeFrom}/{@code readInto}).
  *
- * <p>Both end with a maLiLib hotkey call; maLiLib refuses to initialise before Minecraft
- * does ("invoked too early"), so headless that last statement throws. Everything before it
- * has already run, so the helpers swallow that trailing failure and keep the populated
- * JSON / the applied fields. A real bug earlier in the method still surfaces as a failed
- * assertion.
+ * <p>The hotkey section is skipped ({@code includeHotkeys=false}): maLiLib refuses to
+ * initialise before Minecraft does, so headless that one write/read throws. Every other
+ * section runs normally, and any real failure now propagates instead of being swallowed.
  */
 public final class ConfigTest {
 
@@ -25,19 +23,11 @@ public final class ConfigTest {
 	/** Writes into an EXISTING root, exactly like {@code save()} seeds from the file on
 	 * disk — the way a hand-written unknown key survives a save. */
 	public static void writeInto(TradeMasterConfig config, JsonObject root) {
-		try {
-			ConfigPersistence.writeFrom(config, root);
-		} catch (Throwable ignored) {
-			// trailing maLiLib hotkey write; the rest of the root is complete
-		}
+		ConfigPersistence.writeFrom(config, root, false);
 	}
 
 	public static void read(TradeMasterConfig config, JsonObject root) {
-		try {
-			ConfigPersistence.readInto(config, root);
-		} catch (Throwable ignored) {
-			// trailing maLiLib hotkey read; every earlier section was applied
-		}
+		ConfigPersistence.readInto(config, root, false);
 	}
 
 	/** The model as JSON, for restoring the shared singleton after a mutating test. */
