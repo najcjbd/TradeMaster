@@ -142,7 +142,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		// size the cap from the stored list: a big hand-edited list must not be
 		// silently truncated when the field is seeded (or on the next commit)
 		String joinedAir = String.join(", ", TradeMasterConfig.INSTANCE.airItems);
-		this.airField.setMaxLength(Math.max(4096, joinedAir.length() + 1));
+		this.airField.setMaxLength(1_000_000);
 		this.airField.setValue(joinedAir);
 		for (var entry : TradeMasterConfig.INSTANCE.enchantments.entrySet()) {
 			this.addEntry(new OfferRow(entry.getKey()));
@@ -174,7 +174,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		this.setSelected(null);
 		Font font = Minecraft.getInstance().font;
 		context.fill(5, AIR_Y - 1, this.width - 5, AIR_Y + 15, 0x1AC7C0C0);
-		context.drawString(font, McText.translatable("trademaster.column.air_items"), 8, AIR_Y + 4, 0xFF202020);
+		Component airCaption = McText.translatable("trademaster.column.air_items");
+		if (McWidget.getX(this.airField) >= 8 + font.width(airCaption) + 4) {
+			context.drawString(font, airCaption, 8, AIR_Y + 4, 0xFF202020);
+		}
 		int hintX = McWidget.getX(this.airField) + this.airField.getWidth() + 6;
 		int hintWidth = this.width - hintX - 4;
 		if (hintWidth >= 8) {
@@ -269,8 +272,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	 * (the field is re-synced so an unusable token cannot linger). */
 	private void applyAirField() {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		if (this.airField.getValue().equals(String.join(", ", config.airItems))) return;
 		List<String> items = new ArrayList<>();
+		boolean rejected = false;
 		for (String token : this.airField.getValue().split("[,\\s]+")) {
 			if (token.isBlank()) continue;
 			// ids are lowercase: "AIR" must become minecraft:air instead of being dropped
@@ -279,18 +282,35 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			// a RESULT id must not become "not charged": the same list also gates the
 			// target/good result checks, so this would silently disable them
 			if (id.equals(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK)
-					|| config.goodFor(id) != null) continue;
+					|| config.goodFor(id) != null) {
+				rejected = true;
+				continue;
+			}
 			if (!items.contains(id.toString())) items.add(id.toString());
 		}
 		// the sentinel is structural (specs write it): never let clearing the field drop it
 		String airSentinel = McIds.mc("air").toString();
 		if (!items.contains(airSentinel)) items.add(0, airSentinel);
-		config.airItems.clear();
-		config.airItems.addAll(items);
+		// only write when the model actually changes: this runs on every left click
+		if (!items.equals(config.airItems)) {
+			config.airItems.clear();
+			config.airItems.addAll(items);
+			config.save();
+		}
 		String joined = String.join(", ", config.airItems);
-		this.airField.setMaxLength(Math.max(4096, joined.length() + 1));
+		// a huge cap: the field must stay editable for big hand-edited lists, not
+		// leave only one spare character (which would truncate a paste)
+		this.airField.setMaxLength(1_000_000);
 		this.airField.setValue(joined);
-		config.save();
+		if (rejected) {
+			message(McText.translatable("trademaster.offers.air_rejected").withStyle(net.minecraft.ChatFormatting.RED));
+		}
+	}
+
+	/** A chat notice (visible after this screen closes). */
+	private static void message(net.minecraft.network.chat.Component component) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc.player != null) dev.trademaster.compat.McPlayer.sendSystemMessage(mc.player, component);
 	}
 
 	private List<EditBox> allFields() {

@@ -226,7 +226,10 @@ public class TradeMatcher {
 	 * goods are keyed by their result item, so the enchantment-only gates below must
 	 * not be applied to them. */
 	public static boolean isGood(ResourceLocation id) {
-		return TradeMasterConfig.INSTANCE.goodFor(id) != null;
+		// target-first: a same-id enchantment owns the id even when a (strictly
+		// unmatchable) good shares it
+		return !TradeMasterConfig.INSTANCE.enchantments.containsKey(id)
+				&& TradeMasterConfig.INSTANCE.goodFor(id) != null;
 	}
 
 	/** The price slot's amount for a demand: the good's max price, or the target's.
@@ -293,7 +296,7 @@ public class TradeMatcher {
 		// an id that is ALSO an enchantment TARGET shares one needs queue and the id-keyed
 		// vouchers/marks cannot distinguish the kinds. Target-first means the target wins:
 		// a same-id good is never matchable, whatever the target's enabled state. The
-		// Offers tab and the config reader refuse such a good; old files become inert.
+		// Offers tab refuses new ones; old files keep the row inert and the start warning names it.
 		if (TradeMasterConfig.INSTANCE.enchantments.containsKey(good.id())) return false;
 		return specHasPayableSlot(good.spec());
 	}
@@ -375,6 +378,14 @@ public class TradeMatcher {
 			if (!result.is(Items.ENCHANTED_BOOK)) continue;
 			var enchantments = McEnchantments.of(result);
 			if (enchantments.isEmpty()) continue;
+			// every holder must have a registry key: a mixed book cannot be fingerprinted
+			// (the keyed-only parts would never compare equal to the live map) and would
+			// drift/free-reroll forever at LOCK
+			boolean allKeyed = true;
+			for (var holder : enchantments.keySet()) {
+				if (holder.unwrapKey().isEmpty()) { allKeyed = false; break; }
+			}
+			if (!allKeyed) continue;
 			List<MatchPart> bookEnchantments = new ArrayList<>();
 			List<MatchPart> parts = new ArrayList<>();
 			int budget = 0;

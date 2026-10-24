@@ -602,6 +602,25 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
+		// the air list is also consulted for RESULTS (target/good switching): a result id
+		// in it would silently disable that row, and a good with such a result is dropped
+		// on the next save. Sanitise the trust boundary exactly like the Offers tab does.
+		java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
+		forbiddenAir.add(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK.toString());
+		for (GoodSpec good : c.goods) {
+			if (good.id() != null) forbiddenAir.add(good.id().toString());
+		}
+		for (EnchantmentTarget target : c.enchantments.values()) {
+			ResourceLocation result = c.specFor(target.id()).result();
+			if (result != null) forbiddenAir.add(result.toString());
+		}
+		boolean removedAir = c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id));
+		if (removedAir) {
+			TradeMasterClient.LOGGER.warn("Removed result ids from offers.airItems (they would disable targets/goods)");
+		}
+		String airSentinel = McIds.mc("air").toString();
+		if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
+
 		Platforms.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 
