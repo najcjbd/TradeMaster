@@ -732,6 +732,9 @@ public final class RerollController {
 		RunSession s = session;
 		if (player == null || s == null) return produced;
 		for (ResourceLocation id : s.lockedIds) {
+			// a same-id enchantment target wins: an id-keyed lock voucher for a target
+			// must never be mistaken for a produced good
+			if (TradeMasterConfig.INSTANCE.enchantments.containsKey(id)) continue;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 			if (good == null) continue;
 			Item item = good.resultItem();
@@ -753,6 +756,9 @@ public final class RerollController {
 		RunSession s = session;
 		if (player == null || s == null) return baseline;
 		for (ResourceLocation id : s.lockedIds) {
+			// a same-id enchantment target wins: an id-keyed lock voucher for a target
+			// must never be mistaken for a produced good
+			if (TradeMasterConfig.INSTANCE.enchantments.containsKey(id)) continue;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 			if (good == null) continue;
 			Item item = good.resultItem();
@@ -1939,7 +1945,9 @@ public final class RerollController {
 			// future matches only accept a strictly cheaper copy. Only a purchase
 			// with exactly one matched part has a price attributable to one target —
 			// a combo's price cannot seed a per-target ratchet
-			if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() == 1) {
+			boolean boughtTheMatch = bought == null || bought == s.matchedTrade;
+			if (boughtTheMatch && TradeMasterConfig.INSTANCE.huntCheaper
+					&& s.matchedTrade.purchase().parts().size() == 1) {
 				// The hunt mark only ever moves DOWN: it records the price actually
 				// paid, and only when that is strictly cheaper than the current mark.
 				// (The old rule fell back to the CONFIG price when that had been
@@ -1951,7 +1959,8 @@ public final class RerollController {
 				if (prevMark == null || paid < prevMark) {
 					huntMarkedPrices.put(s.matchedTrade.id(), paid);
 				}
-			} else if (TradeMasterConfig.INSTANCE.huntCheaper && s.matchedTrade.purchase().parts().size() >= 2) {
+			} else if (boughtTheMatch && TradeMasterConfig.INSTANCE.huntCheaper
+					&& s.matchedTrade.purchase().parts().size() >= 2) {
 				// the purchased book carries several matched enchantments: its price
 				// cannot be attributed, so record the combo itself as a temporary
 				// need (qualifying set + price). An identical set only matches
@@ -2885,9 +2894,13 @@ public final class RerollController {
 			MerchantOffer offer = offers.get(i);
 			if (offer.isOutOfStock()) continue;
 			if (!offer.getResult().is(Items.ENCHANTED_BOOK)) continue;
-			// a book with no resolvable enchantments cannot be fingerprinted (empty
-			// parts would accept any blank book and voucher nothing)
-			if (McEnchantments.of(offer.getResult()).isEmpty()) continue;
+			// a book whose enchantments have no registry keys cannot be fingerprinted
+			// (empty parts / no voucher): skip those, not just blank books
+			boolean hasKeyed = false;
+			for (var holder : McEnchantments.of(offer.getResult()).keySet()) {
+				if (holder.unwrapKey().isPresent()) { hasKeyed = true; break; }
+			}
+			if (!hasKeyed) continue;
 			int price = TradeMatcher.offerPrice(offer);
 			if (price >= bestPrice) continue;
 			if (!Preconditions.checkLockMaterials(player, OfferCosts.pricingSlots(offer))) continue;

@@ -290,12 +290,11 @@ public class TradeMatcher {
 		if (good.maxPrice() < 1) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
 		if (good.resultItem() == null) return false;
-		// an id that is ALSO an enabled enchantment TARGET shares one needs queue: the good
-		// and the target would inflate each other's budget and the target's price slot would
-		// be read from the good. The Offers tab refuses such a good already; a hand-edited
-		// file lands here (and the start warning names it).
-		EnchantmentTarget sameId = TradeMasterConfig.INSTANCE.enchantments.get(good.id());
-		if (sameId != null && sameId.enabled()) return false;
+		// an id that is ALSO an enchantment TARGET shares one needs queue and the id-keyed
+		// vouchers/marks cannot distinguish the kinds. Target-first means the target wins:
+		// a same-id good is never matchable, whatever the target's enabled state. The
+		// Offers tab and the config reader refuse such a good; old files become inert.
+		if (TradeMasterConfig.INSTANCE.enchantments.containsKey(good.id())) return false;
 		return specHasPayableSlot(good.spec());
 	}
 

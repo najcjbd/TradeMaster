@@ -96,6 +96,9 @@ public final class TradeMasterConfig {
 	public boolean isAirItem(@Nullable ResourceLocation id) {
 		if (id == null) return true;
 		String text = id.toString();
+		// the canonical sentinel is ALWAYS air, even if the user emptied the list:
+		// specs and the "switch a row off" action write it and must stay effective
+		if ("minecraft:air".equals(text)) return true;
 		for (String air : this.airItems) {
 			if (air == null || air.isBlank()) continue;
 			if (air.trim().equalsIgnoreCase(text)) return true;

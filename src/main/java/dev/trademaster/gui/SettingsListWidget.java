@@ -206,8 +206,12 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			addEntry(new ChestRow(i, rebuild));
 		}
 		addEntry(new ActionRow("trademaster.settings.addChest", () -> {
+			// refuse the arm when no slot is left; duplicate positions are rejected
+			// at CAPTURE time (the validator), keeping the pick armed
+			if (c.chestPositions.size() >= TradeMasterConfig.MAX_CHESTS) return false;
 			boolean began = PositionPicker.begin(PositionPicker.Slot.CHEST,
-					pos -> c.addChest(pos.immutable()));
+					pos -> c.addChest(pos.immutable()),
+					pos -> !c.chestPositions.contains(pos));
 			if (began) McClient.setScreen(Minecraft.getInstance(), null);
 			return began;
 		}));

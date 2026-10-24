@@ -122,6 +122,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Item that staging swap pushed into the offhand (a copy), so the undo can prove
 	 * the offhand still holds exactly that and not something the player put there. */
 	private ItemStack stagedDisplaced = ItemStack.EMPTY;
+	/** The book the staging swap moved into the hotbar slot (a copy): lets the undo
+	 * recognise a LANDED staging swap and reverse it, not only an empty/plain slot. */
+	private ItemStack stagedBook = ItemStack.EMPTY;
 
 	public GrindstoneRecycler() {
 		this(TradeMasterConfig.INSTANCE.grindstonePos,
@@ -293,6 +296,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					}
 					this.stagedHotbarSlot = swapSlot;
 					this.stagedDisplaced = player.getInventory().getItem(swapSlot).copy();
+					this.stagedBook = player.getOffhandItem().copy();
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
@@ -499,6 +503,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageResent = false;
 					this.stagedHotbarSlot = this.dropSlot;
 					this.stagedDisplaced = player.getInventory().getItem(this.dropSlot).copy();
+					this.stagedBook = player.getOffhandItem().copy();
 					player.connection.send(new ServerboundPlayerActionPacket(
 							ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 							BlockPos.ZERO, Direction.DOWN));
@@ -693,32 +698,34 @@ public class GrindstoneRecycler implements BookDisposal {
 	 * when the exact post-swap state is still observed: no book in the offhand AND the
 	 * staged slot empty (the book was ground or dropped). Any other state means the
 	 * world moved on — leave it alone. */
-	private void undoOffhandStage(net.minecraft.client.player.LocalPlayer player) {
+	private boolean undoOffhandStage(net.minecraft.client.player.LocalPlayer player) {
 		int slot = this.stagedHotbarSlot;
 		ItemStack displaced = this.stagedDisplaced;
+		ItemStack book = this.stagedBook;
 		if (slot < 0) {
 			this.stagedHotbarSlot = -1;
 			this.stagedDisplaced = ItemStack.EMPTY;
-			return;
+			this.stagedBook = ItemStack.EMPTY;
+			return true;
 		}
-		// the staged slot must hold either nothing (book dropped/deposited) or the
-		// plain book the grindstone produced from it. Requiring it to be EMPTY missed
-		// the grind path, whose result lands right back in that slot
+		// the staged slot must hold nothing / the plain book the grindstone produced,
+		// OR exactly the book a LANDED staging swap moved there (reverse it)
 		ItemStack inSlot = player.getInventory().getItem(slot);
-		// keep the record when the guards fail: a late sync may still make the undo
-		// valid on the next attempt; clearing first lost it forever
-		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK)) return;
-		// the offhand must still carry exactly what the swap displaced: anything else
-		// means the player changed it, and moving it now would be theft
-		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)) return;
+		boolean stagedBookLanded = !book.isEmpty()
+				&& McItem.sameItemSameComponents(inSlot, book);
+		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK) && !stagedBookLanded) return false;
+		// the offhand must still carry exactly what the swap displaced
+		if (!McItem.sameItemSameComponents(player.getOffhandItem(), displaced)) return false;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
+		this.stagedBook = ItemStack.EMPTY;
 		if (McPlayer.selectedSlot(player) != slot) {
 			Interactions.selectHotbarSlot(player, slot);
 		}
 		player.connection.send(new ServerboundPlayerActionPacket(
 				ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
 				BlockPos.ZERO, Direction.DOWN));
+		return true;
 	}
 
 	private StepResult beginChestStash(net.minecraft.client.player.LocalPlayer player) {
@@ -756,6 +763,9 @@ public class GrindstoneRecycler implements BookDisposal {
 
 	private StepResult fail(net.minecraft.client.player.LocalPlayer player, String key) {
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		// best effort: if the staging swap's sync has arrived, put the displaced item
+		// back before the run stops (a still-stale client leaves it for the player)
+		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 		return StepResult.failed(McText.translatable(key));
 	}

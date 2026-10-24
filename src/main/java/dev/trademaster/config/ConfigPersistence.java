@@ -489,6 +489,9 @@ public final class ConfigPersistence {
 					if (id != null && !c.airItems.contains(id.toString())) c.airItems.add(id.toString());
 				}
 			}
+			// the sentinel is structural (specs write it): never let a file/field drop it
+			String airSentinel = McIds.mc("air").toString();
+			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
 			JsonObject specs = getSection(offers, "specs");
 			if (specs != null) {
 				c.tradeSpecs.clear();
