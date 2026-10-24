@@ -90,6 +90,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** containerId of the chest menu stashSlot belongs to: a different menu with the
 	 * same index must never receive the QUICK_MOVE. */
 	private int stashContainerId = -1;
+	/** Ticks the stashed slot has read empty after the predicted QUICK_MOVE; the
+	 * server can still reject/correct it, so completion needs a short grace. */
+	private int stashConfirmTicks = 0;
 	/** Chest list index currently tried for a stash. */
 	private int chestIndex = 0;
 	/** Hotbar slot the staged curse book sits in for the directional drop. */
@@ -470,13 +473,17 @@ public class GrindstoneRecycler implements BookDisposal {
 					McClicks.click(mc.gameMode, player.containerMenu.containerId,
 							target.index, 0, McClicks.Click.QUICK_MOVE, player);
 					this.waitTicks = 0;
+					this.stashConfirmTicks = 0;
 					return StepResult.RUNNING;
 				}
-				// one book per chest visit: wait for exactly the clicked slot to
-				// empty (server sync), then head back to the grindstone
+				// one book per chest visit: a QUICK_MOVE is applied locally, so an
+				// empty slot can still be a prediction. Give the server a short grace
+				// to reject/correct it before treating the stash as done.
 				if (player.containerMenu.slots.get(this.stashSlot).getItem().isEmpty()) {
-					return toGrindstone(player);
+					if (++this.stashConfirmTicks >= 20) return toGrindstone(player);
+					return StepResult.RUNNING;
 				}
+				this.stashConfirmTicks = 0;
 				if (++this.waitTicks > 60) {
 					// the book never left the slot: chest full or rejecting
 					player.closeContainer();

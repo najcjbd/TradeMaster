@@ -492,6 +492,26 @@ public final class ConfigPersistence {
 			// the sentinel is structural (specs write it): never let a file/field drop it
 			String airSentinel = McIds.mc("air").toString();
 			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
+			// BEFORE reading goods: a good whose result is in airItems would be dropped by
+			// the isAirItem check below. Remove those ids (and the book result) first, like
+			// the Offers tab does. Target spec results are LEFT in the list: pointing a
+			// target's spec result at an air marker is the supported switch-off.
+			java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
+			forbiddenAir.add(TradeOfferSpec.ENCHANTED_BOOK.toString());
+			JsonElement rawGoods = offers.get("goods");
+			if (rawGoods != null && rawGoods.isJsonArray()) {
+				for (JsonElement e : rawGoods.getAsJsonArray()) {
+					if (!e.isJsonObject()) continue;
+					JsonElement r = e.getAsJsonObject().get("result");
+					if (r == null || !r.isJsonPrimitive()) continue;
+					ResourceLocation id = McIds.tryParse(r.getAsString());
+					if (id != null) forbiddenAir.add(id.toString());
+				}
+			}
+			if (c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id))) {
+				TradeMasterClient.LOGGER.warn("Removed result ids from offers.airItems (they would disable goods/book trades)");
+			}
+			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
 			JsonObject specs = getSection(offers, "specs");
 			if (specs != null) {
 				c.tradeSpecs.clear();
@@ -601,25 +621,6 @@ public final class ConfigPersistence {
 			c.villagerRegionDelta = null;
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
-
-		// the air list is also consulted for RESULTS (target/good switching): a result id
-		// in it would silently disable that row, and a good with such a result is dropped
-		// on the next save. Sanitise the trust boundary exactly like the Offers tab does.
-		java.util.Set<String> forbiddenAir = new java.util.HashSet<>();
-		forbiddenAir.add(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK.toString());
-		for (GoodSpec good : c.goods) {
-			if (good.id() != null) forbiddenAir.add(good.id().toString());
-		}
-		for (EnchantmentTarget target : c.enchantments.values()) {
-			ResourceLocation result = c.specFor(target.id()).result();
-			if (result != null) forbiddenAir.add(result.toString());
-		}
-		boolean removedAir = c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id));
-		if (removedAir) {
-			TradeMasterClient.LOGGER.warn("Removed result ids from offers.airItems (they would disable targets/goods)");
-		}
-		String airSentinel = McIds.mc("air").toString();
-		if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
 
 		Platforms.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}

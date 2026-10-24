@@ -71,6 +71,9 @@ public class ChestDepositor implements BookDisposal {
 	/** Ticks spent waiting for the server's offhand-swap slot sync to arrive;
 	 * -1 while not waiting. */
 	private int swapWaitTicks = -1;
+	/** containerId of the chest menu AWAIT_OPEN bound: a REPLACEMENT ChestMenu must
+	 * never receive the deposit clicks. */
+	private int chestContainerId = -1;
 	/** Offhand-swap retries spent on the current chest (R32-04). */
 	private int swapAttempts = 0;
 	/** Ticks spent waiting for a late sync before giving up on the offhand-stage undo. */
@@ -227,6 +230,7 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case AWAIT_OPEN -> {
 				if (player.containerMenu instanceof ChestMenu) {
+					this.chestContainerId = player.containerMenu.containerId;
 					this.state = State.DEPOSIT;
 				} else if (player.containerMenu != player.inventoryMenu) {
 					// something else opened instead of the chest: close it and retry
@@ -309,10 +313,11 @@ public class ChestDepositor implements BookDisposal {
 						return StepResult.RUNNING;
 					}
 				}
-				if (!(player.containerMenu instanceof ChestMenu)) {
-					// the menu opened in AWAIT_OPEN is gone or was replaced: a click
-					// now would feed the books to whatever container is open instead.
-					// Close it and let EVALUATE/advance re-decide
+				if (!(player.containerMenu instanceof ChestMenu)
+						|| player.containerMenu.containerId != this.chestContainerId) {
+					// the menu opened in AWAIT_OPEN is gone or was REPLACED (another ChestMenu
+					// has a different containerId): a click now would feed the books to a
+					// container we never bound. Close it and let EVALUATE/advance re-decide
 					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
 					this.state = State.EVALUATE;
 					return StepResult.RUNNING;

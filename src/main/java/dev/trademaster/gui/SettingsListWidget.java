@@ -1793,6 +1793,27 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			BlockPos parsed = parsePos(this.field.getValue(), Minecraft.getInstance().player);
 			if (parsed != null && this.index < c.chestPositions.size()) {
 				BlockPos stored = parsed.immutable();
+				// the SAME invariants the [+] picker enforces: a real chest and no
+				// duplicate; otherwise keep the stored binding (the field is re-synced)
+				Minecraft mc = Minecraft.getInstance();
+				boolean isChest = mc.level != null
+						&& mc.level.getBlockState(stored).getBlock()
+								instanceof net.minecraft.world.level.block.ChestBlock;
+				boolean duplicate = false;
+				for (int i = 0; i < c.chestPositions.size(); i++) {
+					if (i != this.index && stored.equals(c.chestPositions.get(i))) {
+						duplicate = true;
+						break;
+					}
+				}
+				if (!isChest || duplicate) {
+					BlockPos current = this.currentPos();
+					this.field.setValue(current == null ? "" :
+							current.getX() + ", " + current.getY() + ", " + current.getZ());
+					// setValue fires the responder; do not keep a rejected draft pending
+					this.pendingApply = false;
+					return;
+				}
 				c.chestPositions.set(this.index, stored);
 				this.originalPos = stored;
 			}

@@ -301,7 +301,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		// a huge cap: the field must stay editable for big hand-edited lists, not
 		// leave only one spare character (which would truncate a paste)
 		this.airField.setMaxLength(1_000_000);
-		this.airField.setValue(joined);
+		// do not reset the caret/selection when the text is already current
+		if (!this.airField.getValue().equals(joined)) this.airField.setValue(joined);
 		if (rejected) {
 			message(McText.translatable("trademaster.offers.air_rejected").withStyle(net.minecraft.ChatFormatting.RED));
 		}
@@ -752,7 +753,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			TradeOfferSpec updated = new TradeOfferSpec(List.copyOf(costs),
 					existing == null ? TradeOfferSpec.ENCHANTED_BOOK : existing.result());
-			if (updated.equals(existing)) return;
+			// compare with the EFFECTIVE spec: a fresh target has no map entry but
+			// already EQUALS the defaults, so materialising it on every click/close
+			// would rewrite the file once per enchantment
+			if (updated.equals(config.specFor(this.id))) return;
 			config.tradeSpecs.put(this.id, updated);
 			config.save();
 		}
