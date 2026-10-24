@@ -306,6 +306,10 @@ public class NamingExecutor {
 	}
 
 	private Result tickOpenAnvil(Minecraft mc, LocalPlayer player) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// the stage limit runs BEFORE the menu branch: a foreign anvil left open
+		// must report "anvil-open", not fall through to the generic 200-tick cap
+		if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 		if (player.containerMenu instanceof AnvilMenu menu) {
 			if (!this.openSent) {
 				// an anvil already open BEFORE our use packet is not ours (the
@@ -318,8 +322,6 @@ public class NamingExecutor {
 			next(Stage.INSERT_TAG);
 			return Result.RUNNING;
 		}
-		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 		// slow-mode pacing ticks on EVERY tick, deliberately before the 5-tick retry
 		// gate below: inside that gate it only counted once per 5 ticks, so a large
 		// interactDelay starved the retries and the stage died at its 40-tick cap

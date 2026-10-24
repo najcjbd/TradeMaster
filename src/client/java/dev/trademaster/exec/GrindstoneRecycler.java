@@ -741,7 +741,7 @@ public class GrindstoneRecycler implements BookDisposal {
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		boolean stagedBookLanded = !book.isEmpty()
 				&& ItemStack.isSameItemSameComponents(inSlot, book)
-				&& inSlot.getCount() == book.getCount();
+				&& inSlot.getCount() <= book.getCount();
 		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK) && !stagedBookLanded) return false;
 		// counts matter too: a player split/merge would otherwise swap the whole
 		// foreign stack away
