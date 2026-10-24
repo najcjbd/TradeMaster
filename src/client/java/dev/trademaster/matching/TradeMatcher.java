@@ -545,7 +545,9 @@ public class TradeMatcher {
 						: Math.min(goodMark - 1, good.maxPrice());
 				if (goodBudget < 1) continue;
 				IntHeapPriorityQueue goodQueue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
-				goodQueue.enqueue(need.reserveAdded() ? Math.min(need.seenPrice() - 1, good.maxPrice()) : goodBudget);
+				goodQueue.enqueue(need.reserveAdded()
+						? Math.min(need.seenPrice() - 1, good.maxPrice())
+						: Math.min(need.slot(), goodBudget));
 				this.needs.put(need.id(), goodQueue);
 				continue;
 			}
@@ -553,9 +555,14 @@ public class TradeMatcher {
 			if (target == null) continue;
 			// replace the whole queue: needs holds exactly one slot per enchantment
 			// id, and in reserve mode tryMatch leaves a price-1 reservation behind
-			// during the match — merging it in again would double-count the need
+			// during the match — merging it in again would double-count the need.
+			// With no NEW reservation, keep whichever is tighter: the consumed slot
+			// may itself be an older reservation (restoreBudget), and overwriting it
+			// with a full maxPrice budget would forget that "cheaper only" bound.
 			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
-			queue.enqueue(need.reserveAdded() ? need.seenPrice() - 1 : budgetFor(need.id(), target));
+			queue.enqueue(need.reserveAdded()
+					? need.seenPrice() - 1
+					: Math.min(need.slot(), budgetFor(need.id(), target)));
 			this.needs.put(need.id(), queue);
 		}
 	}
@@ -607,10 +614,11 @@ public class TradeMatcher {
 				int budget = budgetFor(entry.getKey(), target);
 				// villager trades have a price floor of 1 emerald + 1 book: once the
 				// budget reaches 0 no cheaper copy can ever exist — the hunt for this book
-				// simply stops (the 1→0 ratchet is deliberate). A config price below the
-				// vanilla minimum never reaches here: buildNeeds drops such a target, so
-				// target is null above and the hunt pauses instead of spinning.
-				if (budget < 1) continue;
+				// simply stops (the 1→0 ratchet is deliberate). The same applies when a
+				// mid-run maxPrice drop puts the budget below the vanilla minimum:
+				// re-queueing it would leave a need that can never be offered.
+				if (budget < 1
+						|| TradeMasterConfig.minPrice(target.level(), target.id()) > budget) continue;
 				IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 				queue.enqueue(budget);
 				this.needs.put(entry.getKey(), queue);
@@ -665,8 +673,12 @@ public class TradeMatcher {
 					&& TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
 			if (!registryTradeable(target.id())) continue;
 			int budget = budgetFor(target.id(), target);
-			// hunt budget exhausted (marked ≤ 1): nothing cheaper can exist
-			if (budget < 1) continue;
+			// hunt budget exhausted (marked ≤ 1): nothing cheaper can exist; and a
+			// budget below the vanilla minimum (e.g. after a mid-run maxPrice drop)
+			// can never be offered — queueing it would spin forever. The target stays
+			// in `targets` for combo use; only the need is withheld.
+			if (budget < 1
+					|| TradeMasterConfig.minPrice(target.level(), target.id()) > budget) continue;
 			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 			queue.enqueue(budget);
 			this.needs.put(target.id(), queue);

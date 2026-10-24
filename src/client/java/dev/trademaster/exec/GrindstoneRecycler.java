@@ -75,6 +75,12 @@ public class GrindstoneRecycler implements BookDisposal {
 	private int ticks = 0;
 	private int openWait = 0;
 	private int openRetries = 0;
+	/** containerId of the grindstone menu THIS recycler opened: a replaced or
+	 * player-opened GrindstoneMenu must never be driven (its inputs are not ours). */
+	private int openedContainerId = -1;
+	/** The use packet for the CURRENT open attempt has been sent, so the next
+	 * GrindstoneMenu is ours. Reset when the menu is bound or abandoned. */
+	private boolean openSent = false;
 	/** Generic per-operation sync wait counter. */
 	private int waitTicks = 0;
 	private int delay;
@@ -193,11 +199,21 @@ public class GrindstoneRecycler implements BookDisposal {
 				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
 				player.swing(InteractionHand.MAIN_HAND, true);
 				player.connection.send(new ServerboundSwingPacket(InteractionHand.MAIN_HAND));
+				this.openSent = true;
 				this.openWait = 0;
 				this.state = State.AWAIT_OPEN;
 			}
 			case AWAIT_OPEN -> {
-				if (player.containerMenu instanceof GrindstoneMenu) {
+				if (player.containerMenu instanceof GrindstoneMenu menu) {
+					// only a menu that answers OUR use packet may be driven; SEEK
+					// closes everything else first, and openSent proves we sent one
+					if (!this.openSent) {
+						player.closeContainer();
+						this.state = State.SEEK;
+						return StepResult.RUNNING;
+					}
+					this.openedContainerId = menu.containerId;
+					this.openSent = false;
 					this.openRetries = 0;
 					if (grindstoneHasItems(player)) {
 						// leftovers from an interrupted run (or the user): return
@@ -223,7 +239,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 			}
 			case RECOVER -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
@@ -245,7 +261,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 			}
 			case SCAN -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
@@ -312,7 +328,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				return fail(player, "trademaster.message.grind_verify_failed");
 			}
 			case OFFHAND_WAIT -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
@@ -326,7 +342,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 			}
 			case PLACE -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					return toGrindstone(player);
 				}
 				boolean placed = false;
@@ -351,7 +367,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 			}
 			case RESULT -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					return toGrindstone(player);
 				}
 				ItemStack result = player.containerMenu.slots.get(2).getItem();
@@ -369,7 +385,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 			}
 			case TAKE -> {
-				if (!(player.containerMenu instanceof GrindstoneMenu)) {
+				if (!ownsGrindstone(player)) {
 					return toGrindstone(player);
 				}
 				if (player.containerMenu.slots.get(2).getItem().isEmpty()) {
@@ -540,7 +556,11 @@ public class GrindstoneRecycler implements BookDisposal {
 					// stale prediction would DROP that slot's item: refuse instead.
 					int target = findEmptyHotbarSlot(player);
 					if (target < 0) {
-						return fail(player, "trademaster.message.drop_no_slot");
+						// FAILED_FULL, not FAILED: a full HOTBAR says nothing about the
+						// main inventory, so the caller re-checks a free slot (the same
+						// contract ChestDepositor's drop staging uses) instead of
+						// stopping a run that may already have freed one
+						return failedFull(player, "trademaster.message.drop_no_slot");
 					}
 					if (player.getInventory().getSelectedSlot() != target) {
 						if (this.originalSlot < 0) this.originalSlot = player.getInventory().getSelectedSlot();
@@ -720,9 +740,13 @@ public class GrindstoneRecycler implements BookDisposal {
 		}
 		ItemStack inSlot = player.getInventory().getItem(slot);
 		boolean stagedBookLanded = !book.isEmpty()
-				&& ItemStack.isSameItemSameComponents(inSlot, book);
+				&& ItemStack.isSameItemSameComponents(inSlot, book)
+				&& inSlot.getCount() == book.getCount();
 		if (!inSlot.isEmpty() && !inSlot.is(Items.BOOK) && !stagedBookLanded) return false;
-		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)) return false;
+		// counts matter too: a player split/merge would otherwise swap the whole
+		// foreign stack away
+		if (!ItemStack.isSameItemSameComponents(player.getOffhandItem(), displaced)
+				|| player.getOffhandItem().getCount() != displaced.getCount()) return false;
 		this.stagedHotbarSlot = -1;
 		this.stagedDisplaced = ItemStack.EMPTY;
 		this.stagedBook = ItemStack.EMPTY;
@@ -761,6 +785,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Back to the grindstone after a chest/drop detour. */
 	private StepResult toGrindstone(net.minecraft.client.player.LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		// the next SEEK opens (and binds) the grindstone again
+		this.openedContainerId = -1;
+		this.openSent = false;
 		this.state = State.SEEK;
 		this.look.reset();
 		this.openRetries = 0;
@@ -775,6 +802,23 @@ public class GrindstoneRecycler implements BookDisposal {
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 		return StepResult.failed(Component.translatable(key));
+	}
+
+	/** Same unwind as {@link #fail}, but lenient: the caller re-checks for a free
+	 * slot and only stops when the inventory is genuinely still full. */
+	private StepResult failedFull(net.minecraft.client.player.LocalPlayer player, String key) {
+		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		undoOffhandStage(player);
+		restoreHotbarSelection(player);
+		return StepResult.failedFull(Component.translatable(key));
+	}
+
+	/** Whether the open menu is the grindstone THIS recycler opened; a replaced or
+	 * player-opened GrindstoneMenu has a different containerId and is never driven. */
+	private boolean ownsGrindstone(net.minecraft.client.player.LocalPlayer player) {
+		return this.openedContainerId >= 0
+				&& player.containerMenu instanceof GrindstoneMenu
+				&& player.containerMenu.containerId == this.openedContainerId;
 	}
 
 	private void restoreHotbarSelection(net.minecraft.client.player.LocalPlayer player) {

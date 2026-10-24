@@ -204,25 +204,13 @@ public final class LecternRestock {
 				return true;
 			}
 		} else {
-			for (int i = 0; i < 9; i++) {
-				if (player.getInventory().getItem(i).getItem() != work) continue;
-				rememberSelection(player);
-				if (i != player.getInventory().getSelectedSlot()) {
-					Interactions.selectHotbarSlot(player, i);
-				}
-				player.connection.send(new ServerboundPlayerActionPacket(
-						ServerboundPlayerActionPacket.Action.SWAP_ITEM_WITH_OFFHAND,
-						BlockPos.ZERO, Direction.DOWN));
-				// watch the HOTBAR slot: with a foreign menu open the offhand is not among
-				// its slots, so the client never sees the offhand change — the swapped slot
-				// does update, and its lectern leaving is the observable landing signal
-				markRestockInFlight(i);
-				return true;
-			}
-			// a lectern deep in the main inventory is unreachable while a foreign
-			// menu is open: close it so the next retry takes the normal path
-			// instead of reporting the lectern lost
-			for (int i = 9; i < 36; i++) {
+			// a raw offhand swap while a foreign menu is open moves the lectern
+			// server-side, but that menu's slots do NOT include the offhand, so the
+			// client never sees it: the next call would find neither an offhand item
+			// nor any inventory lectern and report "lectern lost". Close the menu
+			// first; the next call takes the normal (menu-closed) path, where every
+			// change is synced and the swap is observed.
+			for (int i = 0; i < 36; i++) {
 				if (player.getInventory().getItem(i).getItem() == work) {
 					player.closeContainer();
 					markRestockInFlight(RESTOCK_FROM_CLOSE);

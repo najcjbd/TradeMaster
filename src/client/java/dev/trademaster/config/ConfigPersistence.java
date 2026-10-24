@@ -123,7 +123,7 @@ public final class ConfigPersistence {
 			JsonObject enchantments = getSection(root, "enchantments");
 			if (enchantments != null) {
 				for (Map.Entry<String, JsonElement> entry : enchantments.entrySet()) {
-					Identifier id = Identifier.tryParse(entry.getKey());
+					Identifier id = TradeMasterConfig.parseId(entry.getKey());
 					if (id == null || !entry.getValue().isJsonObject()) continue;
 					JsonObject o = entry.getValue().getAsJsonObject();
 					c.enchantments.put(id, new EnchantmentTarget(
@@ -289,7 +289,7 @@ public final class ConfigPersistence {
 		JsonObject enchantments = sectionForWrite(root, "enchantments");
 		List<String> stale = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
-			Identifier parsed = Identifier.tryParse(e.getKey());
+			Identifier parsed = TradeMasterConfig.parseId(e.getKey());
 			if (parsed != null && !c.enchantments.containsKey(parsed) && looksLikeTargetEntry(e.getValue())) {
 				stale.add(e.getKey());
 			}
@@ -310,7 +310,7 @@ public final class ConfigPersistence {
 		// note object carrying none of the entry keys is left alone.
 		List<String> aliases = new ArrayList<>();
 		for (Map.Entry<String, JsonElement> e : enchantments.entrySet()) {
-			Identifier parsed = Identifier.tryParse(e.getKey());
+			Identifier parsed = TradeMasterConfig.parseId(e.getKey());
 			if (parsed != null && c.enchantments.containsKey(parsed)
 					&& !e.getKey().equals(parsed.toString()) && looksLikeTargetEntry(e.getValue())) {
 				aliases.add(e.getKey());
@@ -370,7 +370,7 @@ public final class ConfigPersistence {
 			if (customNames != null) {
 				c.customEnchantNames.clear();
 				for (Map.Entry<String, JsonElement> entry : customNames.entrySet()) {
-					Identifier id = Identifier.tryParse(entry.getKey());
+					Identifier id = TradeMasterConfig.parseId(entry.getKey());
 					if (id != null && entry.getValue().isJsonPrimitive()) {
 						// trim: villager names are parsed with trim(), so a leading
 						// space would make generated names unmatchable forever
@@ -385,7 +385,7 @@ public final class ConfigPersistence {
 				for (Map.Entry<String, JsonElement> entry : nameHistory.entrySet()) {
 					String name = entry.getKey().trim();
 					if (name.isEmpty() || !entry.getValue().isJsonPrimitive()) continue;
-					Identifier id = Identifier.tryParse(entry.getValue().getAsString());
+					Identifier id = TradeMasterConfig.parseId(entry.getValue().getAsString());
 					if (id != null) c.nameHistory.put(name, id);
 				}
 				// a hand-edited file may exceed the cap: keep the newest entries
@@ -461,7 +461,7 @@ public final class ConfigPersistence {
 				c.customCurseEnchantments.clear();
 				for (JsonElement e : customCurses.getAsJsonArray()) {
 					if (!e.isJsonPrimitive()) continue;
-					Identifier id = Identifier.tryParse(e.getAsString());
+					Identifier id = TradeMasterConfig.parseId(e.getAsString());
 					// vanilla ids are forbidden: vanilla curses are detected via
 					// the curse tag, a hand-entered one could never add anything
 					if (id != null && !"minecraft".equals(id.getNamespace())) {
@@ -483,8 +483,8 @@ public final class ConfigPersistence {
 					// the same normalisation the offers tab uses: a namespaceless entry
 					// means minecraft:, or a hand-written "AIR" would never match
 					Identifier id = raw.indexOf(':') >= 0
-							? Identifier.tryParse(raw)
-							: Identifier.tryParse("minecraft:" + raw);
+							? TradeMasterConfig.parseId(raw)
+							: TradeMasterConfig.parseId("minecraft:" + raw);
 					if (id != null && !c.airItems.contains(id.toString())) c.airItems.add(id.toString());
 				}
 			}
@@ -503,7 +503,7 @@ public final class ConfigPersistence {
 					if (!e.isJsonObject()) continue;
 					JsonElement r = e.getAsJsonObject().get("result");
 					if (r == null || !r.isJsonPrimitive()) continue;
-					Identifier id = Identifier.tryParse(r.getAsString());
+					Identifier id = TradeMasterConfig.parseId(r.getAsString());
 					if (id != null) forbiddenAir.add(id.toString());
 				}
 			}
@@ -515,7 +515,7 @@ public final class ConfigPersistence {
 			if (specs != null) {
 				c.tradeSpecs.clear();
 				for (Map.Entry<String, JsonElement> entry : specs.entrySet()) {
-					Identifier id = Identifier.tryParse(entry.getKey());
+					Identifier id = TradeMasterConfig.parseId(entry.getKey());
 					if (id == null || !entry.getValue().isJsonObject()) continue;
 					c.tradeSpecs.put(id, readOfferSpec(entry.getValue().getAsJsonObject()));
 				}
@@ -532,7 +532,7 @@ public final class ConfigPersistence {
 					JsonObject o = e.getAsJsonObject();
 					JsonElement resultElement = o.get("result");
 					Identifier result = resultElement != null && resultElement.isJsonPrimitive()
-							? Identifier.tryParse(resultElement.getAsString())
+							? TradeMasterConfig.parseId(resultElement.getAsString())
 							: null;
 					if (result == null || result.equals(TradeOfferSpec.ENCHANTED_BOOK)) continue;
 					// an air result can never be produced (an offer's air result has
@@ -579,7 +579,7 @@ public final class ConfigPersistence {
 			for (Map.Entry<String, JsonElement> entry : enchantments.entrySet()) {
 				// a flat-root fallback must not read its sibling sections as targets
 				if (SECTION_NAMES.contains(entry.getKey())) continue;
-				Identifier id = Identifier.tryParse(entry.getKey());
+				Identifier id = TradeMasterConfig.parseId(entry.getKey());
 				if (id == null || !entry.getValue().isJsonObject()) continue;
 				JsonObject o = entry.getValue().getAsJsonObject();
 				// a note object (none of the target keys) is not an entry: skip it, or it
@@ -711,13 +711,13 @@ public final class ConfigPersistence {
 			Identifier item = null;
 			int count = 0;
 			if (e.isJsonPrimitive()) {
-				item = Identifier.tryParse(e.getAsString());
+				item = TradeMasterConfig.parseId(e.getAsString());
 				count = 1;
 			} else if (e.isJsonObject()) {
 				JsonObject co = e.getAsJsonObject();
 				JsonElement itemElement = co.get("item");
 				if (itemElement != null && itemElement.isJsonPrimitive()) {
-					item = Identifier.tryParse(itemElement.getAsString());
+					item = TradeMasterConfig.parseId(itemElement.getAsString());
 				}
 				count = readInt(co, "count", 1);
 			}
@@ -738,7 +738,7 @@ public final class ConfigPersistence {
 		Identifier result = TradeOfferSpec.ENCHANTED_BOOK;
 		JsonElement resultElement = o.get("result");
 		if (resultElement != null && resultElement.isJsonPrimitive()) {
-			Identifier parsed = Identifier.tryParse(resultElement.getAsString());
+			Identifier parsed = TradeMasterConfig.parseId(resultElement.getAsString());
 			if (parsed != null) result = parsed;
 		}
 		return new TradeOfferSpec(List.copyOf(costs), result).normalized();
@@ -786,7 +786,7 @@ public final class ConfigPersistence {
 		if (e == null || !e.isJsonPrimitive()) return fallback;
 		String raw = e.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
 		if (raw.isEmpty()) return fallback;
-		Identifier id = raw.indexOf(':') >= 0 ? Identifier.tryParse(raw) : Identifier.tryParse("minecraft:" + raw);
+		Identifier id = raw.indexOf(':') >= 0 ? TradeMasterConfig.parseId(raw) : TradeMasterConfig.parseId("minecraft:" + raw);
 		return id == null ? fallback : id.toString();
 	}
 
@@ -800,7 +800,7 @@ public final class ConfigPersistence {
 		if (specs != null) {
 			for (Map.Entry<String, JsonElement> e : specs.entrySet()) {
 				if (!e.getValue().isJsonObject()) continue;
-				Identifier parsed = Identifier.tryParse(e.getKey());
+				Identifier parsed = TradeMasterConfig.parseId(e.getKey());
 				if (parsed != null && parsed.equals(id)) found = e.getValue().getAsJsonObject();
 			}
 		}
@@ -817,7 +817,7 @@ public final class ConfigPersistence {
 				JsonObject o = e.getAsJsonObject();
 				JsonElement r = o.get("result");
 				if (r == null || !r.isJsonPrimitive()) continue;
-				Identifier parsed = Identifier.tryParse(r.getAsString());
+				Identifier parsed = TradeMasterConfig.parseId(r.getAsString());
 				if (parsed != null && parsed.equals(result)) return o;
 			}
 		}
