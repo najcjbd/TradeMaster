@@ -61,9 +61,10 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		return refusal != null ? refusal : historyConflict(id);
 	}
 
-	/** The same check for a custom good (its id is the result item). */
+	/** The same check for a custom good (its id is the result item). A good that can
+	 * never be offered adds no index keys, so enabling it cannot create a collision. */
 	public static @Nullable String enableConflict(GoodSpec spec) {
-		if (spec == null) return null;
+		if (spec == null || !TradeMatcher.goodMatchable(spec)) return null;
 		String refusal = AliasRow.conflictKey(spec.id(), spec.displayName(), false);
 		if (refusal == null) refusal = AliasRow.conflictKey(spec.id(), spec.path(), true);
 		return refusal != null ? refusal : historyConflict(spec.id());
@@ -73,7 +74,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	private static @Nullable String historyConflict(Identifier id) {
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
 			if (!entry.getValue().equals(id)) continue;
-			String refusal = AliasRow.conflictKey(id, entry.getKey(), false);
+			String refusal = AliasRow.conflictKey(id, entry.getKey(), true);
 			if (refusal != null) return refusal;
 		}
 		return null;
@@ -236,7 +237,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			this.id = id;
 			this.translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
 			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, Component.literal("alias"));
-			this.field.setMaxLength(40);
+			this.field.setMaxLength(1_000_000);
 			this.field.setValue(TradeMasterConfig.INSTANCE.customEnchantNames.getOrDefault(id, ""));
 			this.field.setResponder(text -> {
 				this.conflictKey = null;
@@ -334,6 +335,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			// versa, or the index would drop BOTH sides on a collision
 			for (GoodSpec good : config.enabledGoods()) {
 				if (good.id().equals(id)) continue;
+				// dead goods add no index key (see buildDisplayNameIndex)
+				if (!TradeMatcher.goodMatchable(good)) continue;
 				String refusal = collision(probe, good.id(), good.displayName(), good.path());
 				if (refusal != null) return refusal;
 			}
@@ -343,13 +346,16 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				// the index only records a history name when that demand is still live:
 				// an entry for a dead/untradeable target (or a removed good) must not
 				// refuse a perfectly legal name
-				boolean live = config.goodFor(otherId) != null;
+				GoodSpec historyGood = config.goodFor(otherId);
+				boolean live = historyGood != null && TradeMatcher.goodMatchable(historyGood);
 				if (!live) {
 					EnchantmentTarget otherTarget = config.enchantments.get(otherId);
 					live = otherTarget != null && otherTarget.enabled() && TradeMatcher.targetMatchable(otherTarget);
 				}
 				if (!live) continue;
-				if (EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(entry.getKey())).equals(probe)) {
+				// the index keys recorded names VERBATIM (canonical only), so compare
+				// raw — re-sanitizing would miss a legacy name containing digits/'+'
+				if (EnchantmentNamer.canonical(entry.getKey()).equals(probe)) {
 					return "trademaster.alias.duplicate_name";
 				}
 			}

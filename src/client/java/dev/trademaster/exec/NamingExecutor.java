@@ -318,8 +318,9 @@ public class NamingExecutor {
 				if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 				return Result.RUNNING;
 			}
-			// OUR menu answering the use packet: adopt it even when a slow server
-			// delivers it after the 40-tick window (the stage cap still bounds it)
+			// OUR menu answering the use packet: adopt it whenever present. (A menu
+			// arriving only after the 40-tick no-menu cap below has already failed
+			// the stage; that cap is unchanged.)
 			this.openedContainerId = menu.containerId;
 			this.openSent = false;
 			next(Stage.INSERT_TAG);

@@ -318,7 +318,9 @@ public final class LecternRestock {
 		if (player.containerMenu != player.inventoryMenu) {
 			// the swap below needs the inventory menu: with a foreign menu open it never
 			// runs and the caller loops until its phase timeout. Close it (like restock's
-			// close branch) so the next tick takes the normal path.
+			// close branch) so the next tick takes the normal path. Never close with a
+			// stack on the cursor: the server would return/drop it.
+			if (!player.containerMenu.getCarried().isEmpty()) return ToolState.WORKING;
 			player.closeContainer();
 			return ToolState.WORKING;
 		}
@@ -363,6 +365,8 @@ public final class LecternRestock {
 		if (player.containerMenu != player.inventoryMenu) {
 			// the swap below needs the inventory menu: with a foreign menu open it never runs
 			// and the caller loops until its phase timeout. Close it, like the offhand path.
+			// Never close with a stack on the cursor: the server would return/drop it.
+			if (!player.containerMenu.getCarried().isEmpty()) return ToolState.WORKING;
 			player.closeContainer();
 			return ToolState.WORKING;
 		}

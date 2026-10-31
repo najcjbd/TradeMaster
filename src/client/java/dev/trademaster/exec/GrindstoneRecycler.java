@@ -441,6 +441,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.stashSlot = -1;
 					this.stashContainerId = player.containerMenu.containerId;
 					this.waitTicks = 0;
+					this.stashConfirmTicks = 0;
 					this.state = State.CHEST_MOVE;
 				} else if (player.containerMenu != player.inventoryMenu) {
 					player.closeContainer();
@@ -485,6 +486,10 @@ public class GrindstoneRecycler implements BookDisposal {
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							target.index, 0, ContainerInput.QUICK_MOVE, player);
 					this.waitTicks = 0;
+					// every NEW stash needs its own 20-tick server confirm; without
+					// this reset the counter from the previous stash makes the next
+					// one "landed" on its first predicted tick (rejected stash loops)
+					this.stashConfirmTicks = 0;
 					return StepResult.RUNNING;
 				}
 				// a QUICK_MOVE is applied locally: give the server a short grace to
@@ -672,10 +677,14 @@ public class GrindstoneRecycler implements BookDisposal {
 					// and the resend after a timeout would do it again.
 					if (player.getInventory().getSelectedSlot() != this.dropSlot
 							|| !ItemStack.isSameItemSameComponents(
-									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+							|| player.getInventory().getItem(this.dropSlot).getCount()
+									!= this.dropStagedBook.getCount()) {
 						if (player.getInventory().getSelectedSlot() != this.dropSlot
 								&& ItemStack.isSameItemSameComponents(
-										player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+										player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+								&& player.getInventory().getItem(this.dropSlot).getCount()
+										== this.dropStagedBook.getCount()) {
 							// only the selection moved: re-select the staged slot and send
 							// on the next tick (SET_CARRIED_ITEM precedes the action packet)
 							Interactions.selectHotbarSlot(player, this.dropSlot);
