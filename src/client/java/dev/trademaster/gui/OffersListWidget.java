@@ -638,7 +638,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				boolean enable = !existing.enabled();
 				if (enable) {
 					// same enable-time collision gate as the enchantments tab
-					String conflict = AliasListWidget.enableConflict(this.id, true);
+					String conflict = AliasListWidget.enableConflict(existing);
 					if (conflict != null) {
 						message(Component.translatable(conflict).withStyle(net.minecraft.ChatFormatting.RED));
 						return true;
@@ -759,7 +759,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			// a good pays the price slot in emeralds by default and requires no second
 			// cost until one is entered; the result item IS its identity
-			config.goods.add(new GoodSpec(result, 1, true, 64, TradeOfferSpec.defaultGoodCosts()));
+			GoodSpec spec = new GoodSpec(result, 1, true, 64, TradeOfferSpec.defaultGoodCosts());
+			// it is added ENABLED, so the same enable-time collision gate applies as
+			// for the row's own toggle (a colliding name would break deduction for both)
+			String conflict = AliasListWidget.enableConflict(spec);
+			if (conflict != null) {
+				this.errorKey = conflict;
+				return true;
+			}
+			config.goods.add(spec);
 			this.resultField.setValue("");
 			this.errorKey = null;
 			config.save();
