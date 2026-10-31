@@ -1,7 +1,6 @@
 package dev.trademaster.compat;
 
-
-import dev.trademaster.compat.McItem;//? if >=1.20.5 {
+//? if >=1.20.5 {
 import net.minecraft.core.component.DataComponents;
 //?}
 import net.minecraft.network.chat.Component;

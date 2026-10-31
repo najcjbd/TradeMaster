@@ -1313,6 +1313,15 @@ public final class RerollController {
 			awaitNextVillager(client, s);
 			return;
 		}
+		// a carried stack the inventory cannot take would be dropped by the next
+		// merchant menu open: do not count it as a rejected interact (that would
+		// churn villagers forever) — stop with the real cause
+		if (player.containerMenu != player.inventoryMenu
+				&& !player.containerMenu.getCarried().isEmpty()
+				&& !Interactions.hasRoomForCarried(player)) {
+			stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+			return;
+		}
 		if (detectionPending) {
 			// wait for the armed detection; if no offers arrive in time the
 			// attempt is stale (villager not ready, menu didn't open...) —
@@ -1449,6 +1458,15 @@ public final class RerollController {
 	private static void tickLock(Minecraft client, LocalPlayer player, RunSession s) {
 		if (lockExhaustionDepositPending) {
 			finishLockExhaustion(client, player);
+			return;
+		}
+		// same cursor rule as CHECK_TRADE, but never while a purchase is in flight:
+		// its executor must reach a verdict (and voucher the uncertain purchase)
+		if ((lockExecutor == null || !lockExecutor.purchaseSent())
+				&& player.containerMenu != player.inventoryMenu
+				&& !player.containerMenu.getCarried().isEmpty()
+				&& !Interactions.hasRoomForCarried(player)) {
+			stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
 			return;
 		}
 		if (s.matchedTrade != null) {

@@ -358,6 +358,12 @@ public class NamingExecutor {
 		// In legit-only mode this snaps instantly; with legit off it does nothing
 		if (!this.look.tick(player, aim)) return Result.RUNNING;
 		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
+		// a retry send must not auto-close a foreign menu holding a carried stack
+		if (player.containerMenu != player.inventoryMenu
+				&& !player.containerMenu.getCarried().isEmpty()) {
+			if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return failed("cursor-full");
+			return Result.RUNNING;
+		}
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
 		McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
 		this.openSent = true;
