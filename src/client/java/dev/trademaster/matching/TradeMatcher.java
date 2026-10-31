@@ -895,7 +895,7 @@ public class TradeMatcher {
 			// a good named before a language switch needs its history entry as well
 			GoodSpec historyGood = TradeMasterConfig.INSTANCE.goodFor(entry.getValue());
 			if (this.targets.containsKey(entry.getValue())
-					|| (historyGood != null && goodMatchable(historyGood))) {
+					|| (historyGood != null && historyGood.enabled() && goodMatchable(historyGood))) {
 				putIndex(index, ambiguous, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
 			}
 		}
