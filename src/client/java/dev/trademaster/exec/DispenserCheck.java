@@ -60,9 +60,12 @@ public final class DispenserCheck {
 		if (++this.ticks > MAX_TICKS) {
 			closeOwnMenu(player);
 			if (player.containerMenu != player.inventoryMenu) {
+				// in WAIT_MENU the menu that just appeared is ours even before the id
+				// was captured (the use packet was sent this cycle)
 				boolean ours = player.containerMenu instanceof DispenserMenu
-						&& this.openedContainerId >= 0
-						&& player.containerMenu.containerId == this.openedContainerId;
+						&& (this.openedContainerId >= 0
+								? player.containerMenu.containerId == this.openedContainerId
+								: this.state == State.WAIT_MENU);
 				if (ours) {
 					// our menu survived the safe close: the cursor stack cannot be returned
 					return !player.containerMenu.getCarried().isEmpty()

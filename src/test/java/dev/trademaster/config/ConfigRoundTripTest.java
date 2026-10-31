@@ -68,9 +68,9 @@ class ConfigRoundTripTest {
 
 		// absent keys keep the CURRENT value (the loader's fallback convention); the
 		// model default itself is false
-		c().discountedPriceAsSalePrice = false;
+		c().discountedPriceAsSalePrice = true;
 		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
-		assertFalse(c().discountedPriceAsSalePrice);
+		assertTrue(c().discountedPriceAsSalePrice);
 
 		ConfigTest.read(c(), root);
 		assertTrue(c().discountedPriceAsSalePrice);
@@ -109,7 +109,7 @@ class ConfigRoundTripTest {
 		assertTrue(c().discountedPriceAsSalePrice);
 		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{"
-				+ "\"discountedPriceAsSalePrice\":\"true\",\"basePriceAsSalePrice\":false}}"));
+				+ "\"discountedPriceAsSalePrice\":\"true\",\"basePriceAsSalePrice\":true}}"));
 		assertTrue(c().discountedPriceAsSalePrice);
 	}
 
