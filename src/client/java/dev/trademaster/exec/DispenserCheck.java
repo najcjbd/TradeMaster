@@ -24,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DispenserCheck {
 
-	public enum Result { RUNNING, HAS_CART, NO_CART, NO_DISPENSER, FAILED }
+	public enum Result { RUNNING, HAS_CART, NO_CART, NO_DISPENSER, CURSOR_BLOCKED, FAILED }
 
 	private enum State { LOOK, USE, WAIT_MENU, SCAN }
 
@@ -41,6 +41,8 @@ public final class DispenserCheck {
 	private boolean found = false;
 	private int ticks = 0;
 	private int stateTicks = 0;
+	/** Ticks the click has been blocked by a carried stack the inventory cannot take. */
+	private int cursorWaitTicks = 0;
 	/** The container id of the dispenser menu THIS check opened, or -1 before it opened one.
 	 * Closing is keyed on it so the player's own dispenser/chest is never touched. */
 	private int openedContainerId = -1;
@@ -81,9 +83,14 @@ public final class DispenserCheck {
 				}
 				// a leftover menu of unknown origin would swallow the click
 				if (player.containerMenu != player.inventoryMenu) {
-					// wait for the player to free the cursor; don't report a healthy
-					// dispenser as failed just because a carried stack is stuck
-					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return Result.RUNNING;
+					// a carried stack must be returnable before the close/open; a
+					// permanently stuck one gets its own result (not a dispenser failure)
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
+						if (!mc.level.getBlockState(this.pos).is(Blocks.DISPENSER)) return Result.NO_DISPENSER;
+						if (++this.cursorWaitTicks > 40) return Result.CURSOR_BLOCKED;
+						return Result.RUNNING;
+					}
+					this.cursorWaitTicks = 0;
 					Interactions.closeMenuSafely(player);
 					return Result.RUNNING;
 				}

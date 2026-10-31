@@ -313,9 +313,12 @@ public class NamingExecutor {
 
 	private Result tickOpenAnvil(Minecraft mc, LocalPlayer player) {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		// a foreign menu holding a carried stack must not be auto-closed by the
-		// server when our anvil opens: resolve it first, or refuse to open
+		// a foreign NON-anvil menu holding a carried stack must not be auto-closed by
+		// the server when our anvil opens: resolve it first, or refuse to open. A
+		// foreign AnvilMenu is left to the branch below (the player's own anvil is
+		// waited out, never adopted or closed by this guard).
 		if (!this.openSent && player.containerMenu != player.inventoryMenu
+				&& !(player.containerMenu instanceof AnvilMenu)
 				&& !player.containerMenu.getCarried().isEmpty()) {
 			if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return failed("cursor-full");
 			return Result.RUNNING;
@@ -351,13 +354,14 @@ public class NamingExecutor {
 		// legit+slow: rotate smoothly and only interact once the turn has landed.
 		// In legit-only mode this snaps instantly; with legit off it does nothing
 		if (!this.look.tick(player, aim)) return Result.RUNNING;
-		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
 		// a retry send must not auto-close a foreign menu holding a carried stack
 		if (player.containerMenu != player.inventoryMenu
 				&& !player.containerMenu.getCarried().isEmpty()) {
 			if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return failed("cursor-full");
 			return Result.RUNNING;
 		}
+		// arm the slow pacing only when the send actually goes out
+		if (config.slowMode) this.slowInteractDelay = config.interactDelay;
 		BlockHitResult hit = new BlockHitResult(aim, Direction.UP, anvil, false);
 		mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
 		this.openSent = true;
@@ -397,7 +401,16 @@ public class NamingExecutor {
 			next(Stage.RENAME);
 			return Result.RUNNING;
 		}
-		if (this.insertAttempts >= 3) return failed("tag-insert");
+		if (this.insertAttempts >= 3) {
+			// one last cleanup: a failed insert must not leave a tag stack on the
+			// cursor or in slot 0 (the abort then closes the anvil behind it)
+			if (!menu.getCarried().isEmpty()) {
+				mc.gameMode.handleContainerInput(menu.containerId, menuSlot, 0, ContainerInput.PICKUP, player);
+			} else if (!menu.getSlot(0).getItem().isEmpty()) {
+				mc.gameMode.handleContainerInput(menu.containerId, 0, 0, ContainerInput.QUICK_MOVE, player);
+			}
+			return failed("tag-insert");
+		}
 		this.insertAttempts++;
 		this.tagInvSlot = -1;
 		// a failed attempt can leave residue behind (state id race): carried tags

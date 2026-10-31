@@ -205,7 +205,6 @@ public class ChestDepositor implements BookDisposal {
 					// A dirty cursor whose stack the inventory cannot take must NOT
 					// open a new menu: the server would auto-close this one and drop it.
 					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
-						restoreHotbarSelection(player);
 						return StepResult.failed(Component.translatable("trademaster.message.cursor_full"));
 					}
 					Interactions.closeMenuSafely(player);
