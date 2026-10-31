@@ -223,6 +223,12 @@ public final class TradeMasterConfig {
 
 	private TradeMasterConfig() {}
 
+	/** A fresh model holding the factory defaults (the handler keeps constructor values
+	 * as reset targets, and tests assert the real defaults through this seam). */
+	static TradeMasterConfig defaults() {
+		return new TradeMasterConfig();
+	}
+
 	/** True between beginBatch/endBatch: save() is deferred to the end of the batch. */
 	private boolean batchSave = false;
 

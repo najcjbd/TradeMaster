@@ -52,11 +52,19 @@ class ConfigRoundTripTest {
 
 	@Test
 	void discountedPriceAsSalePriceRoundTripsAndDefaultsOff() {
+		assertFalse(TradeMasterConfig.defaults().discountedPriceAsSalePrice);
+
 		c().discountedPriceAsSalePrice = true;
 		JsonObject root = ConfigTest.write(c());
 		assertTrue(root.getAsJsonObject("mechanism").get("discountedPriceAsSalePrice").getAsBoolean());
 		// downgrade compatibility mirror: older builds read the INVERSE key
 		assertFalse(root.getAsJsonObject("mechanism").get("basePriceAsSalePrice").getAsBoolean());
+
+		// the mirror in the other direction too
+		c().discountedPriceAsSalePrice = false;
+		JsonObject baseRoot = ConfigTest.write(c());
+		assertFalse(baseRoot.getAsJsonObject("mechanism").get("discountedPriceAsSalePrice").getAsBoolean());
+		assertTrue(baseRoot.getAsJsonObject("mechanism").get("basePriceAsSalePrice").getAsBoolean());
 
 		// absent keys keep the CURRENT value (the loader's fallback convention); the
 		// model default itself is false
@@ -74,10 +82,32 @@ class ConfigRoundTripTest {
 		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"mechanism\":{\"basePriceAsSalePrice\":false}}"));
 		assertTrue(c().discountedPriceAsSalePrice);
+
+		// a pre-v2 file with disagreeing keys: the old key (last written by a
+		// downgraded build) wins
+		c().discountedPriceAsSalePrice = true;
+		ConfigTest.read(c(), parse("{\"configVersion\":1,\"mechanism\":{"
+				+ "\"discountedPriceAsSalePrice\":false,\"basePriceAsSalePrice\":true}}"));
+		assertFalse(c().discountedPriceAsSalePrice);
+		// v2: the new key wins
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{"
+				+ "\"discountedPriceAsSalePrice\":true,\"basePriceAsSalePrice\":true}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		// a malformed new key falls back to the old key
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{"
+				+ "\"discountedPriceAsSalePrice\":null,\"basePriceAsSalePrice\":false}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		// a flat root (no mechanism section) still migrates the old key
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":1,\"basePriceAsSalePrice\":false}"));
+		assertTrue(c().discountedPriceAsSalePrice);
 	}
 
 	@Test
-	void villagersSectionIsWrittenAndRead() {		c().workBlockId = "minecraft:composter";
+	void villagersSectionIsWrittenAndRead() {
+		c().workBlockId = "minecraft:composter";
 		c().professionId = "minecraft:farmer";
 
 		JsonObject root = ConfigTest.write(c());
