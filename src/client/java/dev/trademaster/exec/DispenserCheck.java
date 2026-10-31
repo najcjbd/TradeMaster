@@ -67,10 +67,11 @@ public final class DispenserCheck {
 								? player.containerMenu.containerId == this.openedContainerId
 								: this.state == State.WAIT_MENU);
 				if (ours) {
-					// our menu survived the safe close: the cursor stack cannot be returned
+					// our menu survived the safe close: unreturnable cursor vs a
+					// stale/duplicated container that the player has to close
 					return !player.containerMenu.getCarried().isEmpty()
 							&& !Interactions.hasRoomForCarried(player)
-							? Result.CURSOR_BLOCKED : Result.FAILED;
+							? Result.CURSOR_BLOCKED : Result.MENU_BLOCKED;
 				}
 				// a player-opened container (any cursor state) is what blocks this check
 				return Result.MENU_BLOCKED;

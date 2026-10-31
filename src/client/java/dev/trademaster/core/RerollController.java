@@ -996,8 +996,15 @@ public final class RerollController {
 						+ dispenserFailedAttempts + ")");
 				return false;
 			}
+			default -> {
+				// a future DispenserCheck result must not fall through to the silent
+				// "return false" and stall the summon
+				releaseCheck();
+				stop(Component.translatable("trademaster.message.dispenser_open_failed"),
+						ChatFormatting.RED);
+				return false;
+			}
 		}
-		return false;
 	}
 
 	private static void tickSummon(RunSession s) {

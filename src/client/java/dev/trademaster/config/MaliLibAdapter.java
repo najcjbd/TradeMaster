@@ -479,6 +479,12 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 			TradeMasterConfig.INSTANCE.huntCheaper =
 					hunt && TradeMasterConfig.INSTANCE.huntCheaper;
 		}
+		// when idle, keep the (possibly open) config widgets in sync with the reloaded
+		// model; while running the run-locked values were just pinned and the screen is
+		// not the authoritative editor
+		if (!RerollController.isRunning() && !this.genericOptions.isEmpty()) {
+			refreshFromModel();
+		}
 	}
 
 	@Override
