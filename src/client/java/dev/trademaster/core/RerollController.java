@@ -911,7 +911,9 @@ public final class RerollController {
 	}
 
 	static boolean dispenserReady() {
-		var pos = snapDispenserPos;
+		// a real run uses the start-of-run snapshot (mid-run edits apply next run);
+		// direct calls outside a run (e.g. the gate's game test) use the live config
+		var pos = session != null ? snapDispenserPos : TradeMasterConfig.INSTANCE.dispenserPos;
 		if (pos == null) {
 			// the gate is off: drop any in-flight check (its open container would swallow the
 			// button press) and the pending wait, so neither lingers into a later check
@@ -969,6 +971,12 @@ public final class RerollController {
 			case CURSOR_BLOCKED -> {
 				// the check was blocked by a carried stack the inventory cannot take:
 				// report the real cause instead of blaming the dispenser
+				releaseCheck();
+				stop(Component.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				return false;
+			}
+			case MENU_BLOCKED -> {
+				// a container the player opened is holding an unreturnable cursor stack
 				releaseCheck();
 				stop(Component.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
 				return false;

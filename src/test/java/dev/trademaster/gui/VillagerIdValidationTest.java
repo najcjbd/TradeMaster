@@ -1,8 +1,12 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.config.ConfigTest;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.testutil.McTest;
+import com.google.gson.JsonObject;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,6 +26,18 @@ class VillagerIdValidationTest {
 	@BeforeAll
 	static void boot() {
 		McTest.boot();
+	}
+
+	private JsonObject snapshot;
+
+	@BeforeEach
+	void snap() {
+		snapshot = ConfigTest.snapshot();
+	}
+
+	@AfterEach
+	void restore() {
+		ConfigTest.restore(snapshot);
 	}
 
 	@Test

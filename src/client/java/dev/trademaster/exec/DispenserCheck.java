@@ -24,7 +24,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class DispenserCheck {
 
-	public enum Result { RUNNING, HAS_CART, NO_CART, NO_DISPENSER, CURSOR_BLOCKED, FAILED }
+	public enum Result { RUNNING, HAS_CART, NO_CART, NO_DISPENSER, CURSOR_BLOCKED, MENU_BLOCKED, FAILED }
 
 	private enum State { LOOK, USE, WAIT_MENU, SCAN }
 
@@ -65,11 +65,13 @@ public final class DispenserCheck {
 			boolean ours = player.containerMenu instanceof DispenserMenu
 					&& this.openedContainerId >= 0
 					&& player.containerMenu.containerId == this.openedContainerId;
-			if ((ours || this.cursorWaitTicks > 0)
-					&& player.containerMenu != player.inventoryMenu
+			boolean blocked = player.containerMenu != player.inventoryMenu
 					&& !player.containerMenu.getCarried().isEmpty()
-					&& !Interactions.hasRoomForCarried(player)) {
-				return Result.CURSOR_BLOCKED;
+					&& !Interactions.hasRoomForCarried(player);
+			if (blocked) {
+				// ours/cursor-wait -> the dispenser check itself is cursor-stuck;
+				// otherwise a player-opened menu is the blocker (not a dispenser failure)
+				return (ours || this.cursorWaitTicks > 0) ? Result.CURSOR_BLOCKED : Result.MENU_BLOCKED;
 			}
 			return Result.FAILED;
 		}

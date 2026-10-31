@@ -27,7 +27,7 @@ import java.util.Map;
 public final class ConfigPersistence {
 
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-	private static final int CONFIG_VERSION = 1;
+	private static final int CONFIG_VERSION = 2;
 
 	/** The top-level section keys this file uses. A file that predates sections stored
 	 * the same keys at the top level, so a flat root must never be read as data (an
@@ -346,16 +346,22 @@ public final class ConfigPersistence {
 	/** @param includeHotkeys false skips the maLiLib keybind read, the only part that
 	 * needs a live Minecraft/maLiLib and therefore cannot run in a headless test */
 	static void readInto(TradeMasterConfig c, JsonObject root, boolean includeHotkeys) {
+		int fileVersion = readInt(root, "configVersion", 1);
 		JsonObject mechanism = sectionOrRoot(root, "mechanism");
 		if (mechanism != null) {
 			c.rerollMechanism = readEnum(mechanism, "reroll", c.rerollMechanism);
 			c.detectionMode = readEnum(mechanism, "detection", c.detectionMode);
 			c.reserveCheaperTraders = readBool(mechanism, "reserveCheaperTraders", c.reserveCheaperTraders);
 			c.minLockEmeralds = readInt(mechanism, "minLockEmeralds", c.minLockEmeralds);
-			if (mechanism.has("discountedPriceAsSalePrice")) {
+			boolean hasNewBasis = isBoolean(mechanism, "discountedPriceAsSalePrice");
+			boolean hasOldBasis = isBoolean(mechanism, "basePriceAsSalePrice");
+			if (hasNewBasis && hasOldBasis && fileVersion < CONFIG_VERSION) {
+				// a pre-v2 build saved the OLD key after a downgrade: its edit wins
+				c.discountedPriceAsSalePrice = !readBool(mechanism, "basePriceAsSalePrice", true);
+			} else if (hasNewBasis) {
 				c.discountedPriceAsSalePrice = readBool(mechanism, "discountedPriceAsSalePrice",
 						c.discountedPriceAsSalePrice);
-			} else if (mechanism.has("basePriceAsSalePrice")) {
+			} else if (hasOldBasis) {
 				// migrate the old "base price as sale" option: true meant discounted OFF
 				c.discountedPriceAsSalePrice = !readBool(mechanism, "basePriceAsSalePrice", true);
 			}
@@ -889,6 +895,13 @@ public final class ConfigPersistence {
 		} catch (RuntimeException ex) {
 			return null;
 		}
+	}
+
+	/** Whether the named object member is a JSON boolean (migration must not mistake
+	 * null/number/string for a valid value and skip a valid old key). */
+	private static boolean isBoolean(JsonObject o, String key) {
+		JsonElement e = o.get(key);
+		return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean();
 	}
 
 	/** Reads a tick count stored as a number or as a duration string like "1h30min". */
