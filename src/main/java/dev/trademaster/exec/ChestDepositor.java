@@ -537,7 +537,9 @@ public class ChestDepositor implements BookDisposal {
 					// would otherwise drop whatever else is selected (the player's item)
 					if (McPlayer.selectedSlot(player) != this.dropSlot
 							|| !McItem.sameItemSameComponents(
-									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+							|| player.getInventory().getItem(this.dropSlot).getCount()
+									!= this.dropStagedBook.getCount()) {
 						// re-staging means a NEW stack attempt: give it its own retry
 						this.dropResent = false;
 						this.state = State.DROP_STAGE;

@@ -116,7 +116,7 @@ public class VillagersListWidget extends AbstractSelectionList<VillagersListWidg
 	private static final int FIELD_WIDTH = 150;
 	private static final int FIELD_GAP = 6;
 	private static final int ID_MAX_LENGTH = 128;
-	private static final int LIST_MAX_LENGTH = 1024;
+	private static final int LIST_MAX_LENGTH = 1_000_000;
 
 	/** Set while the list dispatches a click: vanilla focuses the clicked entry AFTER the
 	 * entry handled the click, and that focus move can scroll the viewport and thus run the

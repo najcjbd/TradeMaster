@@ -149,7 +149,11 @@ public class LockTradeExecutor {
 
 	public Result tick() {
 		Minecraft client = Minecraft.getInstance();
-		if (client.player == null || client.gameMode == null) return Result.FAILED;
+		if (client.player == null || client.gameMode == null) {
+			// a purchase already sent may still land; never let the caller retry it
+			if (purchaseSent()) this.uncertain = true;
+			return Result.FAILED;
+		}
 		// snapshot the nearby drops BEFORE any click: with a full inventory the purchase is
 		// delivered as a ground drop, and that count rising is the proof it happened
 		if (this.droppedBaseline < 0) this.droppedBaseline = droppedMatches(client);

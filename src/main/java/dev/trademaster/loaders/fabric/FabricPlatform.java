@@ -33,7 +33,7 @@ public class FabricPlatform implements TradeMasterPlatform {
 	/*private static final KeyMapping.Category CATEGORY = KeyMapping.Category.register(
 			net.minecraft.resources.ResourceLocation.fromNamespaceAndPath("trademaster", "main"));*/
 	//?} else {
-	private static final String CATEGORY = "trademaster.main";
+	private static final String CATEGORY = "key.category.trademaster.main";
 	//?}
 
 	private KeyMapping openMenuKey;

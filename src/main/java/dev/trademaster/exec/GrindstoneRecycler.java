@@ -444,6 +444,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.stashSlot = -1;
 					this.stashContainerId = player.containerMenu.containerId;
 					this.waitTicks = 0;
+					this.stashConfirmTicks = 0;
 					this.state = State.CHEST_MOVE;
 				} else if (player.containerMenu != player.inventoryMenu) {
 					player.closeContainer();
@@ -682,10 +683,14 @@ public class GrindstoneRecycler implements BookDisposal {
 					// and the resend after a timeout would do it again.
 					if (McPlayer.selectedSlot(player) != this.dropSlot
 							|| !McItem.sameItemSameComponents(
-									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+									player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+							|| player.getInventory().getItem(this.dropSlot).getCount()
+									!= this.dropStagedBook.getCount()) {
 						if (McPlayer.selectedSlot(player) != this.dropSlot
 								&& McItem.sameItemSameComponents(
-										player.getInventory().getItem(this.dropSlot), this.dropStagedBook)) {
+										player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
+								&& player.getInventory().getItem(this.dropSlot).getCount()
+										== this.dropStagedBook.getCount()) {
 							// only the selection moved: re-select the staged slot and send
 							// on the next tick (SET_CARRIED_ITEM precedes the action packet)
 							Interactions.selectHotbarSlot(player, this.dropSlot);

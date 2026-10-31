@@ -884,6 +884,9 @@ public class TradeMatcher {
 		// custom goods are identified by their result item, and a named villager
 		// carries that item's display name
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			// a good that can never be offered contributes nothing to trading, so its
+			// names must not drop a LIVE target's key (buildNeeds skips it too)
+			if (!goodMatchable(good)) continue;
 			// the same triple an enchantment gets: the (alias aware) display name and
 			// the registry path, so a villager named either way resolves back
 			putIndex(index, ambiguous,
@@ -895,8 +898,9 @@ public class TradeMatcher {
 		for (Map.Entry<String, ResourceLocation> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
 			// enchantment targets AND custom goods: an item's name is localized too, so
 			// a good named before a language switch needs its history entry as well
+			GoodSpec historyGood = TradeMasterConfig.INSTANCE.goodFor(entry.getValue());
 			if (this.targets.containsKey(entry.getValue())
-					|| TradeMasterConfig.INSTANCE.goodFor(entry.getValue()) != null) {
+					|| (historyGood != null && goodMatchable(historyGood))) {
 				putIndex(index, ambiguous, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
 			}
 		}
