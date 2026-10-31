@@ -218,6 +218,7 @@ public class NamingExecutor {
 		else if (reason.startsWith("timeout:")) key = "timeout";
 		else key = switch (reason) {
 			case "anvil-missing", "anvil-open" -> "anvil";
+			case "cursor-full" -> "cursor";
 			case "tag-none", "tag-insert", "tag-menu" -> "tag";
 			case "rename-menu", "rename-cost", "invalid-name", "name-too-long", "xp-cost" -> "rename";
 			case "take-menu", "take-tag", "close-tag" -> "take";
@@ -257,20 +258,14 @@ public class NamingExecutor {
 		}
 		if (mc.gameMode == null || this.equipSwapSlot < 0 || this.restoreSwapped) {
 			// nothing to swap back, but the anvil may still be open from a failed
-			// rename: leaving it open swallows input and wedges every later phase
-			// (bringToolToHand sees containerMenu != inventoryMenu and never returns).
-			// Never close with a stack on the cursor: the server would drop it.
-			if (player.containerMenu != player.inventoryMenu
-					&& player.containerMenu.getCarried().isEmpty()) player.closeContainer();
+			// rename: leaving it open swallows input and wedges every later phase.
+			// The helper only closes when the cursor stack can be returned.
+			Interactions.closeMenuSafely(player);
 			return;
 		}
-		if (player.containerMenu != player.inventoryMenu) {
-			// the swap needs the inventory menu; with a dirty cursor, closing would
-			// risk the cursor stack, so leave the menu (and the displaced item) to
-			// the player instead of dropping one of them
-			if (!player.containerMenu.getCarried().isEmpty()) return;
-			player.closeContainer();
-		}
+		// the swap needs the inventory menu; the helper closes it only when the
+		// cursor stack can be returned (otherwise leave it to the player)
+		if (!Interactions.closeMenuSafely(player)) return;
 		mc.gameMode.handleContainerInput(0, this.equipSwapSlot,
 				this.equipDestSlot >= 0 ? this.equipDestSlot : player.getInventory().getSelectedSlot(),
 				ContainerInput.SWAP, player);
@@ -318,6 +313,13 @@ public class NamingExecutor {
 
 	private Result tickOpenAnvil(Minecraft mc, LocalPlayer player) {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		// a foreign menu holding a carried stack must not be auto-closed by the
+		// server when our anvil opens: resolve it first, or refuse to open
+		if (!this.openSent && player.containerMenu != player.inventoryMenu
+				&& !player.containerMenu.getCarried().isEmpty()) {
+			if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return failed("cursor-full");
+			return Result.RUNNING;
+		}
 		if (player.containerMenu instanceof AnvilMenu menu) {
 			if (!this.openSent) {
 				// an anvil already open BEFORE our use packet is not ours (the
@@ -450,7 +452,7 @@ public class NamingExecutor {
 	/** {@code mc} is unused (kept for call-site parity) — audited 2026-09-19. */
 	private Result tickClose(Minecraft mc, LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) {
-			player.closeContainer();
+			Interactions.closeMenuSafely(player);
 			return Result.RUNNING;
 		}
 		this.resultInvSlot = findNamedTag(player);
@@ -558,7 +560,7 @@ public class NamingExecutor {
 		// a leftover open menu would reject the swap click; close it first so the
 		// previously swapped item always makes it back to the selected hotbar slot
 		if (player.containerMenu != player.inventoryMenu) {
-			player.closeContainer();
+			Interactions.closeMenuSafely(player);
 			return Result.RUNNING;
 		}
 		if (!this.restoreSwapped) {

@@ -7,6 +7,7 @@ import net.minecraft.network.protocol.game.ServerboundSwingPacket;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.EntityHitResult;
 
 /** Small packet-level player actions shared between core and exec. */
@@ -27,5 +28,47 @@ public final class Interactions {
 	public static void selectHotbarSlot(LocalPlayer player, int slot) {
 		player.getInventory().setSelectedSlot(slot);
 		player.connection.send(new ServerboundSetCarriedItemPacket(slot));
+	}
+
+	/** Whether a stack on the container cursor can be returned to the 36-slot
+	 * inventory (mirrors Inventory.add: same-item partial stacks first, then empty
+	 * slots). The server auto-closes the previous menu when a new one opens and
+	 * DROPS a carried stack that does not fit. */
+	public static boolean hasRoomForCarried(LocalPlayer player) {
+		ItemStack carried = player.containerMenu.getCarried();
+		if (carried.isEmpty()) return true;
+		int remaining = carried.getCount();
+		var inventory = player.getInventory();
+		for (int i = 0; i < 36; i++) {
+			ItemStack slot = inventory.getItem(i);
+			if (slot.isEmpty()) return true;
+			if (ItemStack.isSameItemSameComponents(slot, carried)) {
+				int room = slot.getMaxStackSize() - slot.getCount();
+				if (room > 0) {
+					remaining -= room;
+					if (remaining <= 0) return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/** Closes the open container only when its carried stack can be returned; with a
+	 * full inventory, closing (or letting the server auto-close it) would drop it.
+	 * @return true when no menu is open or it was closed safely */
+	public static boolean closeMenuSafely(LocalPlayer player) {
+		if (player.containerMenu == player.inventoryMenu) return true;
+		if (!hasRoomForCarried(player)) return false;
+		player.closeContainer();
+		return true;
+	}
+
+	/** Resolves a dirty cursor before opening another menu: closes the current menu
+	 * only when the server can return the stack; false means "do not open a menu"
+	 * (the server would auto-close this one and drop the stack). */
+	public static boolean resolveDirtyCursorBeforeMenuOpen(LocalPlayer player) {
+		if (player.containerMenu == player.inventoryMenu) return true;
+		if (player.containerMenu.getCarried().isEmpty()) return true;
+		return closeMenuSafely(player);
 	}
 }

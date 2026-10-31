@@ -618,7 +618,7 @@ public final class RerollController {
 		} else if (strayChestTicks > 0) {
 			strayChestTicks--;
 			if (player.containerMenu instanceof ChestMenu) {
-				player.closeContainer();
+				Interactions.closeMenuSafely(player);
 			}
 		}
 
@@ -1600,7 +1600,7 @@ public final class RerollController {
 			// a leftover non-merchant menu (e.g. anvil from naming) blocks the
 			// villager interaction; clear it before retrying
 			if (player.containerMenu != player.inventoryMenu) {
-				player.closeContainer();
+				Interactions.closeMenuSafely(player);
 				return;
 			}
 			if (!lockInteracted) {
@@ -2356,6 +2356,9 @@ public final class RerollController {
 
 	private static boolean interactVillager(Minecraft client, Villager villager) {
 		if (client.gameMode == null || client.player == null) return false;
+		// opening the merchant menu auto-closes the previous one: never do that with
+		// a carried stack the inventory cannot take, or the server drops it
+		if (!Interactions.resolveDirtyCursorBeforeMenuOpen(client.player)) return false;
 		return Interactions.interactEntity(client, client.player, villager) == InteractionResult.SUCCESS;
 	}
 
@@ -2605,7 +2608,7 @@ public final class RerollController {
 	 * menu a depositor may be using or an anvil mid-naming. */
 	private static void closeMerchantMenuIfOpen(Minecraft client) {
 		if (client.player != null && client.player.containerMenu instanceof MerchantMenu) {
-			client.player.closeContainer();
+			Interactions.closeMenuSafely(client.player);
 		}
 	}
 
@@ -3075,17 +3078,11 @@ public final class RerollController {
 			depositor = null;
 		}
 		// a manual stop can land mid-naming (anvil open) or mid-deposit (chest
-		// open): unlike the pipeline paths (which only clear merchant menus), a
-		// stop must tear down whatever container is open — but NEVER with a stack
-		// on the cursor: the server would drop it when the inventory is full.
-		// Leave such a menu for the player to resolve.
+		// open): clear it only when the cursor stack can be returned (the helper
+		// leaves it otherwise, so the server cannot drop it on the next menu open)
 		{
 			Minecraft closeClient = Minecraft.getInstance();
-			if (closeClient.player != null
-					&& closeClient.player.containerMenu != closeClient.player.inventoryMenu
-					&& closeClient.player.containerMenu.getCarried().isEmpty()) {
-				closeClient.player.closeContainer();
-			}
+			if (closeClient.player != null) Interactions.closeMenuSafely(closeClient.player);
 		}
 		detectionPending = false;
 		lockInteracted = false;

@@ -1,6 +1,7 @@
 package dev.trademaster.exec;
 
 import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.core.Interactions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -80,7 +81,8 @@ public final class DispenserCheck {
 				}
 				// a leftover menu of unknown origin would swallow the click
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return Result.FAILED;
+					Interactions.closeMenuSafely(player);
 					return Result.RUNNING;
 				}
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.pos), Direction.UP, this.pos, false);
@@ -143,7 +145,7 @@ public final class DispenserCheck {
 		boolean ours = menu.containerId == this.openedContainerId
 				|| (this.openedContainerId < 0 && this.state == State.WAIT_MENU);
 		if (!ours) return;
-		player.closeContainer();
+		Interactions.closeMenuSafely(player);
 	}
 
 	/** Releases an abandoned check (the gate was disabled mid-flight): closes the container
