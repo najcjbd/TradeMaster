@@ -412,6 +412,11 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			if (!this.dirty) return false;
 			String value = this.field.getValue().trim();
 			if (value.isEmpty()) return false;
+			// a single alias above the anvil's 50-char budget can never name a villager
+			if (value.length() > 50) {
+				this.conflictKey = "trademaster.alias.too_long";
+				return false;
+			}
 			String conflict = conflictKey(this.id, value);
 			if (conflict != null) {
 				// keep dirty: the collision may be resolved by editing ANOTHER row, and

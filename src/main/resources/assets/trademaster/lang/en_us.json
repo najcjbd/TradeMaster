@@ -30,6 +30,7 @@
   "trademaster.column.alias": "Alias (blank = default name)",
   "trademaster.alias.duplicate_alias": "Duplicate: another enchantment already uses this alias — not saved",
   "trademaster.alias.duplicate_name": "Duplicate: another enchantment already has this name or registry path — not saved",
+  "trademaster.alias.too_long": "Too long: an anvil name is capped at 50 characters — not saved",
   "trademaster.naming_skip.inventory_full": "inventory full",
   "trademaster.naming_skip.timeout": "timeout",
   "trademaster.naming_skip.failed": "failed: %s",

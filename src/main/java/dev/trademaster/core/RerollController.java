@@ -1554,8 +1554,13 @@ public final class RerollController {
 			lockSlotPrepared = true;
 		}
 		if (phaseTimedOut(20 * 20)) {
-			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
-			return;
+			// a click already sent must reach its verdict: the executor's own stage
+			// waits are bounded well under this timeout, and a bare stop would leave
+			// a possibly-locked villager unvouchered (and re-buyable next run)
+			if (lockExecutor == null || !lockExecutor.purchaseSent()) {
+				stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+				return;
+			}
 		}
 		if (s.villager == null || !s.villager.isAlive()) {
 			// judge by the executor's actual state: lockPurchaseInitiated is set at
@@ -3087,10 +3092,14 @@ public final class RerollController {
 		}
 		// a manual stop can land mid-naming (anvil open) or mid-deposit (chest
 		// open): unlike the pipeline paths (which only clear merchant menus), a
-		// stop must tear down whatever container is open
+		// stop must tear down whatever container is open — but NEVER with a stack
+		// on the cursor: the server would drop it when the inventory is full.
+		// Leave such a menu for the player to resolve.
 		{
 			Minecraft closeClient = Minecraft.getInstance();
-			if (closeClient.player != null && closeClient.player.containerMenu != closeClient.player.inventoryMenu) {
+			if (closeClient.player != null
+					&& closeClient.player.containerMenu != closeClient.player.inventoryMenu
+					&& closeClient.player.containerMenu.getCarried().isEmpty()) {
 				closeClient.player.closeContainer();
 			}
 		}
