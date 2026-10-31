@@ -50,18 +50,29 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
-	void basePriceAsSalePriceRoundTripsAndDefaultsToBase() {
-		c().basePriceAsSalePrice = false;
+	void discountedPriceAsSalePriceRoundTripsAndDefaultsOff() {
+		c().discountedPriceAsSalePrice = true;
 		JsonObject root = ConfigTest.write(c());
+		assertTrue(root.getAsJsonObject("mechanism").get("discountedPriceAsSalePrice").getAsBoolean());
+		// downgrade compatibility mirror: older builds read the INVERSE key
 		assertFalse(root.getAsJsonObject("mechanism").get("basePriceAsSalePrice").getAsBoolean());
 
-		// absent key (older file) keeps the default: base price
-		c().basePriceAsSalePrice = true;
+		// absent keys keep the CURRENT value (the loader's fallback convention); the
+		// model default itself is false
+		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
-		assertTrue(c().basePriceAsSalePrice);
+		assertFalse(c().discountedPriceAsSalePrice);
 
 		ConfigTest.read(c(), root);
-		assertFalse(c().basePriceAsSalePrice);
+		assertTrue(c().discountedPriceAsSalePrice);
+
+		// migration from the old "base price as sale" option
+		c().discountedPriceAsSalePrice = true;
+		ConfigTest.read(c(), parse("{\"mechanism\":{\"basePriceAsSalePrice\":true}}"));
+		assertFalse(c().discountedPriceAsSalePrice);
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"mechanism\":{\"basePriceAsSalePrice\":false}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
 	}
 
 	@Test

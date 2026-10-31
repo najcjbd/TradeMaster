@@ -72,6 +72,11 @@ public class NamingExecutor {
 	/** Hotbar slot the EQUIP swap moved the tag INTO. The RESTORE swap must use the
 	 * same button even if the player changes the selection meanwhile. */
 	private int equipDestSlot = -1;
+	/** The stack the EQUIP swap moved OUT of {@code equipDestSlot} (copy), so the
+	 * RESTORE can prove the swap-back actually landed. */
+	private ItemStack equipDisplaced = ItemStack.EMPTY;
+	/** One retry spent on the RESTORE swap-back. */
+	private int restoreAttempts = 0;
 	/** Hotbar slot selected before EQUIP switched to a hotbar name tag; restored afterwards. */
 	private int equipOriginalSlot = -1;
 	/** Whether the RESTORE swap-back click has been sent. */
@@ -273,6 +278,8 @@ public class NamingExecutor {
 		this.restoreSwapped = true;
 		this.equipSwapSlot = -1;
 		this.equipDestSlot = -1;
+		this.equipDisplaced = ItemStack.EMPTY;
+		this.restoreAttempts = 0;
 	}
 
 	private void next(Stage stage) {
@@ -484,6 +491,8 @@ public class NamingExecutor {
 			}
 			this.equipSwapSlot = -1;
 			this.equipDestSlot = -1;
+			this.equipDisplaced = ItemStack.EMPTY;
+			this.restoreAttempts = 0;
 			this.look.reset();
 			next(Stage.APPLY);
 			return Result.RUNNING;
@@ -497,6 +506,8 @@ public class NamingExecutor {
 			// hotbar button even if the player changes the selection meanwhile.
 			this.equipSwapSlot = this.resultInvSlot;
 			this.equipDestSlot = player.getInventory().getSelectedSlot();
+			this.equipDisplaced = player.getInventory().getItem(this.equipDestSlot).copy();
+			this.restoreAttempts = 0;
 			mc.gameMode.handleContainerInput(0, this.resultInvSlot,
 					this.equipDestSlot, ContainerInput.SWAP, player);
 			return Result.RUNNING;
@@ -585,8 +596,26 @@ public class NamingExecutor {
 			return Result.RUNNING;
 		}
 		if (this.stageTicks < 4) return Result.RUNNING;
+		// prove the swap-back landed: a rejected click leaves the displaced item in
+		// the source slot and the destination empty (the item is safe, but the hand
+		// would stay empty until the next tool fetch)
+		int dest = this.equipDestSlot >= 0 ? this.equipDestSlot : player.getInventory().getSelectedSlot();
+		ItemStack destNow = player.getInventory().getItem(dest);
+		boolean landed = this.equipDisplaced.isEmpty()
+				|| (ItemStack.isSameItemSameComponents(destNow, this.equipDisplaced)
+						&& destNow.getCount() == this.equipDisplaced.getCount());
+		if (!landed && this.restoreAttempts < 1
+				&& ItemStack.isSameItemSameComponents(
+						player.getInventory().getItem(this.equipSwapSlot), this.equipDisplaced)) {
+			this.restoreAttempts++;
+			mc.gameMode.handleContainerInput(0, this.equipSwapSlot, dest, ContainerInput.SWAP, player);
+			this.stageTicks = 0;
+			return Result.RUNNING;
+		}
 		this.equipSwapSlot = -1;
 		this.equipDestSlot = -1;
+		this.equipDisplaced = ItemStack.EMPTY;
+		this.restoreAttempts = 0;
 		return this.pendingFail != null ? Result.FAILED : Result.DONE;
 	}
 

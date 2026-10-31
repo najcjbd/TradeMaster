@@ -119,6 +119,9 @@ public final class RerollController {
 			dev.trademaster.config.NonBookDisposal.CHEST_THEN_STOP;
 	private static @Nullable Float snapCurseDropYaw = null;
 	private static @Nullable Float snapCurseDropPitch = null;
+	/** The dispenser gate's position at run start: mid-run edits apply to the next run,
+	 * so a check can never authorise a summon for a position it did not scan. */
+	private static @Nullable BlockPos snapDispenserPos = null;
 	private static @Nullable BlockPos snapGrindstonePos = null;
 	/** Whether the double-coordinate staging region was complete when the run
 	 * started: losing it mid-run stops the run (see the check in tick()). */
@@ -345,6 +348,7 @@ public final class RerollController {
 		snapRigTarget = rigTargetDefinition(config);
 		snapGrindstoneEnabled = config.grindstoneEnabled;
 		snapGrindstonePos = config.grindstonePos;
+		snapDispenserPos = config.dispenserPos;
 		snapChestPositions = java.util.List.copyOf(config.chestPositions);
 		snapNonBookDisposal = config.nonBookDisposal;
 		snapCurseDropYaw = config.curseDropYaw;
@@ -907,7 +911,7 @@ public final class RerollController {
 	}
 
 	static boolean dispenserReady() {
-		var pos = TradeMasterConfig.INSTANCE.dispenserPos;
+		var pos = snapDispenserPos;
 		if (pos == null) {
 			// the gate is off: drop any in-flight check (its open container would swallow the
 			// button press) and the pending wait, so neither lingers into a later check
@@ -2193,6 +2197,15 @@ public final class RerollController {
 				namingExecutor.abortCleanly();
 				namingExecutor = null;
 				SmoothRotation.reset();
+				// the abort refused to close an anvil whose carried stack the inventory
+				// cannot take: continuing would leave that screen open through SEND_AWAY
+				// and the next menu open would drop the stack. Stop with the real cause.
+				if (player.containerMenu != player.inventoryMenu
+						&& !player.containerMenu.getCarried().isEmpty()
+						&& !Interactions.hasRoomForCarried(player)) {
+					stop(Component.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+					return;
+				}
 				closeMerchantMenuIfOpen(Minecraft.getInstance());
 				debug("naming failed: " + reason);
 				notice(Component.translatable("trademaster.message.naming_skipped",
@@ -2216,6 +2229,14 @@ public final class RerollController {
 			// a bare discard would strand the displaced hand item in the tag slot
 			namingExecutor.abortCleanly();
 			namingExecutor = null;
+			// same rule as the FAILED branch: with an unreturnable cursor the anvil
+			// stays open; do not continue into SEND_AWAY and a later menu-open drop
+			if (player.containerMenu != player.inventoryMenu
+					&& !player.containerMenu.getCarried().isEmpty()
+					&& !Interactions.hasRoomForCarried(player)) {
+				stop(Component.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				return;
+			}
 			closeMerchantMenuIfOpen(Minecraft.getInstance());
 			notice(Component.translatable("trademaster.message.naming_skipped",
 					Component.translatable("trademaster.naming_skip.timeout")));
@@ -2921,9 +2942,9 @@ public final class RerollController {
 		// enchanted book": a custom spec (or a custom good, whose result is any item)
 		// must be judged against what was actually matched
 		if (!trade.purchase().costsMatch(OfferCosts.slots(offer))) return false;
-		// with the charged-price basis the base slots can stay identical while the
+		// with the discounted-price basis the base slots can stay identical while the
 		// actual price (cure/demand) changed: never lock at a price the budget never saw
-		if (!TradeMasterConfig.INSTANCE.basePriceAsSalePrice
+		if (TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
 				&& TradeMatcher.offerPrice(offer) != trade.purchase().price()) return false;
 		return trade.purchase().resultMatches(offer.getResult());
 	}
@@ -3082,6 +3103,7 @@ public final class RerollController {
 		snapNonBookDisposal = dev.trademaster.config.NonBookDisposal.CHEST_THEN_STOP;
 		snapCurseDropYaw = null;
 		snapCurseDropPitch = null;
+		snapDispenserPos = null;
 		sessionDimension = null;
 		regionFallbackPending = false;
 		// a stopped pipeline sends no more interacts: the residual suppression

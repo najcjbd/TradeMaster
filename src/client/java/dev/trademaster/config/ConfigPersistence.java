@@ -200,7 +200,9 @@ public final class ConfigPersistence {
 		mechanism.addProperty("detection", c.detectionMode.name());
 		mechanism.addProperty("reserveCheaperTraders", c.reserveCheaperTraders);
 		mechanism.addProperty("minLockEmeralds", c.minLockEmeralds);
-		mechanism.addProperty("basePriceAsSalePrice", c.basePriceAsSalePrice);
+		mechanism.addProperty("discountedPriceAsSalePrice", c.discountedPriceAsSalePrice);
+		// downgrade compatibility: older builds read the inverse key (base as sale)
+		mechanism.addProperty("basePriceAsSalePrice", !c.discountedPriceAsSalePrice);
 		mechanism.addProperty("timeoutEnabled", c.timeoutEnabled);
 		mechanism.addProperty("timeoutTicks", DurationParser.format(c.timeoutTicks));
 		mechanism.addProperty("phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);
@@ -350,7 +352,13 @@ public final class ConfigPersistence {
 			c.detectionMode = readEnum(mechanism, "detection", c.detectionMode);
 			c.reserveCheaperTraders = readBool(mechanism, "reserveCheaperTraders", c.reserveCheaperTraders);
 			c.minLockEmeralds = readInt(mechanism, "minLockEmeralds", c.minLockEmeralds);
-			c.basePriceAsSalePrice = readBool(mechanism, "basePriceAsSalePrice", c.basePriceAsSalePrice);
+			if (mechanism.has("discountedPriceAsSalePrice")) {
+				c.discountedPriceAsSalePrice = readBool(mechanism, "discountedPriceAsSalePrice",
+						c.discountedPriceAsSalePrice);
+			} else if (mechanism.has("basePriceAsSalePrice")) {
+				// migrate the old "base price as sale" option: true meant discounted OFF
+				c.discountedPriceAsSalePrice = !readBool(mechanism, "basePriceAsSalePrice", true);
+			}
 			c.timeoutEnabled = readBool(mechanism, "timeoutEnabled", c.timeoutEnabled);
 			c.timeoutTicks = readDuration(mechanism, "timeoutTicks", c.timeoutTicks);
 			c.phaseTimeoutsEnabled = readBool(mechanism, "phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);

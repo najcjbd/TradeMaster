@@ -247,11 +247,11 @@ public class TradeMatcher {
 
 	/** The price the program treats as this offer's sale price: the BASE cost by
 	 * default (historic behaviour, before discounts/demand), or the actually charged
-	 * cost when {@code basePriceAsSalePrice} is off. */
+	 * cost when {@code discountedPriceAsSalePrice} is on. */
 	public static int offerPrice(MerchantOffer offer) {
-		return TradeMasterConfig.INSTANCE.basePriceAsSalePrice
-				? offer.getBaseCostA().getCount()
-				: offer.getCostA().getCount();
+		return TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
+				? offer.getCostA().getCount()
+				: offer.getBaseCostA().getCount();
 	}
 
 	/** Whether the enchantment currently exists in the live registry and carries

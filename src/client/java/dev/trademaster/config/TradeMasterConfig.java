@@ -30,10 +30,10 @@ public final class TradeMasterConfig {
 	// matching / locking
 	public boolean reserveCheaperTraders = false;
 	public int minLockEmeralds = 1;
-	/** Treat the offer's BASE price (before discounts/demand) as its sale price for
-	 * matching, budgets and messages. Reading base is the historic behaviour; turn it
-	 * off to judge by the actually charged cost ({@code getCostA}). */
-	public boolean basePriceAsSalePrice = true;
+	/** Treat the offer's ACTUALLY CHARGED (discounted / demand-adjusted) price as its
+	 * sale price for matching, budgets and messages. Off by default: the base price is
+	 * used, matching the historic behaviour. Cannot be switched while a run is active. */
+	public boolean discountedPriceAsSalePrice = false;
 	public boolean timeoutEnabled = false;
 	public int timeoutTicks = 20 * 60 * 60;
 	/** Per-phase safety timeouts (profession/detection/execution). Default on. */
