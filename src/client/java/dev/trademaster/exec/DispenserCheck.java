@@ -81,7 +81,9 @@ public final class DispenserCheck {
 				}
 				// a leftover menu of unknown origin would swallow the click
 				if (player.containerMenu != player.inventoryMenu) {
-					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return Result.FAILED;
+					// wait for the player to free the cursor; don't report a healthy
+					// dispenser as failed just because a carried stack is stuck
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) return Result.RUNNING;
 					Interactions.closeMenuSafely(player);
 					return Result.RUNNING;
 				}
