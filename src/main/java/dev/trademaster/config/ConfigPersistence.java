@@ -884,11 +884,19 @@ public final class ConfigPersistence {
 		}
 	}
 
-	/** Whether the named object member is a JSON boolean (migration must not mistake
-	 * null/number/string for a valid value and skip a valid old key). */
+	/** Whether the named object member is a value {@code readBool} can read: a JSON
+	 * boolean or a case-insensitive "true"/"false" string (null/number/other strings
+	 * must not be mistaken for a valid value and skip a valid old key). */
 	private static boolean isBoolean(JsonObject o, String key) {
 		JsonElement e = o.get(key);
-		return e != null && e.isJsonPrimitive() && e.getAsJsonPrimitive().isBoolean();
+		if (e == null || !e.isJsonPrimitive()) return false;
+		JsonPrimitive p = e.getAsJsonPrimitive();
+		if (p.isBoolean()) return true;
+		if (p.isString()) {
+			String s = p.getAsString();
+			return s.equalsIgnoreCase("true") || s.equalsIgnoreCase("false");
+		}
+		return false;
 	}
 
 	/** Reads a tick count stored as a number or as a duration string like "1h30min". */

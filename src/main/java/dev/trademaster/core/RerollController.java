@@ -985,9 +985,9 @@ public final class RerollController {
 				return false;
 			}
 			case MENU_BLOCKED -> {
-				// a container the player opened is holding an unreturnable cursor stack
+				// a container the player opened is blocking the check (not a dispenser failure)
 				releaseCheck();
-				stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				stop(McText.translatable("trademaster.message.menu_blocked"), ChatFormatting.RED);
 				return false;
 			}
 			case FAILED -> {

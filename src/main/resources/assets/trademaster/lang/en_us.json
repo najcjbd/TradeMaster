@@ -97,6 +97,7 @@
   "trademaster.message.player_died": "Player died, stopping",
   "trademaster.message.timeout": "Timed out, stopping",
   "trademaster.message.cursor_full": "An item is on the cursor and the inventory is full — free a slot first",
+  "trademaster.message.menu_blocked": "An open container is blocking the check — close it and restart",
   "trademaster.message.lectern_lost": "No lectern available, stopping",
   "trademaster.message.place_failed": "Failed to place the lectern after several attempts, stopping",
   "trademaster.message.material_short": "Not enough materials, stopping",

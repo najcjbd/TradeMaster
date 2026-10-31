@@ -56,6 +56,7 @@ class ConfigRoundTripTest {
 
 		c().discountedPriceAsSalePrice = true;
 		JsonObject root = ConfigTest.write(c());
+		assertEquals(2, root.get("configVersion").getAsInt());
 		assertTrue(root.getAsJsonObject("mechanism").get("discountedPriceAsSalePrice").getAsBoolean());
 		// downgrade compatibility mirror: older builds read the INVERSE key
 		assertFalse(root.getAsJsonObject("mechanism").get("basePriceAsSalePrice").getAsBoolean());
@@ -102,6 +103,14 @@ class ConfigRoundTripTest {
 		// a flat root (no mechanism section) still migrates the old key
 		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"configVersion\":1,\"basePriceAsSalePrice\":false}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		// string booleans are readable too (readBool accepts "true"/"false")
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":1,\"mechanism\":{\"basePriceAsSalePrice\":\"false\"}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{"
+				+ "\"discountedPriceAsSalePrice\":\"true\",\"basePriceAsSalePrice\":false}}"));
 		assertTrue(c().discountedPriceAsSalePrice);
 	}
 
