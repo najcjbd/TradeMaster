@@ -190,7 +190,6 @@ public class GrindstoneRecycler implements BookDisposal {
 				}
 				if (player.containerMenu != player.inventoryMenu) {
 					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
-						restoreHotbarSelection(player);
 						return StepResult.failed(McText.translatable("trademaster.message.cursor_full"));
 					}
 					Interactions.closeMenuSafely(player);
@@ -418,7 +417,6 @@ public class GrindstoneRecycler implements BookDisposal {
 			case CHEST_SEEK -> {
 				if (player.containerMenu != player.inventoryMenu) {
 					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
-						restoreHotbarSelection(player);
 						return StepResult.failed(McText.translatable("trademaster.message.cursor_full"));
 					}
 					Interactions.closeMenuSafely(player);

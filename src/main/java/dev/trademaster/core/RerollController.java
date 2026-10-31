@@ -152,6 +152,9 @@ public final class RerollController {
 	private static int professionHealCycles = 0;
 	/** Consecutive ticks of rejected villager interactions in CHECK_TRADE. */
 	private static int interactFailTicks = 0;
+	/** Consecutive ticks the open container's carried stack could not be returned; a
+	 * stale client prediction can clear itself, so stop only if this persists. */
+	private static int cursorBlockTicks = 0;
 	/** Consecutive ticks the CHECK_TRADE villager read as non-librarian (re-claim grace). */
 	private static int nonLibrarianTicks = 0;
 	private static boolean urgentProfessionHeal = false;
@@ -402,6 +405,7 @@ public final class RerollController {
 		sessionDimension = mc.level == null ? null : McRegistry.keyId(mc.level.dimension());
 		runTicks = 0;
 		professionHealCycles = 0;
+		cursorBlockTicks = 0;
 		strayChestTicks = 0;
 		sneakPaused = false;
 		xpNamingPaused = false;
@@ -965,6 +969,13 @@ public final class RerollController {
 						ChatFormatting.RED);
 				return false;
 			}
+			case CURSOR_BLOCKED -> {
+				// the check was blocked by a carried stack the inventory cannot take:
+				// report the real cause instead of blaming the dispenser
+				releaseCheck();
+				stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				return false;
+			}
 			case FAILED -> {
 				// the open was refused or timed out: a few times may be lag, for ever is a
 				// walled-off / broken dispenser. releaseCheck also closes a menu whose
@@ -1161,6 +1172,7 @@ public final class RerollController {
 		professionHealCycles = 0;
 		interactFailTicks = 0;
 		nonLibrarianTicks = 0;
+		cursorBlockTicks = 0;
 		urgentProfessionHeal = false;
 		slowInteractDelay = 0;
 		if (McClient.screen(client) instanceof net.minecraft.client.gui.screens.inventory.MerchantScreen) {
@@ -1319,9 +1331,14 @@ public final class RerollController {
 		if (player.containerMenu != player.inventoryMenu
 				&& !player.containerMenu.getCarried().isEmpty()
 				&& !Interactions.hasRoomForCarried(player)) {
-			stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+			// a stale predicted-full inventory can clear itself; stop only if it persists
+			if (++cursorBlockTicks >= 3) {
+				stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				return;
+			}
 			return;
 		}
+		cursorBlockTicks = 0;
 		if (detectionPending) {
 			// wait for the armed detection; if no offers arrive in time the
 			// attempt is stale (villager not ready, menu didn't open...) —
@@ -1460,15 +1477,6 @@ public final class RerollController {
 			finishLockExhaustion(client, player);
 			return;
 		}
-		// same cursor rule as CHECK_TRADE, but never while a purchase is in flight:
-		// its executor must reach a verdict (and voucher the uncertain purchase)
-		if ((lockExecutor == null || !lockExecutor.purchaseSent())
-				&& player.containerMenu != player.inventoryMenu
-				&& !player.containerMenu.getCarried().isEmpty()
-				&& !Interactions.hasRoomForCarried(player)) {
-			stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
-			return;
-		}
 		if (s.matchedTrade != null) {
 			// a mid-run maxPrice drop or level raise leaves the pending match outside
 			// the edited budget. Measured with the SAME ruler tryMatch admitted with:
@@ -1580,6 +1588,20 @@ public final class RerollController {
 				return;
 			}
 		}
+		// the deposit/edited-out recoveries above have run; now a carried stack that
+		// cannot be returned blocks the interact. Never applies while a purchase is in
+		// flight: its executor must reach a verdict (and voucher the purchase).
+		if ((lockExecutor == null || !lockExecutor.purchaseSent())
+				&& player.containerMenu != player.inventoryMenu
+				&& !player.containerMenu.getCarried().isEmpty()
+				&& !Interactions.hasRoomForCarried(player)) {
+			if (++cursorBlockTicks >= 3) {
+				stop(McText.translatable("trademaster.message.cursor_full"), ChatFormatting.RED);
+				return;
+			}
+			return;
+		}
+		cursorBlockTicks = 0;
 		if (s.villager == null || !s.villager.isAlive()) {
 			// judge by the executor's actual state: lockPurchaseInitiated is set at
 			// executor construction, before any click went out. Once the click IS out
@@ -3131,6 +3153,7 @@ public final class RerollController {
 		professionHealCycles = 0;
 		interactFailTicks = 0;
 		nonLibrarianTicks = 0;
+		cursorBlockTicks = 0;
 		urgentProfessionHeal = false;
 		placementFailRetries = 0;
 		lockNoMenuTicks = 0;
