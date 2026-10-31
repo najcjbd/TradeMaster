@@ -206,8 +206,14 @@ public class ChestDepositor implements BookDisposal {
 					// cannot know WHICH chest it is: close it and open the bound one
 					// ourselves, or the QUICK_MOVE clicks could land in the wrong
 					// container (a non-chest menu would swallow books into its own
-					// slots, e.g. the merchant screen's payment slots)
-					player.closeContainer();
+					// slots, e.g. the merchant screen's payment slots).
+					// A dirty cursor whose stack the inventory cannot take must NOT
+					// open a new menu: the server would auto-close this one and drop it.
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
+						restoreHotbarSelection(player);
+						return StepResult.failed(McText.translatable("trademaster.message.cursor_full"));
+					}
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				if (!this.look.tick(player, Vec3.atCenterOf(this.chests.get(this.index)))) {
@@ -239,7 +245,7 @@ public class ChestDepositor implements BookDisposal {
 					this.state = State.DEPOSIT;
 				} else if (player.containerMenu != player.inventoryMenu) {
 					// something else opened instead of the chest: close it and retry
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.state = State.SEEK;
 				} else if (++this.openWait > 60) {
 					if (this.openRetries < 1) {
@@ -272,7 +278,7 @@ public class ChestDepositor implements BookDisposal {
 					this.noProgressTicks = 0;
 					this.emptyConfirmTicks = 0;
 					this.switchedSlot = false;
-					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+					if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 					this.state = State.SEEK;
 					return StepResult.RUNNING;
 				}
@@ -313,7 +319,7 @@ public class ChestDepositor implements BookDisposal {
 						// normally there. (EVALUATE does not count the offhand, so it
 						// must not be used here.)
 						this.offhandSwapped = false;
-						if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+						if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 						return advance(mc, player);
 					} else {
 						return StepResult.RUNNING;
@@ -324,7 +330,7 @@ public class ChestDepositor implements BookDisposal {
 					// the menu opened in AWAIT_OPEN is gone or was REPLACED (another ChestMenu
 					// has a different containerId): a click now would feed the books to a
 					// container we never bound. Close it and let EVALUATE/advance re-decide
-					if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+					if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 					this.state = State.EVALUATE;
 					return StepResult.RUNNING;
 				}
@@ -366,7 +372,7 @@ public class ChestDepositor implements BookDisposal {
 					// closing earlier would strand that correction and leave hasFreeSlot
 					// reading a slot the server never freed.
 					if (++this.emptyConfirmTicks < 20) return StepResult.RUNNING;
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.state = State.EVALUATE;
 					return StepResult.RUNNING;
 				}
@@ -391,7 +397,7 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case EVALUATE -> {
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				if (countDisposables(player) == 0) {
@@ -412,7 +418,7 @@ public class ChestDepositor implements BookDisposal {
 			}
 			case DROP_STAGE -> {
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				Slot slot = findDroppableSlot(player);
@@ -577,7 +583,7 @@ public class ChestDepositor implements BookDisposal {
 	/** {@code mc} is unused (kept for call-site parity) — audited 2026-09-19. */
 	private StepResult advance(Minecraft mc, LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) {
-			player.closeContainer();
+			Interactions.closeMenuSafely(player);
 		}
 		this.index++;
 		if (this.index >= this.chests.size()) {
@@ -608,10 +614,9 @@ public class ChestDepositor implements BookDisposal {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (player == null) return;
-		// never close with a stack on the cursor: the server would drop it when
-		// the inventory is full; leave the menu for the player to resolve
-		if (player.containerMenu != player.inventoryMenu
-				&& player.containerMenu.getCarried().isEmpty()) player.closeContainer();
+		// the helper closes only when the server can return the cursor stack; with a
+		// full inventory the menu is left for the player instead of dropping the item
+		Interactions.closeMenuSafely(player);
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 	}

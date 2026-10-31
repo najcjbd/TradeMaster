@@ -398,12 +398,12 @@ public final class ConfigPersistence {
 
 		JsonObject positions = sectionOrRoot(root, "positions");
 		if (positions != null) {
-			c.lecternPos = readPos(positions.get("lectern"));
-			c.summonButtonPos = readPos(positions.get("summonButton"));
-			c.sendAwayButtonPos = readPos(positions.get("sendAwayButton"));
-			c.dispenserPos = readPos(positions.get("dispenser"));
-			c.villagerRegionOrigin = readPos(positions.get("villagerRegionOrigin"));
-			c.villagerRegionDelta = readPos(positions.get("villagerRegionDelta"));
+			if (positions.has("lectern")) c.lecternPos = readPos(positions.get("lectern"));
+			if (positions.has("summonButton")) c.summonButtonPos = readPos(positions.get("summonButton"));
+			if (positions.has("sendAwayButton")) c.sendAwayButtonPos = readPos(positions.get("sendAwayButton"));
+			if (positions.has("dispenser")) c.dispenserPos = readPos(positions.get("dispenser"));
+			if (positions.has("villagerRegionOrigin")) c.villagerRegionOrigin = readPos(positions.get("villagerRegionOrigin"));
+			if (positions.has("villagerRegionDelta")) c.villagerRegionDelta = readPos(positions.get("villagerRegionDelta"));
 			c.villagerSphereRadius = Math.max(1, Math.min(64,
 					readInt(positions, "villagerSphereRadius", c.villagerSphereRadius)));
 			JsonElement chests = positions.get("chests");
@@ -452,11 +452,11 @@ public final class ConfigPersistence {
 		if (grindstone != null) {
 			// see the naming branch: a flat file's single "enabled" must not drive both
 			if (grindstone != root) c.grindstoneEnabled = readBool(grindstone, "enabled", c.grindstoneEnabled);
-			c.grindstonePos = readPos(grindstone.get("pos"));
+			if (grindstone.has("pos")) c.grindstonePos = readPos(grindstone.get("pos"));
 			c.grindstoneOpenRetries = Math.min(Math.max(-1,
 					readInt(grindstone, "openRetries", c.grindstoneOpenRetries)), 999);
-			c.curseDropYaw = readFloat(grindstone.get("curseDropYaw"));
-			c.curseDropPitch = readFloat(grindstone.get("curseDropPitch"));
+			if (grindstone.has("curseDropYaw")) c.curseDropYaw = readFloat(grindstone.get("curseDropYaw"));
+			if (grindstone.has("curseDropPitch")) c.curseDropPitch = readFloat(grindstone.get("curseDropPitch"));
 			JsonElement customCurses = grindstone.get("customCurses");
 			if (customCurses != null && customCurses.isJsonArray()) {
 				c.customCurseEnchantments.clear();

@@ -189,7 +189,11 @@ public class GrindstoneRecycler implements BookDisposal {
 					return fail(player, "trademaster.message.grindstone_missing");
 				}
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
+						restoreHotbarSelection(player);
+						return StepResult.failed(McText.translatable("trademaster.message.cursor_full"));
+					}
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				if (!this.look.tick(player, Vec3.atCenterOf(this.grindstone))) {
@@ -212,7 +216,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					// only a menu that answers OUR use packet may be driven; SEEK
 					// closes everything else first, and openSent proves we sent one
 					if (!this.openSent) {
-						player.closeContainer();
+						Interactions.closeMenuSafely(player);
 						this.state = State.SEEK;
 						return StepResult.RUNNING;
 					}
@@ -228,7 +232,7 @@ public class GrindstoneRecycler implements BookDisposal {
 						this.state = State.SCAN;
 					}
 				} else if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.state = State.SEEK;
 				} else if (++this.openWait > 60) {
 					int maxRetries = TradeMasterConfig.INSTANCE.grindstoneOpenRetries;
@@ -272,7 +276,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				// counted once and reused: this branch runs every grind cycle tick
 				int enchantedBooks = Preconditions.countItem(player, Items.ENCHANTED_BOOK);
 				if (enchantedBooks == 0) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					undoOffhandStage(player);
 					restoreHotbarSelection(player);
 					return StepResult.DONE;
@@ -413,7 +417,11 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 			case CHEST_SEEK -> {
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
+						restoreHotbarSelection(player);
+						return StepResult.failed(McText.translatable("trademaster.message.cursor_full"));
+					}
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				if (this.chestIndex >= this.chests.size()) {
@@ -447,7 +455,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.stashConfirmTicks = 0;
 					this.state = State.CHEST_MOVE;
 				} else if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.state = State.CHEST_SEEK;
 				} else if (++this.openWait > 60) {
 					// never opened: treat the chest as unusable and try the next
@@ -465,7 +473,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				// the recorded index belongs to the chest WE opened, never to this one
 				if (player.containerMenu.containerId != this.stashContainerId) {
 					this.stashSlot = -1;
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.look.reset();
 					this.state = State.CHEST_SEEK;
 					return StepResult.RUNNING;
@@ -475,7 +483,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				// then be out of range — treat it as a menu change, don't crash on get()
 				if (this.stashSlot >= player.containerMenu.slots.size()) {
 					this.stashSlot = -1;
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.look.reset();
 					this.state = State.CHEST_SEEK;
 					return StepResult.RUNNING;
@@ -503,7 +511,7 @@ public class GrindstoneRecycler implements BookDisposal {
 				this.stashConfirmTicks = 0;
 				if (++this.waitTicks > 60) {
 					// the book never left the slot: chest full or rejecting
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					this.chestIndex++;
 					this.look.reset();
 					this.state = State.CHEST_SEEK;
@@ -517,7 +525,7 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 			case DROP_STAGE -> {
 				if (player.containerMenu != player.inventoryMenu) {
-					player.closeContainer();
+					Interactions.closeMenuSafely(player);
 					return StepResult.RUNNING;
 				}
 				int invSlot = -1;
@@ -629,7 +637,7 @@ public class GrindstoneRecycler implements BookDisposal {
 								// carry that menu's id and land in the wrong slots. Close
 								// it and resend on the next tick (the one-shot flag stays
 								// unspent, so the retry is not lost)
-								player.closeContainer();
+								Interactions.closeMenuSafely(player);
 								return StepResult.RUNNING;
 							}
 							this.dropStageResent = true;
@@ -734,10 +742,9 @@ public class GrindstoneRecycler implements BookDisposal {
 		Minecraft mc = Minecraft.getInstance();
 		var player = mc.player;
 		if (player == null) return;
-		// never close with a stack on the cursor: the server would drop it when
-		// the inventory is full; leave the menu for the player to resolve
-		if (player.containerMenu != player.inventoryMenu
-				&& player.containerMenu.getCarried().isEmpty()) player.closeContainer();
+		// the helper closes only when the server can return the cursor stack; with a
+		// full inventory the menu is left for the player instead of dropping the item
+		Interactions.closeMenuSafely(player);
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 	}
@@ -780,7 +787,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	}
 
 	private StepResult beginChestStash(net.minecraft.client.player.LocalPlayer player) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		this.chestIndex = 0;
 		this.stashSlot = -1;
 		this.state = State.CHEST_SEEK;
@@ -790,7 +797,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	}
 
 	private StepResult beginDrop(net.minecraft.client.player.LocalPlayer player) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		this.dropSlot = -1;
 		this.dropSent = false;
 		this.dropResent = false;
@@ -804,7 +811,7 @@ public class GrindstoneRecycler implements BookDisposal {
 
 	/** Back to the grindstone after a chest/drop detour. */
 	private StepResult toGrindstone(net.minecraft.client.player.LocalPlayer player) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		// the next SEEK opens (and binds) the grindstone again
 		this.openedContainerId = -1;
 		this.openSent = false;
@@ -816,7 +823,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	}
 
 	private StepResult fail(net.minecraft.client.player.LocalPlayer player, String key) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		// best effort: if the staging swap's sync has arrived, put the displaced item
 		// back before the run stops (a still-stale client leaves it for the player)
 		undoOffhandStage(player);
@@ -827,7 +834,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Same unwind as {@link #fail}, but lenient: the caller re-checks for a free
 	 * slot and only stops when the inventory is genuinely still full. */
 	private StepResult failedFull(net.minecraft.client.player.LocalPlayer player, String key) {
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 		return StepResult.failedFull(McText.translatable(key));
