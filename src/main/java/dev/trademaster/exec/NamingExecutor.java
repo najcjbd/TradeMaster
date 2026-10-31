@@ -272,6 +272,9 @@ public class NamingExecutor {
 		McClicks.click(mc.gameMode, 0, this.equipSwapSlot,
 				this.equipDestSlot >= 0 ? this.equipDestSlot : McPlayer.selectedSlot(player),
 				McClicks.Click.SWAP, player);
+		// stop-time cleanup may race a second caller (disconnect): never re-send
+		this.restoreSwapped = true;
+		this.equipSwapSlot = -1;
 		this.equipDestSlot = -1;
 	}
 
@@ -313,21 +316,22 @@ public class NamingExecutor {
 
 	private Result tickOpenAnvil(Minecraft mc, LocalPlayer player) {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-		// the stage limit runs BEFORE the menu branch: a foreign anvil left open
-		// must report "anvil-open", not fall through to the generic 200-tick cap
-		if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 		if (player.containerMenu instanceof AnvilMenu menu) {
 			if (!this.openSent) {
 				// an anvil already open BEFORE our use packet is not ours (the
-				// player's own, or another mod's): never rename in it. Wait for it
-				// to close; the stage timeout reports the failure instead.
+				// player's own, or another mod's): never rename in it. Bound THIS case
+				// so it reports "anvil-open" instead of the generic 200-tick cap.
+				if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 				return Result.RUNNING;
 			}
+			// OUR menu answering the use packet: adopt it even when a slow server
+			// delivers it after the 40-tick window (the stage cap still bounds it)
 			this.openedContainerId = menu.containerId;
 			this.openSent = false;
 			next(Stage.INSERT_TAG);
 			return Result.RUNNING;
 		}
+		if (config.phaseTimeoutsEnabled && this.stageTicks > 40) return failed("anvil-open");
 		// slow-mode pacing ticks on EVERY tick, deliberately before the 5-tick retry
 		// gate below: inside that gate it only counted once per 5 ticks, so a large
 		// interactDelay starved the retries and the stage died at its 40-tick cap

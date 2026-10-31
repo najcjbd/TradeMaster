@@ -203,6 +203,16 @@ public final class LecternRestock {
 			// nor any inventory lectern and report "lectern lost". Close the menu
 			// first; the next call takes the normal (menu-closed) path, where every
 			// change is synced and the swap is observed.
+			//
+			// The close must not happen with a stack on the cursor: the server
+			// returns/drops it (possibly on the ground when the inventory is full).
+			// Wait bounded for it to clear, then give up instead of risking the item.
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				if (++restockCarriedWaitTicks < RESTOCK_CARRIED_MAX_TICKS) return true;
+				restockCarriedWaitTicks = 0;
+				return false;
+			}
+			restockCarriedWaitTicks = 0;
 			for (int i = 0; i < 36; i++) {
 				if (player.getInventory().getItem(i).getItem() == work) {
 					player.closeContainer();

@@ -112,24 +112,37 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				.forEach(id -> this.addEntry(new AliasRow(id)));
 	}
 
-	/** Refusal key if enabling {@code id} now would make one of its deduction names
-	 * ambiguous with another ENABLED target/good. Uses the SAME check the alias editor
-	 * applies to a draft, including the registry path and nameHistory: enabling a row
-	 * that was prepared while disabled must not silently break the deduction index
-	 * (which drops every name shared by two ids). Returns null when the enable is safe. */
-	public static @Nullable String enableConflict(ResourceLocation id, boolean good) {
-		if (good) {
-			GoodSpec spec = TradeMasterConfig.INSTANCE.goodFor(id);
-			if (spec == null) return null;
-			String refusal = AliasRow.conflictKey(id, spec.displayName());
-			return refusal != null ? refusal : AliasRow.conflictKey(id, spec.path());
-		}
-		// exact key the index uses for a target's display name (not
-		// demandDisplayName, which prefers a same-id good)
+	/** Refusal key if enabling {@code target} now would make one of its deduction names
+	 * ambiguous with another ENABLED target/good. Uses the SAME keys the deduction index
+	 * would add (display name, raw registry path, and the target's own recorded names):
+	 * enabling a row prepared while disabled must not silently break the index. Returns
+	 * null when the enable is safe or when the target could never enter the index. */
+	public static @Nullable String enableConflict(EnchantmentTarget target) {
+		if (target == null || !TradeMatcher.targetMatchable(target)) return null;
+		ResourceLocation id = target.id();
 		String refusal = AliasRow.conflictKey(id,
 				EnchantmentNamer.displayName(id,
-						"enchantment." + id.getNamespace() + "." + id.getPath()));
-		return refusal != null ? refusal : AliasRow.conflictKey(id, id.getPath());
+						"enchantment." + id.getNamespace() + "." + id.getPath()), false);
+		if (refusal == null) refusal = AliasRow.conflictKey(id, id.getPath(), true);
+		return refusal != null ? refusal : historyConflict(id);
+	}
+
+	/** The same check for a custom good (its id is the result item). */
+	public static @Nullable String enableConflict(GoodSpec spec) {
+		if (spec == null) return null;
+		String refusal = AliasRow.conflictKey(spec.id(), spec.displayName(), false);
+		if (refusal == null) refusal = AliasRow.conflictKey(spec.id(), spec.path(), true);
+		return refusal != null ? refusal : historyConflict(spec.id());
+	}
+
+	/** The candidate's own recorded villager names become index keys once it is enabled. */
+	private static @Nullable String historyConflict(ResourceLocation id) {
+		for (Map.Entry<String, ResourceLocation> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
+			if (!entry.getValue().equals(id)) continue;
+			String refusal = AliasRow.conflictKey(id, entry.getKey(), false);
+			if (refusal != null) return refusal;
+		}
+		return null;
 	}
 
 		//? if >=1.20.2 {
@@ -427,12 +440,22 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		 * name, and a collision drops BOTH sides from the index. Comparisons use the
 		 * same sanitizer the naming path uses. */
 		static @Nullable String conflictKey(ResourceLocation id, String value) {
+			return conflictKey(id, value, false);
+		}
+
+		/** @param rawValue true for a registry PATH: the index stores paths raw, so the
+		 * probe must not run through the alias sanitizer (digits are valid in ids but
+		 * would become superscripts and never match the raw key). */
+		static @Nullable String conflictKey(ResourceLocation id, String value, boolean rawValue) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
-			// the SAME two transformations the index applies: sanitize ('+' -> '*',
-			// digits -> superscripts) AND canonical (collapse whitespace runs). Both
-			// sides must agree, or a collision differing only in whitespace passes
-			// here and then drops BOTH enchantments from the index.
-			String probe = EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(value));
+			// aliases/names take the SAME two transformations the index applies: sanitize
+			// ('+' -> '*', digits -> superscripts) AND canonical (collapse whitespace
+			// runs). Both sides must agree, or a collision differing only in whitespace
+			// passes here and then drops BOTH enchantments from the index. Raw paths skip
+			// the sanitizer because the index keys them verbatim.
+			String probe = rawValue
+					? EnchantmentNamer.canonical(value)
+					: EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(value));
 			// SAME SOURCE as buildDisplayNameIndex: it is built over the ENABLED
 			// targets only, and its keys are case-SENSITIVE (a HashMap). Checking a
 			// disabled target, or comparing case-insensitively, would refuse names
@@ -444,8 +467,11 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				// air item ("dead" targets): such a name cannot collide there, so
 				// refusing it here is a pure false rejection. Same gate as buildNeeds.
 				if (!TradeMatcher.targetMatchable(other)) continue;
-				String refusal = collision(probe, other.id(),
-						EnchantmentNamer.demandDisplayName(other.id()), other.id().getPath());
+				// the index keys a target's display name via the translation key, NOT
+				// demandDisplayName (which would prefer a same-id good's name)
+				String otherName = EnchantmentNamer.displayName(other.id(),
+						"enchantment." + other.id().getNamespace() + "." + other.id().getPath());
+				String refusal = collision(probe, other.id(), otherName, other.id().getPath());
 				if (refusal != null) return refusal;
 			}
 			// custom goods are named from the same alias map: their names (and their

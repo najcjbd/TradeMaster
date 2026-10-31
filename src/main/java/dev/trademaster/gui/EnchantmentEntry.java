@@ -109,17 +109,19 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		return target != null && target.enabled();
 	}
 
-	public void setEnabled(boolean enabled) {
+	public boolean setEnabled(boolean enabled) {
+		// Select All and repeated clicks: no state change, no guard/message/save
+		if (enabled() == enabled) return false;
 		EnchantmentTarget target = TradeMasterConfig.INSTANCE.enchantments.get(this.id);
 		if (target == null) {
-			if (this.enchantment == null) return; // no registry: cannot build a sane default
+			if (this.enchantment == null) return false; // no registry: cannot build a sane default
 			target = new EnchantmentTarget(this.id, false, editableMaxLevel(), 64);
 		}
 		if (enabled) {
 			// enabling can introduce a name/alias that the deduction index cannot
 			// attribute (it drops every name shared by two ids): refuse instead of
 			// silently breaking named-villager deduction for both sides
-			String conflict = AliasListWidget.enableConflict(this.id, false);
+			String conflict = AliasListWidget.enableConflict(target);
 			if (conflict != null) {
 				Minecraft mc = Minecraft.getInstance();
 				if (mc.player != null) {
@@ -127,7 +129,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 							.append(McText.translatable(conflict)
 									.withStyle(net.minecraft.ChatFormatting.RED)));
 				}
-				return;
+				return false;
 			}
 		}
 		if (!enabled) {
@@ -138,6 +140,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		}
 		TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withEnabled(enabled));
 		TradeMasterConfig.INSTANCE.save();
+		return true;
 	}
 
 	public void resetToDefault() {
@@ -411,8 +414,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			if (this.enchantment == null && TradeMasterConfig.INSTANCE.enchantments.get(this.id) == null) {
 				return false;
 			}
-			setEnabled(!enabled());
-			McSound.playButtonClick();
+			if (setEnabled(!enabled())) McSound.playButtonClick();
 			return true;
 		}
 		return false;

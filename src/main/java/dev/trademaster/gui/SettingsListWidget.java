@@ -1625,7 +1625,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		CurseListRow() {
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 			this.field = new EditBox(Minecraft.getInstance().font, 0, 0, 100, 14, McText.literal("curses"));
-			this.field.setMaxLength(256);
+			this.field.setMaxLength(1_000_000);
 			this.field.setValue(String.join(", ", c.customCurseEnchantments));
 			this.field.setResponder(text -> this.pendingApply = true);
 		}
@@ -1714,7 +1714,10 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 			// also let a row removal drop it.
 			this.applyDraft();
 			TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-			this.field.setValue(String.join(", ", c.customCurseEnchantments));
+			String joined = String.join(", ", c.customCurseEnchantments);
+			// only touch the field on a real change: setValue fires the responder and
+			// moves the caret, and a shorter maxLength used to truncate long lists here
+			if (!joined.equals(this.field.getValue())) this.field.setValue(joined);
 		}
 
 		@Override
