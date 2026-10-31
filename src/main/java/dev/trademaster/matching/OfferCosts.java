@@ -59,12 +59,12 @@ public final class OfferCosts {
 
 	/** The cost slots used for PRICE / AFFORDABILITY decisions: identical to
 	 * {@link #slots} except that the price slot (slot 0) is replaced by the actually
-	 * charged stack when {@code basePriceAsSalePrice} is off. Identity checks (LOCK
-	 * fingerprints, channel comparison) must keep using {@link #slots}: the charged
-	 * count can legitimately change with demand while the offer stays the same. */
+	 * charged stack when {@code discountedPriceAsSalePrice} is on. Identity checks
+	 * (LOCK fingerprints, channel comparison) must keep using {@link #slots}: the
+	 * charged count can legitimately change with demand while the offer stays the same. */
 	public static List<ItemStack> pricingSlots(MerchantOffer offer) {
 		List<ItemStack> slots = new ArrayList<>(slots(offer));
-		if (!dev.trademaster.config.TradeMasterConfig.INSTANCE.basePriceAsSalePrice && !slots.isEmpty()) {
+		if (dev.trademaster.config.TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice && !slots.isEmpty()) {
 			ItemStack charged = offer.getCostA();
 			if (!charged.isEmpty()) slots.set(0, charged);
 		}

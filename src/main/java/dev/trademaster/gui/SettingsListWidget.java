@@ -122,7 +122,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
 		addEntry(new IntRow("trademaster.settings.minLockEmeralds", () -> c.minLockEmeralds, v -> c.minLockEmeralds = v, 1, 64));
-		addEntry(new BoolRow("trademaster.settings.basePriceAsSalePrice", () -> c.basePriceAsSalePrice, v -> {
+		addEntry(new BoolRow("trademaster.settings.discountedPriceAsSalePrice", () -> c.discountedPriceAsSalePrice, v -> {
 			// hunt marks store prices in the basis that was active at purchase time;
 			// switching mid-run would reinterpret them (duplicate buys / stalled hunt)
 			if (RerollController.isRunning()) {
@@ -130,7 +130,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				McSound.playDeny();
 				return;
 			}
-			c.basePriceAsSalePrice = v;
+			c.discountedPriceAsSalePrice = v;
 		}));
 		addEntry(new BoolRow("trademaster.settings.multiEnchantProtection", () -> c.multiEnchantProtection, v -> c.multiEnchantProtection = v));
 		addEntry(new BoolRow("trademaster.settings.timeoutEnabled", () -> c.timeoutEnabled, v -> c.timeoutEnabled = v));

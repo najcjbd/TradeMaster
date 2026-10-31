@@ -22,7 +22,7 @@
   "trademaster.settings.detection.both": "双重（交叉校验）",
   "trademaster.settings.reserveCheaperTraders": "继续找更便宜的",
   "trademaster.settings.minLockEmeralds": "锁定所需绿宝石下限",
-  "trademaster.settings.basePriceAsSalePrice": "以原价作为售价",
+  "trademaster.settings.discountedPriceAsSalePrice": "以折扣价作为售价",
   "trademaster.settings.multiEnchantProtection": "单书多附魔保障",
   "trademaster.settings.villagerSphereRadius": "暂存区球形半径",
   "trademaster.settings.postDispatchBreakRetries": "送走后补破坏重试上限",

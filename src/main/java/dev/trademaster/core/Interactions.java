@@ -34,33 +34,31 @@ public final class Interactions {
 		player.connection.send(new ServerboundSetCarriedItemPacket(slot));
 	}
 
-	/** Whether a stack on the container cursor can be returned to the 36-slot
-	 * inventory (mirrors Inventory.add: same-item partial stacks first, then empty
-	 * slots). The server auto-closes the previous menu when a new one opens and
-	 * DROPS a carried stack that does not fit. */
+	/** Whether a stack on the container cursor can be returned to the inventory
+	 * (mirrors Inventory.add: same-item partial stacks first, then empty slots, and
+	 * the offhand's partial room). The server auto-closes the previous menu when a new
+	 * one opens and DROPS a carried stack that does not fit. */
 	public static boolean hasRoomForCarried(LocalPlayer player) {
 		ItemStack carried = player.containerMenu.getCarried();
 		if (carried.isEmpty()) return true;
-		int remaining = carried.getCount();
+		int capacity = 0;
+		int max = carried.getMaxStackSize();
 		var inventory = player.getInventory();
 		for (int i = 0; i < 36; i++) {
 			ItemStack slot = inventory.getItem(i);
-			if (slot.isEmpty()) return true;
-			if (dev.trademaster.compat.McItem.sameItemSameComponents(slot, carried)) {
-				int room = slot.getMaxStackSize() - slot.getCount();
-				if (room > 0) {
-					remaining -= room;
-					if (remaining <= 0) return true;
-				}
+			if (slot.isEmpty()) {
+				capacity += max;
+			} else if (dev.trademaster.compat.McItem.sameItemSameComponents(slot, carried)) {
+				capacity += Math.max(0, slot.getMaxStackSize() - slot.getCount());
 			}
+			if (capacity >= carried.getCount()) return true;
 		}
-		// the server can also top up a partial stack in the OFFHAND slot
 		ItemStack offhand = inventory.getItem(40);
 		if (!offhand.isEmpty()
 				&& dev.trademaster.compat.McItem.sameItemSameComponents(offhand, carried)) {
-			remaining -= offhand.getMaxStackSize() - offhand.getCount();
+			capacity += Math.max(0, offhand.getMaxStackSize() - offhand.getCount());
 		}
-		return remaining <= 0;
+		return capacity >= carried.getCount();
 	}
 
 	/** Closes the open container only when its carried stack can be returned; with a

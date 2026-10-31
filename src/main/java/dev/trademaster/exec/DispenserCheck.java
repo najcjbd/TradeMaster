@@ -62,8 +62,14 @@ public final class DispenserCheck {
 		// safety net only, the per-state budgets below do the real bounding
 		if (++this.ticks > MAX_TICKS) {
 			closeOwnMenu(player);
-			// a stuck cursor is not a dispenser failure; report its real cause
-			if (player.containerMenu != player.inventoryMenu
+			// only attribute a stuck cursor to THIS check when the blocked menu is
+			// ours or the USE wait actually saw it; a player menu opened during the
+			// rotation is not a dispenser-cursor verdict
+			boolean ours = player.containerMenu instanceof DispenserMenu
+					&& this.openedContainerId >= 0
+					&& player.containerMenu.containerId == this.openedContainerId;
+			if ((ours || this.cursorWaitTicks > 0)
+					&& player.containerMenu != player.inventoryMenu
 					&& !player.containerMenu.getCarried().isEmpty()
 					&& !Interactions.hasRoomForCarried(player)) {
 				return Result.CURSOR_BLOCKED;
