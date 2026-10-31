@@ -492,7 +492,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				// an entry for a dead/untradeable target (or a removed good) must not
 				// refuse a perfectly legal name
 				GoodSpec historyGood = config.goodFor(otherId);
-				boolean live = historyGood != null && TradeMatcher.goodMatchable(historyGood);
+				boolean live = historyGood != null && historyGood.enabled()
+						&& TradeMatcher.goodMatchable(historyGood);
 				if (!live) {
 					EnchantmentTarget otherTarget = config.enchantments.get(otherId);
 					live = otherTarget != null && otherTarget.enabled() && TradeMatcher.targetMatchable(otherTarget);

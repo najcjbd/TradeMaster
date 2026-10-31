@@ -3,6 +3,7 @@ package dev.trademaster.strategy;
 import dev.trademaster.compat.McPlayer;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.Interactions;
+import dev.trademaster.core.Preconditions;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
@@ -51,6 +52,9 @@ public final class LecternRestock {
 	 * report "no lectern" so the caller stops cleanly instead of waiting forever. */
 	private static int restockCarriedWaitTicks = 0;
 	private static final int RESTOCK_CARRIED_MAX_TICKS = 40;
+	/** The same bound for the two equip paths' foreign-menu close (shared: only one
+	 * of them runs per bringToolToHand call). */
+	private static int equipCarriedWaitTicks = 0;
 
 	/** Marks a batch as in flight from {@code fromContainerSlot} (-1 when the effect is
 	 * only visible on the offhand / in the menu state). */
@@ -102,6 +106,7 @@ public final class LecternRestock {
 		restockInFlightTicks = -1;
 		restockFromSlot = -1;
 		restockCarriedWaitTicks = 0;
+		equipCarriedWaitTicks = 0;
 		// a stale tool lock from a previous run may point at an item that is gone, and
 		// the configured block may have changed
 		RigTarget.clearToolLock();
@@ -210,7 +215,9 @@ public final class LecternRestock {
 			if (!player.containerMenu.getCarried().isEmpty()) {
 				if (++restockCarriedWaitTicks < RESTOCK_CARRIED_MAX_TICKS) return true;
 				restockCarriedWaitTicks = 0;
-				return false;
+				// a free slot lets the server return the cursor stack safely on close;
+				// with a full inventory closing would drop it, so stop instead
+				if (!Preconditions.hasFreeSlot(player)) return false;
 			}
 			restockCarriedWaitTicks = 0;
 			for (int i = 0; i < 36; i++) {
@@ -313,10 +320,19 @@ public final class LecternRestock {
 			// runs and the caller loops until its phase timeout. Close it (like restock's
 			// close branch) so the next tick takes the normal path. Never close with a
 			// stack on the cursor: the server would return/drop it.
-			if (!player.containerMenu.getCarried().isEmpty()) return ToolState.WORKING;
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				if (++equipCarriedWaitTicks < RESTOCK_CARRIED_MAX_TICKS) return ToolState.WORKING;
+				equipCarriedWaitTicks = 0;
+				// a free slot lets the server return the cursor stack safely on close;
+				// with a full inventory closing would drop it, so stop instead
+				if (!Preconditions.hasFreeSlot(player)) return ToolState.NONE;
+			} else {
+				equipCarriedWaitTicks = 0;
+			}
 			player.closeContainer();
 			return ToolState.WORKING;
 		}
+		equipCarriedWaitTicks = 0;
 		rememberSelection(player);
 		McClicks.click(mc.gameMode, 0, 45, McPlayer.selectedSlot(player),
 				McClicks.Click.SWAP, player);
@@ -359,10 +375,17 @@ public final class LecternRestock {
 			// the swap below needs the inventory menu: with a foreign menu open it never runs
 			// and the caller loops until its phase timeout. Close it, like the offhand path.
 			// Never close with a stack on the cursor: the server would return/drop it.
-			if (!player.containerMenu.getCarried().isEmpty()) return ToolState.WORKING;
+			if (!player.containerMenu.getCarried().isEmpty()) {
+				if (++equipCarriedWaitTicks < RESTOCK_CARRIED_MAX_TICKS) return ToolState.WORKING;
+				equipCarriedWaitTicks = 0;
+				if (!Preconditions.hasFreeSlot(player)) return ToolState.NONE;
+			} else {
+				equipCarriedWaitTicks = 0;
+			}
 			player.closeContainer();
 			return ToolState.WORKING;
 		}
+		equipCarriedWaitTicks = 0;
 		// InventoryMenu maps main-inventory slots 9-35 onto themselves
 		McClicks.click(mc.gameMode, 0, slot, McPlayer.selectedSlot(player),
 				McClicks.Click.SWAP, player);
