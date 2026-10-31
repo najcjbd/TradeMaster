@@ -642,6 +642,8 @@ public final class RerollController {
 	}
 
 	private static void enter(Phase next) {
+		// a new phase gets a fresh cursor-block grace (the condition may clear with it)
+		cursorBlockTicks = 0;
 		if (phase == Phase.AWAIT_VILLAGER && next != Phase.AWAIT_VILLAGER && session != null) {
 			// re-baseline after resting: the player may have moved while exempt
 			Minecraft client = Minecraft.getInstance();

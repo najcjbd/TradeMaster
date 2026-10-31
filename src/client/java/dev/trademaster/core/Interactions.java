@@ -50,7 +50,12 @@ public final class Interactions {
 				}
 			}
 		}
-		return false;
+		// the server can also top up a partial stack in the OFFHAND slot
+		ItemStack offhand = inventory.getItem(40);
+		if (!offhand.isEmpty() && ItemStack.isSameItemSameComponents(offhand, carried)) {
+			remaining -= offhand.getMaxStackSize() - offhand.getCount();
+		}
+		return remaining <= 0;
 	}
 
 	/** Closes the open container only when its carried stack can be returned; with a

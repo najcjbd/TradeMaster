@@ -401,16 +401,7 @@ public class NamingExecutor {
 			next(Stage.RENAME);
 			return Result.RUNNING;
 		}
-		if (this.insertAttempts >= 3) {
-			// one last cleanup: a failed insert must not leave a tag stack on the
-			// cursor or in slot 0 (the abort then closes the anvil behind it)
-			if (!menu.getCarried().isEmpty()) {
-				mc.gameMode.handleContainerInput(menu.containerId, menuSlot, 0, ContainerInput.PICKUP, player);
-			} else if (!menu.getSlot(0).getItem().isEmpty()) {
-				mc.gameMode.handleContainerInput(menu.containerId, 0, 0, ContainerInput.QUICK_MOVE, player);
-			}
-			return failed("tag-insert");
-		}
+		if (this.insertAttempts >= 3) return failed("tag-insert");
 		this.insertAttempts++;
 		this.tagInvSlot = -1;
 		// a failed attempt can leave residue behind (state id race): carried tags
