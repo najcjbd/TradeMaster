@@ -98,6 +98,7 @@
   "trademaster.message.player_died": "玩家死亡，停止运行",
   "trademaster.message.timeout": "运行超时，停止运行",
   "trademaster.message.cursor_full": "光标上有物品且背包已满，请先腾出空位",
+  "trademaster.message.menu_blocked": "有打开的容器挡住了检查，请关闭后重新开始",
   "trademaster.message.lectern_lost": "没有可用的讲台，停止运行",
   "trademaster.message.place_failed": "多次放置讲台均未成功，停止运行",
   "trademaster.message.material_short": "材料不足，停止运行",
