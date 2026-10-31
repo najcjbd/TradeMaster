@@ -31,6 +31,7 @@
   "trademaster.column.alias": "别名（留空则用默认名）",
   "trademaster.alias.duplicate_alias": "重名：与另一个附魔的别名相同，未保存",
   "trademaster.alias.duplicate_name": "重名：与另一个附魔的名字或注册表路径相同，未保存",
+  "trademaster.alias.too_long": "过长：铁砧名字上限为 50 个字符，未保存",
   "trademaster.naming_skip.inventory_full": "物品栏已满",
   "trademaster.naming_skip.timeout": "超时",
   "trademaster.naming_skip.failed": "失败：%s",

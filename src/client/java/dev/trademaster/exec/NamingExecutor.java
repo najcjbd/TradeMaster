@@ -258,11 +258,19 @@ public class NamingExecutor {
 		if (mc.gameMode == null || this.equipSwapSlot < 0 || this.restoreSwapped) {
 			// nothing to swap back, but the anvil may still be open from a failed
 			// rename: leaving it open swallows input and wedges every later phase
-			// (bringToolToHand sees containerMenu != inventoryMenu and never returns)
-			if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+			// (bringToolToHand sees containerMenu != inventoryMenu and never returns).
+			// Never close with a stack on the cursor: the server would drop it.
+			if (player.containerMenu != player.inventoryMenu
+					&& player.containerMenu.getCarried().isEmpty()) player.closeContainer();
 			return;
 		}
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		if (player.containerMenu != player.inventoryMenu) {
+			// the swap needs the inventory menu; with a dirty cursor, closing would
+			// risk the cursor stack, so leave the menu (and the displaced item) to
+			// the player instead of dropping one of them
+			if (!player.containerMenu.getCarried().isEmpty()) return;
+			player.closeContainer();
+		}
 		mc.gameMode.handleContainerInput(0, this.equipSwapSlot,
 				this.equipDestSlot >= 0 ? this.equipDestSlot : player.getInventory().getSelectedSlot(),
 				ContainerInput.SWAP, player);

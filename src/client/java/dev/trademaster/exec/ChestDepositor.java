@@ -597,7 +597,10 @@ public class ChestDepositor implements BookDisposal {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc.player;
 		if (player == null) return;
-		if (player.containerMenu != player.inventoryMenu) player.closeContainer();
+		// never close with a stack on the cursor: the server would drop it when
+		// the inventory is full; leave the menu for the player to resolve
+		if (player.containerMenu != player.inventoryMenu
+				&& player.containerMenu.getCarried().isEmpty()) player.closeContainer();
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);
 	}
