@@ -1,8 +1,11 @@
 package dev.trademaster;
 
+import dev.trademaster.compat.McPlayer;
 import dev.trademaster.compat.McRegistry;
+import dev.trademaster.compat.McText;
 import dev.trademaster.config.ConfigPersistence;
 import dev.trademaster.config.TradeMasterConfig;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,7 +41,15 @@ public final class TradeMasterClient {
 			initialLoad();
 			Minecraft client = Minecraft.getInstance();
 			if (client.level != null) {
-				TradeMasterConfig.INSTANCE.syncEnchantmentsFromRegistry(McRegistry.enchantments(client.level));
+				int raised = TradeMasterConfig.INSTANCE
+						.syncEnchantmentsFromRegistry(McRegistry.enchantments(client.level));
+				if (raised > 0 && client.player != null) {
+					// the join-time registry sync may lift caps that were below the live
+					// effective minimum: say so instead of rewriting the file silently
+					McPlayer.sendSystemMessage(client.player, McText.literal("[Trade Master] ")
+							.append(McText.translatable("trademaster.message.price_floor_raised", raised)
+									.withStyle(ChatFormatting.YELLOW)));
+				}
 			}
 		}
 

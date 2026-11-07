@@ -603,12 +603,18 @@ public final class RerollController {
 			regionFallbackConfirmed = false;
 			snapRegionConfigured = true;
 		}
-		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely
+		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely.
+		// With a purchase already sent, wait for the verdict first: stopping now would
+		// leave the villager locked but unvouchered, and the next run could buy again.
 		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
-			stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
-			return;
+			if (!purchaseInFlight()) {
+				stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
+				return;
+			}
+			debug("stop deferred until the in-flight purchase resolves (movement)");
 		}
-		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks) {
+		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks
+				&& !purchaseInFlight()) {
 			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
@@ -2537,6 +2543,14 @@ public final class RerollController {
 			}
 		}
 		return h;
+	}
+
+	/** A lock click is already out: a bare stop now would discard an unvouchered,
+	 * possibly-successful purchase and let the next run buy a second copy. Automatic
+	 * stops (player movement / the global run timeout) wait for the executor's verdict;
+	 * death, a dimension change and an explicit manual stop cannot wait. */
+	private static boolean purchaseInFlight() {
+		return phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent();
 	}
 
 	/** A rebuild drained the needs while the run is already committed: a LOCK

@@ -4,13 +4,11 @@
 
 An automated **librarian enchanted-book trade rerolling pipeline** for Minecraft **26.2** (Fabric, **client-side only**): it summons a villager, waits for it to take the lectern, rerolls its profession until the trade you want shows up, locks the trade, (optionally) names the villager with an anvil, sends it away, and stores or recycles the books — every step configurable.
 
-> **Development disclosure**: **all of this mod's code, config, language files and this document were produced and iteratively maintained by AI.** The human author defined the requirements, ruled on each design trade-off, and tested in-game. See [Development disclosure](#development-disclosure) at the end.
-
 ---
 
 ## Contents
 
-[Overview](#overview) · [Requirements](#requirements) · [Installation](#installation) · [Quick start](#quick-start) · [The rig and coordinates](#the-rig-and-coordinates) · [Pipeline (12 phases)](#pipeline-12-phases) · [Reroll mechanisms](#reroll-mechanisms) · [Trade detection](#trade-detection) · [Matching and budget](#matching-and-budget) · [Locking](#locking) · [Naming](#naming) · [Storage](#storage) · [Arrival check and staging area](#arrival-check-and-staging-area) · [Special villagers](#special-villagers) · [Villagers (work block and profession)](#villagers-work-block-and-profession) · [Anti-stall and self-healing](#anti-stall-and-self-healing) · [Anti-cheat / legit mode](#anti-cheat--legit-mode) · [Settings reference](#settings-reference) · [Commands and hotkeys](#commands-and-hotkeys) · [Config entry points](#config-entry-points) · [Compatibility and risks](#compatibility-and-risks) · [Building](#building) · [License and attribution](#license-and-attribution) · [Development disclosure](#development-disclosure)
+[Overview](#overview) · [Requirements](#requirements) · [Installation](#installation) · [Quick start](#quick-start) · [The rig and coordinates](#the-rig-and-coordinates) · [Pipeline (12 phases)](#pipeline-12-phases) · [Reroll mechanisms](#reroll-mechanisms) · [Trade detection](#trade-detection) · [Matching and budget](#matching-and-budget) · [Locking](#locking) · [Naming](#naming) · [Storage](#storage) · [Arrival check and staging area](#arrival-check-and-staging-area) · [Special villagers](#special-villagers) · [Villagers (work block and profession)](#villagers-work-block-and-profession) · [Anti-stall and self-healing](#anti-stall-and-self-healing) · [Anti-cheat / legit mode](#anti-cheat--legit-mode) · [Settings reference](#settings-reference) · [Commands and hotkeys](#commands-and-hotkeys) · [Config entry points](#config-entry-points) · [Compatibility and risks](#compatibility-and-risks) · [Building](#building) · [License and credits](#license-and-credits)
 
 ---
 
@@ -307,50 +305,29 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 # output: build/libs/trade-master-1.0.jar
 ```
 
-## License and attribution
+## License and credits
 
-### This project
+This project is released under the **GNU General Public License v3.0** (full text in [`LICENSE`](LICENSE)).
 
-**GNU General Public License v3.0** (full text in [`LICENSE`](LICENSE)). You may use, modify and redistribute it freely, but **redistribution must keep the attribution and the license, and must provide the corresponding source**.
+### Credits and sources
 
-### Author's statement (not a license term)
-
-This project is **intended solely for the author's personal use and open-source sharing**; the author does not and will not engage in any commercial activity with it.
-
-> ⚠️ Note: this is a statement of the author's **intent**, **not an additional license restriction**. The project is released under GPL-3.0 and derives from projects licensed GPL-3.0 / LGPL-3.0; GPL-3.0 forbids adding further restrictions — so **anyone may still use, modify and redistribute it (including commercially) under GPL-3.0**, provided the attribution and license are kept, modifications are marked, and the corresponding source is provided.
-
-### Ported from (license-compatible, and modified)
+Parts of the implementation are inspired by / derived from these open-source projects (both under compatible licenses; the original attribution is kept for derived parts):
 
 - **[LibrarianTradeFinder](https://github.com/Greenman999/librariantradefinder)** — GPL-3.0, © Greenman999
-  Ported parts: axe break / offhand place reroll, packet interception, offhand lectern restock (`LecternRestock`), smooth rotation (`SmoothRotation`), anti-cheat delays and legit-mode switches.
+  Inspired/derived: axe-break and offhand-place reroll, packet interception, offhand lectern restock (`LecternRestock`), smooth rotation (`SmoothRotation`), legit-mode delays.
 - **LPCTools tradeReroller** — LGPL-3.0, © Fymasa
-  Ported parts: dual-event trade detection, task-chain reroll (`TaskChainRerollStrategy`), the trade lock sequence, max-heap price matching (`TradeMatcher`), named-villager deduction, anvil naming (`NamingExecutor`).
-  > LPCTools' `InGameFuture` task framework was **not** carried over; it was replaced by a small internal `StepRunner`.
+  Inspired/derived: dual-event trade detection, task-chain reroll (`TaskChainRerollStrategy`), the trade lock sequence, price matching (`TradeMatcher`), named-villager deduction, anvil naming (`NamingExecutor`). The full LGPL-3.0 text is in [`LICENSE-LGPL-3.0.txt`](LICENSE-LGPL-3.0.txt).
 
-**The full LGPL-3.0 text is shipped as [`LICENSE-LGPL-3.0.txt`](LICENSE-LGPL-3.0.txt)** (required by the LPCTools-derived parts). The project as a whole is distributed under GPL-3.0: LPCTools' license (LGPLv3) explicitly permits incorporating LGPL code into, and converting it to, GPLv3, provided the original copyright notices and license texts are preserved — this repository keeps both.
-
-**Every derived part has been modified** (rewritten, renamed, split up or re-implemented); none of it is a verbatim redistribution of the original projects, and those projects do not endorse or maintain this mod.
-
-### Dependencies / coexistence only — no code reused
+### Dependencies
 
 | Project | License | Relationship |
 |---|---|---|
 | Fabric API | Apache-2.0 | Required |
 | maLiLib | see its project | Required (config GUI) |
 | Mod Menu | MIT | Optional (config-screen entry) |
-| clientcommands | LGPL-3.0-or-later | Optional (**coexistence probe only**) |
+| clientcommands | LGPL-3.0-or-later | Optional (coexistence probe only) |
 
-> Those licenses apply to those projects; this mod **does not copy** their code and **does not bundle** their jars.
-
-## Development disclosure
-
-**Every part of this mod (`TradeMaster`) — code, config, language files and documentation — was developed by AI:**
-
-- **How it was produced**: in an AI coding-assistant environment, the AI wrote, changed, audited and refactored the project round by round from the human author's requirements; **Qwen3.8-Max** was used early on and **DeepSeek** models later.
-- **The human author's role**: stating requirements, **ruling on each design trade-off** (for example whether an "emergency purchase" behaviour should be kept when the matched book is unaffordable), play-testing and reporting bugs, and deciding to publish.
-- As a result there is **no human hand-written code** in this repository. If you find a design flaw, please open an issue / PR the normal open-source way.
-
-> AI generation does not change the project's open-source licensing: AI output is treated as the tool-produced work of the human author, and the repository owner carries the copyright and license obligations.
+Those licenses apply to those projects; this mod does not bundle their jars.
 
 ---
 

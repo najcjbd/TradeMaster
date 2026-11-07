@@ -118,6 +118,12 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Which staging action the current drop used — the resend must replay the
 	 * same one: the raw offhand swap, or the inventory SWAP click. */
 	private boolean dropStageOffhand = false;
+	/** This staging was a RAW inventory SWAP (no client prediction) into an occupied
+	 * selected slot: only the server-observed exchange is accepted. */
+	private boolean dropStageRaw = false;
+	/** Occupant of an occupied staging destination (a copy), so the proof can require
+	 * it in the source slot after the swap. */
+	private ItemStack dropStageDisplaced = ItemStack.EMPTY;
 	/** Inventory slot (0-35) the SWAP-clicked curse book came from; the staging
 	 * resend re-clicks it only while this slot still holds the book, so an
 	 * already-landed click cannot be swapped back. */
@@ -555,6 +561,8 @@ public class GrindstoneRecycler implements BookDisposal {
 					// the book only counts as staged once the server sync shows it
 					this.dropSlot = McPlayer.selectedSlot(player);
 					this.dropStageOffhand = true;
+					this.dropStageRaw = false;
+					this.dropStageDisplaced = ItemStack.EMPTY;
 					this.dropStageSource = -1;
 					this.dropStageResent = false;
 					this.stagedHotbarSlot = this.dropSlot;
@@ -565,6 +573,8 @@ public class GrindstoneRecycler implements BookDisposal {
 							BlockPos.ZERO, Direction.DOWN));
 				} else if (invSlot < 9) {
 					this.dropSlot = invSlot;
+					this.dropStageRaw = false;
+					this.dropStageDisplaced = ItemStack.EMPTY;
 					if (McPlayer.selectedSlot(player) != invSlot) {
 						if (this.originalSlot < 0) this.originalSlot = McPlayer.selectedSlot(player);
 						Interactions.selectHotbarSlot(player, invSlot);
@@ -576,18 +586,14 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.state = State.DROP_AIM;
 					return StepResult.RUNNING;
 				} else {
-					// storage slot: SWAP-click it into an EMPTY hotbar slot through the
-					// inventory container, then wait for the sync. An OCCUPIED destination
-					// makes the swap a TRUE EXCHANGE, and the click is applied locally, so a
-					// stale prediction would DROP that slot's item: refuse instead.
+					// storage slot: swap it into a hotbar slot through the inventory
+					// container. An EMPTY destination is a plain move; with a FULL hotbar
+					// the selected slot is used and the swap is a TRUE EXCHANGE, so it is
+					// sent RAW and only the server-observed exchange is accepted below —
+					// a stale prediction can never drop the occupant.
 					int target = findEmptyHotbarSlot(player);
-					if (target < 0) {
-						// FAILED_FULL, not FAILED: a full HOTBAR says nothing about the
-						// main inventory, so the caller re-checks a free slot (the same
-						// contract ChestDepositor's drop staging uses) instead of
-						// stopping a run that may already have freed one
-						return failedFull(player, "trademaster.message.drop_no_slot");
-					}
+					boolean occupiedDestination = target < 0;
+					if (occupiedDestination) target = McPlayer.selectedSlot(player);
 					if (McPlayer.selectedSlot(player) != target) {
 						if (this.originalSlot < 0) this.originalSlot = McPlayer.selectedSlot(player);
 						Interactions.selectHotbarSlot(player, target);
@@ -596,10 +602,19 @@ public class GrindstoneRecycler implements BookDisposal {
 					this.dropStageOffhand = false;
 					this.dropStageSource = invSlot;
 					this.dropStageResent = false;
-					// the destination is an EMPTY hotbar slot (a full hotbar fails above),
-					// so the SWAP is a plain move: the source slot simply empties
-					McClicks.click(mc.gameMode, player.containerMenu.containerId,
-							inventoryMenuSlot(invSlot), target, McClicks.Click.SWAP, player);
+					this.dropStageRaw = occupiedDestination;
+					this.dropStageDisplaced = occupiedDestination
+							? player.getInventory().getItem(target).copy() : ItemStack.EMPTY;
+					if (occupiedDestination) {
+						this.dropStagedBook = player.getInventory().getItem(invSlot).copy();
+						McClicks.sendContainerClick(player, player.containerMenu.containerId,
+								player.containerMenu.getStateId(), inventoryMenuSlot(invSlot),
+								target, McClicks.Click.SWAP);
+					} else {
+						// the destination is EMPTY, so the SWAP is a plain move
+						McClicks.click(mc.gameMode, player.containerMenu.containerId,
+								inventoryMenuSlot(invSlot), target, McClicks.Click.SWAP, player);
+					}
 				}
 				this.waitTicks = 0;
 				this.state = State.DROP_STAGE_WAIT;
@@ -613,16 +628,38 @@ public class GrindstoneRecycler implements BookDisposal {
 				// emptying is proof the click landed, not just the client prediction.
 				// The offhand branch (source -1) uses the raw swap, which has no prediction,
 				// so its own destination check already waits for the server.
-				boolean staged = isCursed(player.getInventory().getItem(this.dropSlot))
-						&& (this.dropStageSource < 0
-								|| (player.containerMenu == player.inventoryMenu
-										&& player.getInventory().getItem(this.dropStageSource).isEmpty()));
-				// An inventory SWAP click applies its result locally and an ACCEPTED
-				// predicted click is not echoed back (the server adopts the predicted
-				// slots), so the contents alone can be a prediction. Give the server a
-				// fixed 2s grace before believing the predicted staging; the offhand raw
-				// swap has no prediction and only needs a round trip.
-				int neededTicks = this.dropStageSource < 0 ? 10 : 40;
+				boolean staged;
+				int neededTicks;
+				if (this.dropStageRaw && this.dropStageSource >= 0) {
+					// RAW swap into an OCCUPIED slot: the client still shows the pre-swap
+					// state until the server answers, so require the full exchange —
+					// the selected slot holds exactly the staged book AND the source slot
+					// holds exactly the occupant. Nothing is ever dropped on a prediction.
+					staged = false;
+					if (player.containerMenu == player.inventoryMenu) {
+						ItemStack dest = player.getInventory().getItem(this.dropSlot);
+						ItemStack source = player.containerMenu.slots
+								.get(inventoryMenuSlot(this.dropStageSource)).getItem();
+						staged = isCursed(dest)
+								&& McItem.sameItemSameComponents(dest, this.dropStagedBook)
+								&& dest.getCount() == this.dropStagedBook.getCount()
+								&& !source.isEmpty()
+								&& McItem.sameItemSameComponents(source, this.dropStageDisplaced)
+								&& source.getCount() == this.dropStageDisplaced.getCount();
+					}
+					neededTicks = 0;
+				} else {
+					staged = isCursed(player.getInventory().getItem(this.dropSlot))
+							&& (this.dropStageSource < 0
+									|| (player.containerMenu == player.inventoryMenu
+											&& player.getInventory().getItem(this.dropStageSource).isEmpty()));
+					// An inventory SWAP click applies its result locally and an ACCEPTED
+					// predicted click is not echoed back (the server adopts the predicted
+					// slots), so the contents alone can be a prediction. Give the server a
+					// fixed 2s grace before believing the predicted staging; the offhand raw
+					// swap has no prediction and only needs a round trip.
+					neededTicks = this.dropStageSource < 0 ? 10 : 40;
+				}
 				if (this.waitTicks >= neededTicks && staged) {
 					this.waitTicks = 0;
 					this.dropStagedBook = player.getInventory().getItem(this.dropSlot).copy();
@@ -634,6 +671,11 @@ public class GrindstoneRecycler implements BookDisposal {
 					// slot. Replaying one that did land would swap the book straight back.
 					// The raw offhand swap has no prediction, so a delayed SYNC of a
 					// landed swap is indistinguishable from a lost packet: wait longer.
+					if (this.dropStageRaw) {
+						// never resend a raw swap: a landed-but-unsynced one would be
+						// reversed and the following DROP_ALL would act on the occupant
+						return fail(player, "trademaster.message.curse_stage_failed");
+					}
 					if (!this.dropStageResent) {
 						if (this.dropStageOffhand) {
 							// never resend the raw offhand swap: a landed-but-unsynced

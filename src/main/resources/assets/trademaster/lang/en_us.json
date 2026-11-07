@@ -182,6 +182,7 @@
   "trademaster.error.wait-librarian-timeout": "Timed out waiting for librarian profession",
   "trademaster.error.villager-gone": "Villager is gone",
   "trademaster.message.no_enchantments": "No enchantment targets enabled",
+  "trademaster.message.price_floor_raised": "%s target(s) had their max price raised to the lowest price they can be offered at",
   "trademaster.message.axe_required": "An axe is required somewhere in the inventory (the lectern has to be broken)",
   "trademaster.message.tool_cannot_harvest": "No carried tool can harvest the work block (it needs the correct tool); breaking it would destroy it without a drop, stopping",
   "trademaster.settings.mechanism.comment": "How the lectern gets broken and replaced to reroll trades",
