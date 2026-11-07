@@ -66,6 +66,9 @@ public final class ConfigPersistence {
 		}
 		try {
 			JsonObject root = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8)).getAsJsonObject();
+			// the loader caps a few lists; back the file up BEFORE a later save rewrites
+			// the truncated model, so a hand-written overflow is never lost for good
+			if (exceedsLoadCaps(root)) backupOverflow(file);
 			readInto(config, root);
 		} catch (Exception e) {
 			TradeMaster.LOGGER.error("Failed to load trade-master.json", e);
@@ -180,7 +183,55 @@ public final class ConfigPersistence {
 			JsonElement parsed = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8));
 			return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
 		} catch (Exception e) {
+			// the save must not destroy a file that could still be hand-salvaged
+			backupUnparsable(file);
 			return null;
+		}
+	}
+
+	/** Keeps the FIRST unparsable trade-master.json next to it: the next save writes a
+	 * fresh root, and the original (possibly still salvageable) content must survive. */
+	private static void backupUnparsable(Path file) {
+		Path backup = file.resolveSibling(file.getFileName() + ".unparsable");
+		try {
+			if (!Files.exists(backup)) {
+				Files.copy(file, backup, StandardCopyOption.COPY_ATTRIBUTES);
+				TradeMaster.LOGGER.error("Kept an unparsable trade-master.json as {}", backup.getFileName());
+			}
+		} catch (IOException e) {
+			TradeMaster.LOGGER.error("Failed to back up an unparsable trade-master.json", e);
+		}
+	}
+
+	/** Whether the file carries a list larger than the loader's cap. */
+	private static boolean exceedsLoadCaps(JsonObject root) {
+		JsonObject offers = getSection(root, "offers");
+		if (offers != null
+				&& (arraySize(offers, "airItems") > TradeMasterConfig.MAX_AIR_ITEMS
+						|| arraySize(offers, "goods") > TradeMasterConfig.MAX_GOODS)) return true;
+		JsonObject positions = getSection(root, "positions");
+		if (positions != null && arraySize(positions, "chests") > TradeMasterConfig.MAX_CHESTS) return true;
+		JsonObject villagers = getSection(root, "villagers");
+		return villagers != null
+				&& arraySize(villagers, "nonTradeableProfessions") > TradeMasterConfig.MAX_NON_TRADEABLE;
+	}
+
+	private static int arraySize(JsonObject root, String key) {
+		JsonElement e = root.get(key);
+		return e != null && e.isJsonArray() ? e.getAsJsonArray().size() : 0;
+	}
+
+	/** Keeps the FIRST over-capped trade-master.json next to it (see {@link #exceedsLoadCaps}). */
+	private static void backupOverflow(Path file) {
+		Path backup = file.resolveSibling(file.getFileName() + ".overflow-backup");
+		try {
+			if (!Files.exists(backup)) {
+				Files.copy(file, backup, StandardCopyOption.COPY_ATTRIBUTES);
+				TradeMaster.LOGGER.warn("trade-master.json exceeds a load cap; kept a copy as {}",
+						backup.getFileName());
+			}
+		} catch (IOException e) {
+			TradeMaster.LOGGER.error("Failed to back up an over-capped trade-master.json", e);
 		}
 	}
 

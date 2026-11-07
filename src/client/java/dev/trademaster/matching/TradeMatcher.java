@@ -277,14 +277,14 @@ public class TradeMatcher {
 		return registryTradeable(target.id());
 	}
 
-	/** The lowest price at which a target can ever be offered. 1 is the hard floor:
-	 * with {@code discountedPriceAsSalePrice} on, matching compares the ACTUALLY
-	 * charged price, and a cure / Hero discount may push it below the vanilla BASE
-	 * minimum (2+3*level, doubled for treasures), so pruning those targets would drop
-	 * trades the user asked to accept. */
+	/** The lowest price at which a target can ever be offered (see
+	 * {@link TradeMasterConfig#minimumEditablePrice}). 1 is the hard floor: with
+	 * {@code discountedPriceAsSalePrice} on, matching compares the ACTUALLY charged
+	 * price, and a cure / Hero discount may push it below the vanilla BASE minimum
+	 * (2+3*level, doubled for treasures), so pruning those targets would drop trades
+	 * the user asked to accept. */
 	public static int minimumOfferPrice(EnchantmentTarget target) {
-		if (TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice) return 1;
-		return TradeMasterConfig.minPrice(target.level(), target.id());
+		return TradeMasterConfig.INSTANCE.minimumEditablePrice(target.id(), target.level());
 	}
 
 	/** Whether the target's price cap sits below every price it can ever be offered at
@@ -606,7 +606,11 @@ public class TradeMatcher {
 	 * already-bottom and drop the need, silently skipping the cheaper price-1 copy
 	 * the reserve option exists to keep hunting. */
 	private static int floorPrice(MatchPart part) {
-		return part.level() <= 0 ? 1 : TradeMasterConfig.minPrice(part.level(), part.id());
+		if (part.level() <= 0) return 1;
+		// with the charged-price basis a cure / Hero discount can reach 1, so the
+		// vanilla BASE minimum no longer proves "nothing cheaper can exist"
+		if (TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice) return 1;
+		return TradeMasterConfig.minPrice(part.level(), part.id());
 	}
 
 	/** Budget slot for a target: the hunt LOWERS it (marked-1 — only a strictly

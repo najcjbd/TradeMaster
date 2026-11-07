@@ -94,8 +94,14 @@ public class LockTradeExecutor {
 			ItemStack stack = drop.getItem();
 			if (this.expected == null) {
 				if (stack.is(Items.ENCHANTED_BOOK)) count += stack.getCount();
-			} else if (resultMatches(this.expected, stack)
-					&& ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())) {
+			} else if (this.expected.purchase().result().is(Items.ENCHANTED_BOOK)) {
+				if (resultMatches(this.expected, stack)
+						&& ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())) {
+					count += stack.getCount();
+				}
+			} else if (ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())) {
+				// a good: same rule as the inventory proof — component identity, count
+				// ignored, so a delivery spilled across several ground stacks still counts
 				count += stack.getCount();
 			}
 		}

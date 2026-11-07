@@ -82,6 +82,9 @@ public final class Preconditions {
 		// slots of the same item.
 		Map<Item, Integer> required = new LinkedHashMap<>();
 		boolean emeraldPrice = false;
+		// only targets whose price cap actually prices EMERALDS feed the floor below
+		List<EnchantmentTarget> emeraldFloorTargets = new ArrayList<>();
+		int goodEmeraldCap = 0;
 		for (EnchantmentTarget target : enabled) {
 			TradeOfferSpec spec = config.specFor(target.id());
 			List<TradeOfferSpec.TradeCost> costs = spec.costs();
@@ -109,6 +112,7 @@ public final class Preconditions {
 				// emeralds in slot 2 with a book price slot) as "need 64 emeralds".
 				if (cost.item().equals(TradeOfferSpec.EMERALD) && (slot == 0 || cost.count() < 0)) {
 					emeraldPrice = true;
+					if (!emeraldFloorTargets.contains(target)) emeraldFloorTargets.add(target);
 				}
 				perTarget.merge(item, needed, Integer::sum);
 			}
@@ -135,15 +139,17 @@ public final class Preconditions {
 				// emeralds in slot 2 with a book price slot) as "need 64 emeralds".
 				if (cost.item().equals(TradeOfferSpec.EMERALD) && (slot == 0 || cost.count() < 0)) {
 					emeraldPrice = true;
+					goodEmeraldCap = Math.max(goodEmeraldCap, good.maxPrice());
 				}
 				perTarget.merge(item, needed, Integer::sum);
 			}
 			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));
 		}
 		if (emeraldPrice) {
-			// the emerald floor (largest max price, raised by hunt / the 64 cap) still
-			// governs the emerald budget machinery
-			required.merge(Items.EMERALD, emeraldFloor(enabled), Math::max);
+			// the emerald floor (largest EMERALD price cap, raised by hunt / the 64 cap)
+			// still governs the emerald budget machinery
+			int floor = emeraldFloor(emeraldFloorTargets);
+			required.merge(Items.EMERALD, Math.max(floor, goodEmeraldCap), Math::max);
 		}
 
 		// one inventory pass for every item requirement

@@ -43,9 +43,16 @@ public final class DispenserCheck {
 	private int stateTicks = 0;
 	/** Ticks a menu that belongs to the PLAYER has blocked the use click. */
 	private int foreignMenuTicks = 0;
-	/** The container id of the dispenser menu THIS check opened, or -1 before it opened one.
+	/** Container id of the dispenser menu THIS check opened, or -1 before it opened one.
 	 * Closing is keyed on it so the player's own dispenser/chest is never touched. */
 	private int openedContainerId = -1;
+	/** Position whose use packet a previous check sent before timing out with no menu,
+	 * and the game time it happened. A DispenserMenu appearing there shortly after is
+	 * that check's LATE response (the controller keeps the position open across its
+	 * retry wait), so the next check may adopt and close it as its own. */
+	private static @Nullable BlockPos lateOpenPos = null;
+	private static long lateOpenTick = 0;
+	private static final long LATE_OPEN_WINDOW_TICKS = 200;
 
 	public DispenserCheck(BlockPos pos) {
 		this.pos = pos.immutable();
@@ -98,6 +105,13 @@ public final class DispenserCheck {
 						enter(State.SCAN);
 						return Result.RUNNING;
 					}
+					if (takeLateOwnMenu(mc)) {
+						// a previous check's use packet was merely slow: adopt the menu
+						// instead of waiting out a foreign-menu timeout and stopping
+						rememberMenu(menu);
+						enter(State.SCAN);
+						return Result.RUNNING;
+					}
 					if (++this.foreignMenuTicks > 40) return Result.MENU_BLOCKED;
 					return Result.RUNNING;
 				}
@@ -108,6 +122,9 @@ public final class DispenserCheck {
 					return Result.RUNNING;
 				}
 				this.foreignMenuTicks = 0;
+				// this check now has its own use in flight: a previous attempt's late
+				// memory must not attribute an unrelated menu to it later
+				lateOpenPos = null;
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.pos), Direction.UP, this.pos, false);
 				mc.gameMode.useItemOn(player, InteractionHand.MAIN_HAND, hit);
 				player.swing(InteractionHand.MAIN_HAND, true);
@@ -119,8 +136,10 @@ public final class DispenserCheck {
 					rememberMenu(menu);
 					enter(State.SCAN);
 				} else if (this.stateTicks > MAX_MENU_WAIT_TICKS) {
-					// the server refused the open (out of reach / desync): let the caller
-					// wait and retry rather than jamming here
+					// the server refused the open (out of reach / desync) or its answer is
+					// merely late: remember the send so a menu that still arrives during
+					// the caller's retry wait is recognized as OURS by the next check
+					rememberLateOpen(mc);
 					return Result.FAILED;
 				}
 			}
@@ -155,6 +174,25 @@ public final class DispenserCheck {
 
 	private void rememberMenu(DispenserMenu menu) {
 		if (this.openedContainerId < 0) this.openedContainerId = menu.containerId;
+	}
+
+	/** Records that this check sent a use packet and timed out before the menu arrived. */
+	private void rememberLateOpen(Minecraft mc) {
+		if (mc.level == null) return;
+		lateOpenPos = this.pos;
+		lateOpenTick = mc.level.getGameTime();
+	}
+
+	/** Whether an already-open dispenser menu is the LATE answer to the previous check's
+	 * use packet for this same position (bounded to the caller's retry window). */
+	private boolean takeLateOwnMenu(Minecraft mc) {
+		if (lateOpenPos == null || !lateOpenPos.equals(this.pos)) return false;
+		if (mc.level == null || mc.level.getGameTime() - lateOpenTick > LATE_OPEN_WINDOW_TICKS) {
+			lateOpenPos = null;
+			return false;
+		}
+		lateOpenPos = null;
+		return true;
 	}
 
 	/** Closes the container THIS check opened, and nothing else: the player may have opened

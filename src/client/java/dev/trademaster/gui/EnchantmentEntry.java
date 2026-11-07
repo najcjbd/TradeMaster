@@ -106,6 +106,14 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			target = new EnchantmentTarget(this.id, false, editableMaxLevel(), 64);
 		}
 		if (enabled) {
+			// a cap lowered below the effective minimum while the charged-price basis
+			// was on is unmatchable now: raise it on enable instead of persisting a
+			// silently dead target
+			int floor = Math.min(64, TradeMasterConfig.INSTANCE.minimumEditablePrice(this.id, target.level()));
+			if (target.maxPrice() < floor) {
+				target = target.withMaxPrice(floor);
+				this.maxPriceField.setValue(String.valueOf(floor));
+			}
 			// enabling can introduce a name/alias that the deduction index cannot
 			// attribute (it drops every name shared by two ids): refuse instead of
 			// silently breaking named-villager deduction for both sides
@@ -206,13 +214,10 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		// downgrade a stored level >= maxLevel() and persist it
 		if (levelValue != null && this.enchantment != null) {
 			int newLevel = Mth.clamp(levelValue, 1, editableMaxLevel());
-			// raising the level raises the vanilla BASE minimum price: lift the
-			// stored price with it, otherwise the target can never match. With
-			// discounted pricing the cap is compared against the charged price, which
-			// may stay below that base — the user's cap must not be overwritten then.
-			int newPrice = TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
-					? target.maxPrice()
-					: Math.min(64, Math.max(target.maxPrice(), minPrice(newLevel)));
+			// raising the level raises the effective minimum price (only when the
+			// price slot charges emeralds and discounted pricing is off): lift the
+			// stored price with it, otherwise the target can never match
+			int newPrice = Math.min(64, Math.max(target.maxPrice(), minEditablePrice(newLevel)));
 			if (newLevel != target.level() || newPrice != target.maxPrice()) {
 				target = target.withLevel(newLevel).withMaxPrice(newPrice);
 				TradeMasterConfig.INSTANCE.enchantments.put(this.id, target);
@@ -237,11 +242,11 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		return target;
 	}
 
-	/** Lowest max price the user may enter. With discounted pricing the cap applies to
-	 * the price actually charged, which a cure / Hero discount can push below the
-	 * vanilla BASE minimum, so the floor drops to 1. */
+	/** Lowest max price the user may enter (see TradeMasterConfig.minimumEditablePrice):
+	 * 1 for a non-emerald price slot or charged-price matching, the vanilla formula
+	 * otherwise. */
 	private int minEditablePrice(int level) {
-		return TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice ? 1 : minPrice(level);
+		return TradeMasterConfig.INSTANCE.minimumEditablePrice(this.id, level);
 	}
 
 	@Override
@@ -304,7 +309,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		context.text(font, this.idText, this.x + 4, this.y + 12, 0xFF808080);
 
 		int right = this.x + this.entryWidth;
-		int minPrice = minPrice(target.level());
+		int minPrice = minEditablePrice(target.level());
 		// level-dependent, so cached against the level the row last drew with
 		if (this.cachedMinLevel == null || this.cachedMinLevel != minPrice) {
 			this.cachedMinLevel = minPrice;
@@ -326,13 +331,20 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		int nameRight = this.x + 4 + this.markedWidth;
 		if (maxLevelX >= nameRight + 4) {
 			context.text(font, this.maxLevelText, maxLevelX, this.y + 6, 0xFFC0C0C0);
-			// min price above the 64 emerald cap: the target can never match
+			// effective minimum above the 64 emerald cap: the target can never match
 			context.text(font, this.minPriceText, minPriceX, this.y + 6,
 					minPrice > 64 ? 0xFFFF5555 : 0xFFC0C0C0);
 		}
 
 		this.maxPriceField.setVisible(enabled);
 		this.levelField.setVisible(enabled);
+		if (!enabled) {
+			// an invisible field must not keep focus: the list routes keys by
+			// isFocused() only, so a row disabled mid-session (autoDisableAfterLock)
+			// would otherwise keep editing a hidden value that flushEdits persists
+			if (this.maxPriceField.isFocused()) this.maxPriceField.setFocused(false);
+			if (this.levelField.isFocused()) this.levelField.setFocused(false);
+		}
 		if (enabled) {
 			matrices.pushMatrix();
 			int maxPriceX = right - 28;
@@ -445,9 +457,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 				if (typed != null) baseLevel = typed;
 			}
 			int level = Mth.clamp((int) (baseLevel + verticalAmount), 1, editableMaxLevel());
-			int price = TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
-					? target.maxPrice()
-					: Math.min(64, Math.max(target.maxPrice(), minPrice(level)));
+			int price = Math.min(64, Math.max(target.maxPrice(), minEditablePrice(level)));
 			TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withLevel(level).withMaxPrice(price));
 			this.levelField.setValue(String.valueOf(level));
 			// never clobber partial input: the price field may be focused mid-typing

@@ -275,14 +275,12 @@ public final class TradeMasterConfig {
 				// a stored >=100 level truncates on display and the reconciliation
 				// responder would silently persist the truncated value
 				int level = Math.max(1, Math.min(existing.level(), Math.min(maxLevel, 99)));
-				// a hand-edited maxPrice below the vanilla minimum for the level can
-				// never match: raise it instead of leaving a silently dead target
-				// (capped at 64 like the GUI clamp, even when minPrice exceeds it).
-				// With discounted pricing the cap is compared against the charged
-				// price, which can sit below the base minimum: keep the user's value.
-				int price = this.discountedPriceAsSalePrice
-						? Math.min(existing.maxPrice(), 64)
-						: Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), minPrice(level, id)));
+				// a cap below the EFFECTIVE minimum (emerald price slot, charged-price
+				// basis off) can never match: raise it instead of leaving a silently
+				// dead target (capped at 64 like the GUI clamp, even when the minima
+				// exceed it)
+				int floor = Math.min(64, minimumEditablePrice(id, level));
+				int price = Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), floor));
 				merged.put(id, existing.withLevel(level).withMaxPrice(price));
 			} else {
 				Enchantment enchantment = registry.getValue(id);
@@ -322,6 +320,21 @@ public final class TradeMasterConfig {
 			}
 		}
 		return result;
+	}
+
+	/**
+	 * The lowest price at which a target can ever be offered (and therefore the
+	 * lowest cap the GUI lets the user enter). The vanilla emerald minimum only
+	 * applies when the PRICE slot actually charges emeralds: a custom spec whose
+	 * slot 0 is another item has no such formula, and with
+	 * {@code discountedPriceAsSalePrice} on the charged price can fall to 1.
+	 */
+	public int minimumEditablePrice(Identifier id, int level) {
+		if (this.discountedPriceAsSalePrice) return 1;
+		TradeOfferSpec.TradeCost price = this.specFor(id).costAt(0);
+		if (price == null || price.item() == null
+				|| !price.item().equals(TradeOfferSpec.EMERALD)) return 1;
+		return minPrice(level, id);
 	}
 
 	/** Vanilla minimum price formula: 2 + 3 * level. */
