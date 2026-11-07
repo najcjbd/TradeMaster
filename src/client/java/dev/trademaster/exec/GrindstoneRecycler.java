@@ -626,11 +626,10 @@ public class GrindstoneRecycler implements BookDisposal {
 				// an inventory SWAP click IS applied locally first, so the target slot
 				// already shows the book even when the server REJECTS the click: wait a
 				// round trip (waitTicks >= 10) and confirm the WHOLE move — the target holds
-				// the book AND the source slot is now empty. For the predicted
-				// empty-destination click the source emptying is proof the click landed,
-				// not just the client prediction; the occupied and offhand branches send
-				// RAW swaps, which have no prediction, so their exchange check already
-				// waits for the server.
+				// the book AND the source slot is now empty. The predicted empty-destination
+				// click is applied locally, so its contents are only a prediction until the
+				// fixed grace below has passed; the occupied and offhand branches send RAW
+				// swaps, which have no prediction, so their exchange check waits for the server.
 				boolean staged;
 				int neededTicks;
 				if (this.dropStageRaw && this.dropStageSource >= 0) {
