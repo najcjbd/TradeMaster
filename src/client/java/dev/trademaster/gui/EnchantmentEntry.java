@@ -206,9 +206,13 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		// downgrade a stored level >= maxLevel() and persist it
 		if (levelValue != null && this.enchantment != null) {
 			int newLevel = Mth.clamp(levelValue, 1, editableMaxLevel());
-			// raising the level raises the vanilla minimum price: lift the
-			// stored price with it, otherwise the target can never match
-			int newPrice = Math.min(64, Math.max(target.maxPrice(), minPrice(newLevel)));
+			// raising the level raises the vanilla BASE minimum price: lift the
+			// stored price with it, otherwise the target can never match. With
+			// discounted pricing the cap is compared against the charged price, which
+			// may stay below that base — the user's cap must not be overwritten then.
+			int newPrice = TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
+					? target.maxPrice()
+					: Math.min(64, Math.max(target.maxPrice(), minPrice(newLevel)));
 			if (newLevel != target.level() || newPrice != target.maxPrice()) {
 				target = target.withLevel(newLevel).withMaxPrice(newPrice);
 				TradeMasterConfig.INSTANCE.enchantments.put(this.id, target);
@@ -223,7 +227,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		if (price != null) {
 			// minPrice() can exceed 64 for high-level treasures; Mth.clamp
 			// with min>max would then return min and store >64
-			int clamped = Mth.clamp(price, Math.min(minPrice(target.level()), 64), 64);
+			int clamped = Mth.clamp(price, Math.min(minEditablePrice(target.level()), 64), 64);
 			if (clamped != target.maxPrice()) {
 				target = target.withMaxPrice(clamped);
 				TradeMasterConfig.INSTANCE.enchantments.put(this.id, target);
@@ -231,6 +235,13 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			}
 		}
 		return target;
+	}
+
+	/** Lowest max price the user may enter. With discounted pricing the cap applies to
+	 * the price actually charged, which a cure / Hero discount can push below the
+	 * vanilla BASE minimum, so the floor drops to 1. */
+	private int minEditablePrice(int level) {
+		return TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice ? 1 : minPrice(level);
 	}
 
 	@Override
@@ -415,7 +426,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 				Integer typed = parseIntSafe(this.maxPriceField.getValue());
 				if (typed != null) base = typed;
 			}
-			int price = Mth.clamp((int) (base + verticalAmount), Math.min(minPrice(target.level()), 64), 64);
+			int price = Mth.clamp((int) (base + verticalAmount), Math.min(minEditablePrice(target.level()), 64), 64);
 			TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withMaxPrice(price));
 			this.maxPriceField.setValue(String.valueOf(price));
 			// the wheel wrote the value itself: the draft is settled, not pending
@@ -434,7 +445,9 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 				if (typed != null) baseLevel = typed;
 			}
 			int level = Mth.clamp((int) (baseLevel + verticalAmount), 1, editableMaxLevel());
-			int price = Math.min(64, Math.max(target.maxPrice(), minPrice(level)));
+			int price = TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice
+					? target.maxPrice()
+					: Math.min(64, Math.max(target.maxPrice(), minPrice(level)));
 			TradeMasterConfig.INSTANCE.enchantments.put(this.id, target.withLevel(level).withMaxPrice(price));
 			this.levelField.setValue(String.valueOf(level));
 			// never clobber partial input: the price field may be focused mid-typing

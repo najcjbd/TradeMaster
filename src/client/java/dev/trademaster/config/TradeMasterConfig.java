@@ -154,6 +154,12 @@ public final class TradeMasterConfig {
 	 * hot paths, so a hand-edited file with thousands of entries must not be read in full. */
 	public static final int MAX_NON_TRADEABLE = 64;
 
+	/** Upper bound for the "air item" list and the custom-goods list: both are scanned per
+	 * offer and a hand-edited/broken file with thousands of entries must not be read in
+	 * full. Far above any real configuration. */
+	public static final int MAX_AIR_ITEMS = 1024;
+	public static final int MAX_GOODS = 1024;
+
 	/** Adds a chest unless it is already bound or the list is full. */
 	public boolean addChest(BlockPos pos) {
 		if (pos == null || this.chestPositions.size() >= MAX_CHESTS) return false;
@@ -271,8 +277,12 @@ public final class TradeMasterConfig {
 				int level = Math.max(1, Math.min(existing.level(), Math.min(maxLevel, 99)));
 				// a hand-edited maxPrice below the vanilla minimum for the level can
 				// never match: raise it instead of leaving a silently dead target
-				// (capped at 64 like the GUI clamp, even when minPrice exceeds it)
-				int price = Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), minPrice(level, id)));
+				// (capped at 64 like the GUI clamp, even when minPrice exceeds it).
+				// With discounted pricing the cap is compared against the charged
+				// price, which can sit below the base minimum: keep the user's value.
+				int price = this.discountedPriceAsSalePrice
+						? Math.min(existing.maxPrice(), 64)
+						: Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), minPrice(level, id)));
 				merged.put(id, existing.withLevel(level).withMaxPrice(price));
 			} else {
 				Enchantment enchantment = registry.getValue(id);
@@ -335,8 +345,8 @@ public final class TradeMasterConfig {
 
 	public static boolean isDoubleTradePrice(Identifier id) {
 		Minecraft client = Minecraft.getInstance();
-		if (client.level == null) {
-			// main menu / before join: fall back to the last known tag membership
+		if (client == null || client.level == null) {
+			// main menu / before join (and headless tests): fall back to the last known tag membership
 			return DOUBLE_TRADE_PRICE_CACHE.contains(id);
 		}
 		var registry = client.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);

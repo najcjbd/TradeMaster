@@ -2629,7 +2629,7 @@ public final class RerollController {
 				blankPrice.add(target.id().toString());
 				continue;
 			}
-			if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) {
+			if (TradeMatcher.targetPriceUnreachable(target)) {
 				Enchantment enchantment = mc.level.registryAccess()
 						.lookupOrThrow(Registries.ENCHANTMENT).getValue(target.id());
 				dead.add(enchantment != null

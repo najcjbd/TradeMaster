@@ -432,19 +432,21 @@ public class ChestDepositor implements BookDisposal {
 				boolean alreadyHeld = slot.index == 36 + selected;
 				if (!alreadyHeld && !player.getInventory().getItem(selected).isEmpty()) {
 					// the staging SWAP is applied LOCALLY before the server can reject it:
-					// into an OCCUPIED slot the swap is a TRUE EXCHANGE, so a stale
-					// prediction would DROP the player's own item. Stage only into an EMPTY
-					// slot — then a stale prediction can at worst drop nothing.
+					// prefer an EMPTY destination, where a stale prediction can at worst
+					// drop nothing
 					int empty = findEmptyHotbarSlot(player);
-					if (empty < 0) {
-						// nothing safe to stage into. FAILED_FULL, not FAILED: a full HOTBAR
-						// says nothing about the main inventory, so let the caller decide
-						// (it re-checks a free slot) instead of hard-stopping the run
-						return StepResult.failedFull(Component.translatable("trademaster.message.drop_no_slot"));
+					if (empty >= 0) {
+						if (this.originalSlot < 0) this.originalSlot = selected;
+						Interactions.selectHotbarSlot(player, empty);
+						selected = empty;
 					}
-					if (this.originalSlot < 0) this.originalSlot = selected;
-					Interactions.selectHotbarSlot(player, empty);
-					selected = empty;
+					// no empty hotbar slot: stage into the SELECTED occupied one. This is
+					// safe because DROP_STAGE_WAIT requires the whole exchange (book in the
+					// selected slot, displaced stack back in the source) to be observed, and
+					// DROP_WAIT re-checks the exact staged stack right before the packet — a
+					// rejected swap can never drop the occupant. Without this last resort a
+					// full hotbar reported "no slot" while the run continued, leaving the
+					// item in the inventory forever.
 				}
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;

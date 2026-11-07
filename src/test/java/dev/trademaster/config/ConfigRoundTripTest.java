@@ -103,6 +103,19 @@ class ConfigRoundTripTest {
 		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"configVersion\":1,\"basePriceAsSalePrice\":false}"));
 		assertTrue(c().discountedPriceAsSalePrice);
+		// a v2 file carrying ONLY the old key still migrates (downgrade/upgrade mix)
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{\"basePriceAsSalePrice\":false}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		// a v1 file carrying ONLY the new key still reads it
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":1,\"mechanism\":{\"discountedPriceAsSalePrice\":true}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
+		// a malformed old key must not override a valid new one
+		c().discountedPriceAsSalePrice = false;
+		ConfigTest.read(c(), parse("{\"configVersion\":2,\"mechanism\":{"
+				+ "\"discountedPriceAsSalePrice\":true,\"basePriceAsSalePrice\":\"yes\"}}"));
+		assertTrue(c().discountedPriceAsSalePrice);
 		// string booleans are readable too (readBool accepts "true"/"false")
 		c().discountedPriceAsSalePrice = false;
 		ConfigTest.read(c(), parse("{\"configVersion\":1,\"mechanism\":{\"basePriceAsSalePrice\":\"false\"}}"));

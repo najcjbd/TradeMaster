@@ -506,6 +506,11 @@ public final class ConfigPersistence {
 				c.airItems.clear();
 				for (JsonElement e : air.getAsJsonArray()) {
 					if (!e.isJsonPrimitive()) continue;
+					if (c.airItems.size() >= TradeMasterConfig.MAX_AIR_ITEMS) {
+						TradeMaster.LOGGER.warn("Ignoring air items beyond the first {} in trade-master.json",
+								TradeMasterConfig.MAX_AIR_ITEMS);
+						break;
+					}
 					String raw = e.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
 					if (raw.isEmpty()) continue;
 					// the same normalisation the offers tab uses: a namespaceless entry
@@ -557,6 +562,11 @@ public final class ConfigPersistence {
 				c.goods.clear();
 				for (JsonElement e : goods.getAsJsonArray()) {
 					if (!e.isJsonObject()) continue;
+					if (c.goods.size() >= TradeMasterConfig.MAX_GOODS) {
+						TradeMaster.LOGGER.warn("Ignoring goods beyond the first {} in trade-master.json",
+								TradeMasterConfig.MAX_GOODS);
+						break;
+					}
 					JsonObject o = e.getAsJsonObject();
 					JsonElement resultElement = o.get("result");
 					Identifier result = resultElement != null && resultElement.isJsonPrimitive()

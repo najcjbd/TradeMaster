@@ -58,12 +58,18 @@ public final class LecternRestock {
 	/** The same bound for the two equip paths' foreign-menu close (shared: only one
 	 * of them runs per bringToolToHand call). */
 	private static int equipCarriedWaitTicks = 0;
+	/** Ticks spent returning a stack a partially-applied restock batch left on the
+	 * cursor, and its bound: past it the state is unknown, so stop without closing
+	 * anything (the stack stays with the player) instead of dropping it. */
+	private static int restockRecoverTicks = 0;
+	private static final int RESTOCK_RECOVER_MAX_TICKS = 40;
 
 	/** Marks a batch as in flight from {@code fromContainerSlot} (-1 when the effect is
 	 * only visible on the offhand / in the menu state). */
 	private static void markRestockInFlight(int fromContainerSlot) {
 		restockInFlightTicks = 0;
 		restockFromSlot = fromContainerSlot;
+		restockRecoverTicks = 0;
 	}
 
 	public static boolean isWorkBlockAt(BlockGetter level, BlockPos pos) {
@@ -110,6 +116,7 @@ public final class LecternRestock {
 		restockFromSlot = -1;
 		restockCarriedWaitTicks = 0;
 		equipCarriedWaitTicks = 0;
+		restockRecoverTicks = 0;
 		// a stale tool lock from a previous run may point at an item that is gone, and
 		// the configured block may have changed
 		RigTarget.clearToolLock();
@@ -146,11 +153,16 @@ public final class LecternRestock {
 
 	/** Moves the whole work-block stack into the offhand via packets. Returns false when none is available. */
 	public static boolean restock(LocalPlayer player) {
-		if (offhandHasWorkItem(player)) {
+		// the offhand shortcut is only valid with a CLEAN cursor: a partially applied
+		// batch can leave the displaced item on the cursor while the lectern already
+		// sits in the offhand, and returning early would carry that cursor into the
+		// placement path (a later menu open would drop it)
+		if (offhandHasWorkItem(player) && player.containerMenu.getCarried().isEmpty()) {
 			// the batch landed: retire the in-flight state HERE, or the stale slot would
 			// make the NEXT restock wait out the whole bound before sending anything
 			restockInFlightTicks = -1;
 			restockFromSlot = -1;
+			restockRecoverTicks = 0;
 			return true;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -162,6 +174,26 @@ public final class LecternRestock {
 		// a batch is in flight: wait until its effect is visible (the server broadcast),
 		// bounded so a REJECTED batch is retried instead of stalling forever
 		if (restockInFlightTicks >= 0) {
+			// A state-id race can apply only PART of the raw batch: the pickup landed but
+			// the deposit into the offhand (or the displaced item's return to its source
+			// slot) was rejected, leaving a stack on the cursor. Resolve it BEFORE the
+			// landing test — "source slot empty" alone would read as success and carry the
+			// dirty cursor forward, while falling through to the carried-wait below would
+			// report "lectern lost" with the lectern still on the cursor.
+			if (player.containerMenu == player.inventoryMenu
+					&& !player.containerMenu.getCarried().isEmpty()) {
+				if (++restockRecoverTicks > RESTOCK_RECOVER_MAX_TICKS) {
+					// bounded: stop without closing anything or dropping the stack
+					restockRecoverTicks = 0;
+					restockInFlightTicks = -1;
+					restockFromSlot = -1;
+					return false;
+				}
+				// one raw click every few ticks, always with the freshest state id
+				if (restockRecoverTicks % 5 == 1) depositCarriedAfterBatch(player, work);
+				return true;
+			}
+			restockRecoverTicks = 0;
 			boolean landed = (restockFromSlot == RESTOCK_FROM_CLOSE
 							&& player.containerMenu == player.inventoryMenu)
 					|| (restockFromSlot >= 0
@@ -236,6 +268,34 @@ public final class LecternRestock {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * Returns a stack a partially-applied restock batch left on the cursor: the work
+	 * item goes into the offhand, the item the batch displaced goes back to the source
+	 * slot it came from. Raw click (no client prediction), so the caller retries it
+	 * with a fresh state id until the server broadcast is observed.
+	 */
+	private static void depositCarriedAfterBatch(LocalPlayer player, Item work) {
+		var container = player.containerMenu;
+		ItemStack carried = container.getCarried();
+		int target;
+		if (carried.getItem() == work && player.getOffhandItem().getItem() != work) {
+			// the deposit click was rejected: put the lectern into the offhand (slot 45
+			// of InventoryMenu); with another item there this swaps it onto the cursor
+			target = 45;
+		} else if (restockFromSlot >= 0 && player.getInventory().getItem(restockFromSlot).isEmpty()) {
+			// the third click (returning the displaced offhand item to its source slot)
+			// was rejected: the slot is empty again, so put that item back there
+			target = restockFromSlot < 9 ? restockFromSlot + 36 : restockFromSlot;
+		} else {
+			// not a state this batch can explain: leave the stack with the player
+			return;
+		}
+		Int2ObjectMap<HashedStack> changed = new Int2ObjectOpenHashMap<>();
+		player.connection.send(new ServerboundContainerClickPacket(
+				container.containerId, container.getStateId(), (short) target, (byte) 0,
+				ContainerInput.PICKUP, changed, HashedStack.EMPTY));
 	}
 
 	public enum ToolState { READY, WORKING, NONE }

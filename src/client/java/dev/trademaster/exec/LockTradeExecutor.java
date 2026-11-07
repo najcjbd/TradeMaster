@@ -64,13 +64,15 @@ public class LockTradeExecutor {
 
 	private int matchingCount(ItemStack stack) {
 		if (this.expected == null) return stack.is(Items.ENCHANTED_BOOK) ? stack.getCount() : 0;
-		// a GOOD (a non-book result): count the item regardless of the good's minimum
-		// amount. The stage-3 proof compares TOTALS, and resultMatches' gate ("the stack
-		// holds at least the good's amount") would under-report when the delivered amount
-		// spills across a stack boundary, so the proof could never fire and a legitimate
-		// purchase would be dispatched unnamed with its budget restored (re-bought later).
+		// a GOOD (a non-book result): count stacks that are component-identical to the
+		// purchase, so an unrelated copy of the same item in the player's inventory can
+		// never satisfy the delivery proof. Unlike resultMatches this does not apply the
+		// good's minimum amount: the stage-3 proof compares TOTALS, and that gate would
+		// under-report when the delivered amount spills across a stack boundary, so the
+		// proof could never fire and a legitimate purchase would be re-bought later.
 		if (!this.expected.purchase().result().is(Items.ENCHANTED_BOOK)) {
-			return stack.is(this.expected.purchase().result().getItem()) ? stack.getCount() : 0;
+			return ItemStack.isSameItemSameComponents(stack, this.expected.purchase().result())
+					? stack.getCount() : 0;
 		}
 		return resultMatches(this.expected, stack) ? stack.getCount() : 0;
 	}

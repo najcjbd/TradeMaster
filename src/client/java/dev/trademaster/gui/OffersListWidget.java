@@ -596,9 +596,22 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			Integer count = parseCount(this.countField.getValue());
 			boolean badItem = (!this.costAField.getValue().isBlank() && itemA == null)
 					|| (!this.costBField.getValue().isBlank() && itemB == null);
-			boolean badNumber = amount == null || amount < 1 || price == null || price < 0 || count == null;
-			if (badItem || badNumber) {
-				this.errorKey = badItem ? "trademaster.offer.invalid_item" : "trademaster.offer.invalid_count";
+			if (badItem) {
+				this.errorKey = "trademaster.offer.invalid_item";
+				return;
+			}
+			// name the FIELD that is out of range: the old single "count" message blamed
+			// the wrong box for an out-of-range amount or price cap
+			if (amount == null) {
+				this.errorKey = "trademaster.offer.invalid_amount";
+				return;
+			}
+			if (price == null) {
+				this.errorKey = "trademaster.offer.invalid_price";
+				return;
+			}
+			if (count == null) {
+				this.errorKey = "trademaster.offer.invalid_count";
 				return;
 			}
 			this.errorKey = null;

@@ -36,9 +36,13 @@ public final class ConfigTest {
 	}
 
 	/** Restores the shared singleton from a {@link #snapshot()}. {@code enchantments} is
-	 * cleared explicitly because a read only replaces it when the file yielded entries. */
+	 * cleared explicitly because a read only replaces it when the file yielded entries.
+	 * The two nullable drop angles are cleared too: {@code writeFrom} REMOVES them when
+	 * null, so an absent key must mean "unset", not "keep whatever this test typed". */
 	public static void restore(JsonObject snapshot) {
 		TradeMasterConfig.INSTANCE.enchantments.clear();
+		TradeMasterConfig.INSTANCE.curseDropYaw = null;
+		TradeMasterConfig.INSTANCE.curseDropPitch = null;
 		read(TradeMasterConfig.INSTANCE, snapshot);
 	}
 }
