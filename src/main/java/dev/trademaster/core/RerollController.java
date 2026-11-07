@@ -213,6 +213,10 @@ public final class RerollController {
 	 * finish completes, instead of discarding the purchase/villager unproven. */
 	private static boolean deferredMoveStop = false;
 	private static boolean deferredTimeoutStop = false;
+	/** Ticks a latched deferred stop has waited; a finish that never completes
+	 * (a wedged name/send-away) must not defer the stop for ever. */
+	private static int deferredStopTicks = 0;
+	private static final int DEFERRED_STOP_MAX_TICKS = 200;
 	private static int slowInteractDelay = 0;
 	private static int detectionArmedTick = 0;
 	// statusText() is polled every tick (HUD + screen): cache it per (phase, tries)
@@ -425,6 +429,7 @@ public final class RerollController {
 		runTicks = 0;
 		deferredMoveStop = false;
 		deferredTimeoutStop = false;
+		deferredStopTicks = 0;
 		professionHealCycles = 0;
 		cursorBlockTicks = 0;
 		strayChestTicks = 0;
@@ -636,9 +641,21 @@ public final class RerollController {
 				return;
 			}
 		}
+		if (!config.timeoutEnabled) deferredTimeoutStop = false;
 		if (deferredTimeoutStop && !finalizingRun()) {
 			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
+		}
+		// the finish normally ends within the naming/send-away budgets; a wedged one
+		// must not keep the requested stop deferred for ever
+		if (deferredMoveStop || deferredTimeoutStop) {
+			if (++deferredStopTicks > DEFERRED_STOP_MAX_TICKS) {
+				stop(McText.translatable(deferredMoveStop
+						? "trademaster.message.player_moved" : "trademaster.message.timeout"), ChatFormatting.RED);
+				return;
+			}
+		} else {
+			deferredStopTicks = 0;
 		}
 		phaseTicks++;
 		if (overlayNoticeTicks > 0) {
@@ -3251,6 +3268,7 @@ public final class RerollController {
 		session = null;
 		deferredMoveStop = false;
 		deferredTimeoutStop = false;
+		deferredStopTicks = 0;
 		phase = Phase.IDLE;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.isSameThread()) {
