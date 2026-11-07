@@ -48,8 +48,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: trade-master-jars
-          # the mod jars only: withSourcesJar() also emits -sources.jar, which is a
-          # dev aid and not what the README advertises as the download
+          # the mod jars only: a dev build may also emit -sources.jar, which is
+          # not what the README advertises as the download
           path: |
             versions/*-fabric/build/libs/*.jar
             !versions/*-fabric/build/libs/*-sources.jar

@@ -652,9 +652,10 @@ public final class RerollController {
 		// the finish normally ends within the naming/send-away budgets; a wedged one
 		// must not keep the requested stop deferred for ever
 		if (deferredMoveStop || deferredTimeoutStop) {
-			// an active deposit has its own 120s clock and is part of the finish:
-			// restart the deadline from its completion instead of cutting it
-			if (depositor != null) {
+			// an active deposit is self-bounded (its own 120s/180s clock) only while
+			// phase timeouts are on; with them off the deposit may never end, so the
+			// deferred stop keeps its own deadline instead of being pinned for ever
+			if (depositor != null && config.phaseTimeoutsEnabled) {
 				deferredStopTicks = 0;
 			} else if (++deferredStopTicks > DEFERRED_STOP_MAX_TICKS) {
 				stop(McText.translatable(deferredMoveStop
