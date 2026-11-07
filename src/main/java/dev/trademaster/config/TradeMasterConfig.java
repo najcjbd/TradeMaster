@@ -257,9 +257,10 @@ public final class TradeMasterConfig {
 	 * on join): new tradeable enchantments are added disabled, existing entries
 	 * keep their settings, and stored entries that are currently unknown or
 	 * untradeable are kept so the user's level/price choices survive re-joins.
+	 *
+	 * @return how many stored caps were raised to their effective minimum (they are
+	 * persisted here, and the caller can tell the player about the change).
 	 */
-	/** @return how many stored caps were raised to their effective minimum (the caller
-	 * can tell the player instead of rewriting the file silently). */
 	public int syncEnchantmentsFromRegistry(Registry<Enchantment> registry) {
 		int raised = 0;
 		LinkedHashMap<ResourceLocation, EnchantmentTarget> merged = new LinkedHashMap<>();
@@ -300,6 +301,7 @@ public final class TradeMasterConfig {
 		}
 		this.enchantments.clear();
 		this.enchantments.putAll(merged);
+		if (raised > 0) save();
 		return raised;
 	}
 

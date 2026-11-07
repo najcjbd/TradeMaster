@@ -302,6 +302,8 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 - **LPCTools tradeReroller** — LGPL-3.0，© Fymasa
   参考/派生的部分：双事件交易检测、任务链重刷（`TaskChainRerollStrategy`）、交易锁定序列、价格匹配（`TradeMatcher`）、已命名村民抵扣、铁砧命名（`NamingExecutor`）。LGPL-3.0 全文见 [`LICENSE-LGPL-3.0.txt`](LICENSE-LGPL-3.0.txt)。
 
+以上来源的派生部分均已按本项目的结构重写/拆分。
+
 ### 依赖项
 
 | 项目 | 许可证 | 关系 |

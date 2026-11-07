@@ -318,6 +318,8 @@ Parts of the implementation are inspired by / derived from these open-source pro
 - **LPCTools tradeReroller** — LGPL-3.0, © Fymasa
   Inspired/derived: dual-event trade detection, task-chain reroll (`TaskChainRerollStrategy`), the trade lock sequence, price matching (`TradeMatcher`), named-villager deduction, anvil naming (`NamingExecutor`). The full LGPL-3.0 text is in [`LICENSE-LGPL-3.0.txt`](LICENSE-LGPL-3.0.txt).
 
+The derived parts have been rewritten/split up to fit this project's structure.
+
 ### Dependencies
 
 | Project | License | Relationship |

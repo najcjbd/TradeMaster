@@ -208,6 +208,11 @@ public final class RerollController {
 	private static final double AWAY_DISTANCE_SQR = 4.0;
 	private static int phaseTicks = 0;
 	private static int runTicks = 0;
+	/** An automatic stop fired while the run was finishing (a lock click is out, or
+	 * the locked villager is being named/sent away): latch it and stop once the
+	 * finish completes, instead of discarding the purchase/villager unproven. */
+	private static boolean deferredMoveStop = false;
+	private static boolean deferredTimeoutStop = false;
 	private static int slowInteractDelay = 0;
 	private static int detectionArmedTick = 0;
 	// statusText() is polled every tick (HUD + screen): cache it per (phase, tries)
@@ -418,6 +423,8 @@ public final class RerollController {
 		session = s;
 		sessionDimension = mc.level == null ? null : McRegistry.keyId(mc.level.dimension());
 		runTicks = 0;
+		deferredMoveStop = false;
+		deferredTimeoutStop = false;
 		professionHealCycles = 0;
 		cursorBlockTicks = 0;
 		strayChestTicks = 0;
@@ -604,17 +611,32 @@ public final class RerollController {
 			snapRegionConfigured = true;
 		}
 		// resting in AWAIT_VILLAGER is exempt: the player may walk around freely.
-		// With a purchase already sent, wait for the verdict first: stopping now would
-		// leave the villager locked but unvouchered, and the next run could buy again.
+		// A FINISHING run (a sent purchase / naming / send-away) owns the villager:
+		// latch the stop and apply it once the finish completes, or the purchase and
+		// the villager would be discarded unproven and the next run could buy again.
 		if (phase != Phase.AWAIT_VILLAGER && s.movementGuard.hasMoved(player)) {
-			if (!purchaseInFlight()) {
+			if (finalizingRun()) {
+				deferredMoveStop = true;
+				debug("movement stop deferred until the lock finish completes");
+			} else {
 				stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
 				return;
 			}
-			debug("stop deferred until the in-flight purchase resolves (movement)");
 		}
-		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks
-				&& !purchaseInFlight()) {
+		if (deferredMoveStop && !finalizingRun()) {
+			stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
+			return;
+		}
+		if (config.timeoutEnabled && phase != Phase.AWAIT_VILLAGER && ++runTicks > config.timeoutTicks) {
+			if (finalizingRun()) {
+				deferredTimeoutStop = true;
+				debug("run timeout deferred until the lock finish completes");
+			} else {
+				stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+				return;
+			}
+		}
+		if (deferredTimeoutStop && !finalizingRun()) {
 			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
@@ -2545,14 +2567,6 @@ public final class RerollController {
 		return h;
 	}
 
-	/** A lock click is already out: a bare stop now would discard an unvouchered,
-	 * possibly-successful purchase and let the next run buy a second copy. Automatic
-	 * stops (player movement / the global run timeout) wait for the executor's verdict;
-	 * death, a dimension change and an explicit manual stop cannot wait. */
-	private static boolean purchaseInFlight() {
-		return phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent();
-	}
-
 	/** A rebuild drained the needs while the run is already committed: a LOCK
 	 * purchase was sent (the server may have locked the villager) or the locked
 	 * villager is being named/sent away. Stopping now would strand it unnamed
@@ -3235,6 +3249,8 @@ public final class RerollController {
 		cachedStatusText = null;
 		lastOverlayText = null;
 		session = null;
+		deferredMoveStop = false;
+		deferredTimeoutStop = false;
 		phase = Phase.IDLE;
 		Minecraft mc = Minecraft.getInstance();
 		if (mc.isSameThread()) {
