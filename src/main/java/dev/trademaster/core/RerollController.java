@@ -216,7 +216,9 @@ public final class RerollController {
 	/** Ticks a latched deferred stop has waited; a finish that never completes
 	 * (a wedged name/send-away) must not defer the stop for ever. */
 	private static int deferredStopTicks = 0;
-	private static final int DEFERRED_STOP_MAX_TICKS = 200;
+	/** At least the naming phase's 600-tick backstop: a healthy slow name/deposit
+	 * must not be cut short by the deferred stop. */
+	private static final int DEFERRED_STOP_MAX_TICKS = 620;
 	private static int slowInteractDelay = 0;
 	private static int detectionArmedTick = 0;
 	// statusText() is polled every tick (HUD + screen): cache it per (phase, tries)
