@@ -57,7 +57,9 @@ public final class TradeMasterConfig {
 	 * strictly cheaper copy appears. Mutually exclusive with autoDisableAfterLock;
 	 * when both are somehow set, autoDisableAfterLock wins. */
 	public boolean huntCheaper = false;
-	/** Max lock purchase retries after a server rejection; -1 retries forever. */
+	/** Max lock retries after a CLEAN pre-click failure (the merchant menu vanished
+	 * before the click): a click that was already sent is never re-sent, its unknown
+	 * outcome is dispatched instead. -1 = unlimited. */
 	public int lockMaxRetries = -1;
 	/** Max post-dispatch lectern-break retries before the run stops; -1 retries
 	 * forever. The break must eventually succeed, but a block that can never be
