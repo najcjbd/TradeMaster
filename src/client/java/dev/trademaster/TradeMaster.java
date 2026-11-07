@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.event.player.UseEntityCallback;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
@@ -128,7 +129,15 @@ public class TradeMaster implements ClientModInitializer {
 			Minecraft client = Minecraft.getInstance();
 			if (client.level != null) {
 				var registry = client.level.registryAccess().lookupOrThrow(Registries.ENCHANTMENT);
-				TradeMasterConfig.INSTANCE.syncEnchantmentsFromRegistry((net.minecraft.core.Registry<Enchantment>) registry);
+				int raised = TradeMasterConfig.INSTANCE
+						.syncEnchantmentsFromRegistry((net.minecraft.core.Registry<Enchantment>) registry);
+				if (raised > 0 && client.player != null) {
+					// the join-time registry sync may lift caps that were below the live
+					// effective minimum: say so instead of rewriting the file silently
+					client.player.sendSystemMessage(Component.literal("[Trade Master] ")
+							.append(Component.translatable("trademaster.message.price_floor_raised", raised)
+									.withStyle(net.minecraft.ChatFormatting.YELLOW)));
+				}
 			}
 		}
 	}

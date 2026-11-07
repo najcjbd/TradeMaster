@@ -258,7 +258,10 @@ public final class TradeMasterConfig {
 	 * keep their settings, and stored entries that are currently unknown or
 	 * untradeable are kept so the user's level/price choices survive re-joins.
 	 */
-	public void syncEnchantmentsFromRegistry(Registry<Enchantment> registry) {
+	/** @return how many stored caps were raised to their effective minimum (the caller
+	 * can tell the player instead of rewriting the file silently). */
+	public int syncEnchantmentsFromRegistry(Registry<Enchantment> registry) {
+		int raised = 0;
 		LinkedHashMap<Identifier, EnchantmentTarget> merged = new LinkedHashMap<>();
 		List<Identifier> ids = new ArrayList<>();
 		for (Identifier id : registry.keySet()) {
@@ -281,6 +284,7 @@ public final class TradeMasterConfig {
 				// exceed it)
 				int floor = Math.min(64, minimumEditablePrice(id, level));
 				int price = Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), floor));
+				if (price > existing.maxPrice()) raised++;
 				merged.put(id, existing.withLevel(level).withMaxPrice(price));
 			} else {
 				Enchantment enchantment = registry.getValue(id);
@@ -296,6 +300,7 @@ public final class TradeMasterConfig {
 		}
 		this.enchantments.clear();
 		this.enchantments.putAll(merged);
+		return raised;
 	}
 
 	public int emeraldFloor() {

@@ -182,6 +182,7 @@
   "trademaster.error.wait-librarian-timeout": "等待村民转职图书管理员超时",
   "trademaster.error.villager-gone": "村民已消失",
   "trademaster.message.no_enchantments": "未启用任何附魔目标",
+  "trademaster.message.price_floor_raised": "有 %s 个目标的最高价被抬到了它们能被报价的最低值",
   "trademaster.message.axe_required": "背包中需要一把斧头（流程必须砸讲台）",
   "trademaster.message.tool_cannot_harvest": "背包里没有能收获该工作方块的工具（它需要正确的工具）；强行破坏会使其不掉落而消失，已停止",
   "trademaster.settings.mechanism.comment": "如何拆掉讲台并重新放置，使村民重新刷出交易",

@@ -40,7 +40,10 @@ import java.util.Map;
  */
 public class ChestDepositor implements BookDisposal {
 
-	private enum State { SEEK, AWAIT_OPEN, DEPOSIT, EVALUATE, DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT }
+	private enum State {
+		SEEK, AWAIT_OPEN, DEPOSIT, EVALUATE,
+		DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT, DROP_UNSTAGE, DROP_UNSTAGE_WAIT
+	}
 
 	private record BookScan(@Nullable Slot firstSlot, int count) {}
 
@@ -107,6 +110,8 @@ public class ChestDepositor implements BookDisposal {
 	 * is a true exchange and the source ends up holding the occupant. */
 	private ItemStack dropStagedBook = ItemStack.EMPTY;
 	private ItemStack dropDisplaced = ItemStack.EMPTY;
+	/** Ticks spent returning the occupant of an occupied drop destination. */
+	private int dropUnstageTicks = 0;
 
 	/** The start-of-run counts of every good's result item. The allowance is DERIVED
 	 * from these every tick (count now minus baseline) and never booked per move: a
@@ -530,7 +535,15 @@ public class ChestDepositor implements BookDisposal {
 					// the drop landed: the allowance shrinks on its own next tick, and
 					// the NEXT stack gets its own one-shot retry budget
 					this.dropResent = false;
-					this.state = State.DROP_STAGE;
+					if (!this.dropDisplaced.isEmpty() && this.dropSourceSlot >= 0) {
+						// the destination was OCCUPIED: the player's item is now in the
+						// book's old inventory slot. Put it back into the (now empty)
+						// hotbar slot with a raw swap so the staging is invisible.
+						this.dropUnstageTicks = 0;
+						this.state = State.DROP_UNSTAGE;
+					} else {
+						this.state = State.DROP_STAGE;
+					}
 					return StepResult.RUNNING;
 				}
 				if (!this.dropSent) {
@@ -566,6 +579,55 @@ public class ChestDepositor implements BookDisposal {
 					} else {
 						return StepResult.failed(Component.translatable("trademaster.message.curse_drop_failed"));
 					}
+				}
+			}
+			case DROP_UNSTAGE -> {
+				if (player.containerMenu != player.inventoryMenu) {
+					clearDropStaging();
+					this.state = State.DROP_STAGE;
+					return StepResult.RUNNING;
+				}
+				ItemStack sourceNow = player.containerMenu.slots.get(this.dropSourceSlot).getItem();
+				ItemStack destNow = player.getInventory().getItem(this.dropSlot);
+				if (sourceNow.isEmpty()
+						|| !ItemStack.isSameItemSameComponents(sourceNow, this.dropDisplaced)
+						|| sourceNow.getCount() != this.dropDisplaced.getCount()
+						|| !destNow.isEmpty()) {
+					// the world moved on (the player took/moved the item, or the hotbar
+					// slot is occupied again): leave it alone
+					clearDropStaging();
+					this.state = State.DROP_STAGE;
+					return StepResult.RUNNING;
+				}
+				// raw reverse swap: source menu slot back to the destination hotbar slot
+				Int2ObjectMap<HashedStack> changed = new Int2ObjectOpenHashMap<>();
+				player.connection.send(new ServerboundContainerClickPacket(
+						player.containerMenu.containerId, player.containerMenu.getStateId(),
+						(short) this.dropSourceSlot, (byte) this.dropSlot, ContainerInput.SWAP,
+						changed, HashedStack.EMPTY));
+				this.dropUnstageTicks = 0;
+				this.state = State.DROP_UNSTAGE_WAIT;
+			}
+			case DROP_UNSTAGE_WAIT -> {
+				if (++this.dropUnstageTicks > 60) {
+					// cosmetic only: the item is safe in the source slot
+					clearDropStaging();
+					this.state = State.DROP_STAGE;
+					return StepResult.RUNNING;
+				}
+				if (player.containerMenu != player.inventoryMenu) {
+					clearDropStaging();
+					this.state = State.DROP_STAGE;
+					return StepResult.RUNNING;
+				}
+				ItemStack destNow = player.getInventory().getItem(this.dropSlot);
+				ItemStack sourceNow = player.containerMenu.slots.get(this.dropSourceSlot).getItem();
+				if (sourceNow.isEmpty()
+						&& !destNow.isEmpty()
+						&& ItemStack.isSameItemSameComponents(destNow, this.dropDisplaced)
+						&& destNow.getCount() == this.dropDisplaced.getCount()) {
+					clearDropStaging();
+					this.state = State.DROP_STAGE;
 				}
 			}
 			default -> {
@@ -657,6 +719,14 @@ public class ChestDepositor implements BookDisposal {
 		return true;
 	}
 
+	/** Forgets the drop staging (the stack itself is where the server put it). */
+	private void clearDropStaging() {
+		this.dropSourceSlot = -1;
+		this.dropStagedBook = ItemStack.EMPTY;
+		this.dropDisplaced = ItemStack.EMPTY;
+		this.dropUnstageTicks = 0;
+	}
+
 	/** Puts the player's hand back where it was before the deposit started
 	 * (hotbar selection and offhand swaps both go through hotbar slots). */
 	private void restoreHotbarSelection(LocalPlayer player) {
@@ -740,7 +810,8 @@ public class ChestDepositor implements BookDisposal {
 	 * the DROP_* states actually drop anything. */
 	private boolean inDropFlow() {
 		return this.state == State.DROP_STAGE || this.state == State.DROP_STAGE_WAIT
-				|| this.state == State.DROP_AIM || this.state == State.DROP_WAIT;
+				|| this.state == State.DROP_AIM || this.state == State.DROP_WAIT
+				|| this.state == State.DROP_UNSTAGE || this.state == State.DROP_UNSTAGE_WAIT;
 	}
 
 	/** Every chest refused (or there are none): drop the leftover PRODUCED goods when
