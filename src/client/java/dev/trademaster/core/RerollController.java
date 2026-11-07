@@ -643,7 +643,11 @@ public final class RerollController {
 		// the finish normally ends within the naming/send-away budgets; a wedged one
 		// must not keep the requested stop deferred for ever
 		if (deferredMoveStop || deferredTimeoutStop) {
-			if (++deferredStopTicks > DEFERRED_STOP_MAX_TICKS) {
+			// an active deposit has its own 120s clock and is part of the finish:
+			// restart the deadline from its completion instead of cutting it
+			if (depositor != null) {
+				deferredStopTicks = 0;
+			} else if (++deferredStopTicks > DEFERRED_STOP_MAX_TICKS) {
 				stop(Component.translatable(deferredMoveStop
 						? "trademaster.message.player_moved" : "trademaster.message.timeout"), ChatFormatting.RED);
 				return;

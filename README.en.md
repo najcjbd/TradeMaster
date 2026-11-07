@@ -152,7 +152,7 @@ something else into a librarian's trade).
 ## Locking
 
 - **Materials are re-checked** right before buying (emeralds and books); before buying, a **fingerprint** (slot, price, and the **book's full enchantment set**) must match the detection exactly — otherwise it is a drift and the run does a free reroll instead of buying the wrong book.
-- **Retry cap**: `lockMaxRetries` (−1 = retry forever).
+- **Retry cap**: `lockMaxRetries` (−1 = unlimited), for CLEAN pre-click failures only (e.g. the merchant menu vanished before the click); a click that was already sent is never re-sent — an unknown outcome is dispatched instead.
 - **When the matched book is unaffordable**:
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
