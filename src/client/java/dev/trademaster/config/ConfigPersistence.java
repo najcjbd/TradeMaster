@@ -216,7 +216,9 @@ public final class ConfigPersistence {
 	 * section-or-flat-root lookup as the reader, so a legacy flat file is covered too. */
 	private static boolean exceedsLoadCaps(JsonObject root) {
 		JsonObject offers = sectionOrRoot(root, "offers");
-		if (arraySize(offers, "airItems") > TradeMasterConfig.MAX_AIR_ITEMS
+		// the air list also gets the structural sentinel added on read: exactly MAX
+		// entries without it means one entry is dropped, so back the file up too
+		if (arraySize(offers, "airItems") >= TradeMasterConfig.MAX_AIR_ITEMS
 				|| arraySize(offers, "goods") > TradeMasterConfig.MAX_GOODS) return true;
 		JsonObject positions = sectionOrRoot(root, "positions");
 		if (arraySize(positions, "chests") > TradeMasterConfig.MAX_CHESTS) return true;
@@ -234,7 +236,10 @@ public final class ConfigPersistence {
 	 * the model (a list the GUI would then refuse to commit). */
 	private static void ensureAirSentinel(java.util.List<String> items, String sentinel) {
 		if (items.contains(sentinel)) return;
-		while (items.size() >= TradeMasterConfig.MAX_AIR_ITEMS) items.remove(0);
+		while (items.size() >= TradeMasterConfig.MAX_AIR_ITEMS) {
+			String dropped = items.remove(items.size() - 1);
+			TradeMaster.LOGGER.warn("Dropping air item {} to keep the list at its cap", dropped);
+		}
 		items.add(sentinel);
 	}
 
