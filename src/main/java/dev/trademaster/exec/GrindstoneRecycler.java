@@ -63,7 +63,7 @@ public class GrindstoneRecycler implements BookDisposal {
 		SEEK, AWAIT_OPEN, RECOVER, SCAN, PLACE, RESULT, TAKE,
 		OFFHAND_WAIT,
 		CHEST_SEEK, CHEST_AWAIT, CHEST_MOVE,
-		DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT
+		DROP_STAGE, DROP_STAGE_WAIT, DROP_AIM, DROP_WAIT, DROP_UNSTAGE, DROP_UNSTAGE_WAIT
 	}
 
 	private final @Nullable BlockPos grindstone;
@@ -124,6 +124,8 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Occupant of an occupied staging destination (a copy), so the proof can require
 	 * it in the source slot after the swap. */
 	private ItemStack dropStageDisplaced = ItemStack.EMPTY;
+	/** Ticks spent returning that occupant after the drop. */
+	private int dropUnstageTicks = 0;
 	/** Inventory slot (0-35) the SWAP-clicked curse book came from; the staging
 	 * resend re-clicks it only while this slot still holds the book, so an
 	 * already-landed click cannot be swapped back. */
@@ -732,9 +734,18 @@ public class GrindstoneRecycler implements BookDisposal {
 			case DROP_WAIT -> {
 				if (player.getInventory().getItem(this.dropSlot).isEmpty()) {
 					// server sync confirms the drop — never move on before this
-					this.dropSlot = -1;
 					this.dropStagedBook = ItemStack.EMPTY;
 					this.dropResent = false;
+					if (this.dropStageRaw && this.dropStageSource >= 0
+							&& !this.dropStageDisplaced.isEmpty()) {
+						// the destination was OCCUPIED: the player's item is now in the
+						// curse book's old inventory slot. Put it back into the (now
+						// empty) hotbar slot with a raw swap.
+						this.dropUnstageTicks = 0;
+						this.state = State.DROP_UNSTAGE;
+						return StepResult.RUNNING;
+					}
+					this.dropSlot = -1;
 					return toGrindstone(player);
 				}
 				if (!this.dropSent) {
@@ -780,6 +791,45 @@ public class GrindstoneRecycler implements BookDisposal {
 					}
 				}
 			}
+			case DROP_UNSTAGE -> {
+				if (player.containerMenu != player.inventoryMenu) {
+					clearDropStage();
+					return toGrindstone(player);
+				}
+				ItemStack sourceNow = player.containerMenu.slots
+						.get(inventoryMenuSlot(this.dropStageSource)).getItem();
+				ItemStack destNow = player.getInventory().getItem(this.dropSlot);
+				if (sourceNow.isEmpty()
+						|| !McItem.sameItemSameComponents(sourceNow, this.dropStageDisplaced)
+						|| sourceNow.getCount() != this.dropStageDisplaced.getCount()
+						|| !destNow.isEmpty()) {
+					// the world moved on: leave the item where the server put it
+					clearDropStage();
+					return toGrindstone(player);
+				}
+				McClicks.sendContainerClick(player, player.containerMenu.containerId,
+						player.containerMenu.getStateId(), inventoryMenuSlot(this.dropStageSource),
+						this.dropSlot, McClicks.Click.SWAP);
+				this.dropUnstageTicks = 0;
+				this.state = State.DROP_UNSTAGE_WAIT;
+			}
+			case DROP_UNSTAGE_WAIT -> {
+				if (++this.dropUnstageTicks > 60
+						|| player.containerMenu != player.inventoryMenu) {
+					clearDropStage();
+					return toGrindstone(player);
+				}
+				ItemStack destNow = player.getInventory().getItem(this.dropSlot);
+				ItemStack sourceNow = player.containerMenu.slots
+						.get(inventoryMenuSlot(this.dropStageSource)).getItem();
+				if (sourceNow.isEmpty()
+						&& !destNow.isEmpty()
+						&& McItem.sameItemSameComponents(destNow, this.dropStageDisplaced)
+						&& destNow.getCount() == this.dropStageDisplaced.getCount()) {
+					clearDropStage();
+					return toGrindstone(player);
+				}
+			}
 			default -> {
 				// a state without a case would otherwise fall through to the trailing
 				// RUNNING return and spin forever without doing anything
@@ -787,6 +837,16 @@ public class GrindstoneRecycler implements BookDisposal {
 			}
 		}
 		return StepResult.RUNNING;
+	}
+
+	/** Forgets the drop staging (the stack itself is where the server put it). */
+	private void clearDropStage() {
+		this.dropSlot = -1;
+		this.dropStagedBook = ItemStack.EMPTY;
+		this.dropStageSource = -1;
+		this.dropStageDisplaced = ItemStack.EMPTY;
+		this.dropStageRaw = false;
+		this.dropUnstageTicks = 0;
 	}
 
 	@Override

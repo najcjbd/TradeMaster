@@ -95,6 +95,10 @@ public class ButtonPresser {
 			if (this.confirmTicks % 10 == 0 && this.presses < 3) {
 				this.presses++;
 				press(mc, player, state);
+				// the retry's POWERED is a FRESH local prediction: restart the
+				// persistence count, or one predicted tick would pass the >= 10 check
+				// and a failed press would be reported DONE
+				this.confirmTicks = 0;
 			}
 			return StepResult.RUNNING;
 		}
