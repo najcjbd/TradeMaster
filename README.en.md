@@ -2,7 +2,7 @@
 
 **[简体中文](README.md) ｜ [English](README.en.md)**
 
-An automated **librarian enchanted-book trade rerolling pipeline** for Minecraft **26.2** (Fabric, **client-side only**): it summons a villager, waits for it to take the lectern, rerolls its profession until the trade you want shows up, locks the trade, (optionally) names the villager with an anvil, sends it away, and stores or recycles the books — every step configurable.
+An automated **librarian enchanted-book trade rerolling pipeline** for Minecraft **1.18.2–26.3** (Fabric, **client-side only**): it summons a villager, waits for it to take the lectern, rerolls its profession until the trade you want shows up, locks the trade, (optionally) names the villager with an anvil, sends it away, and stores or recycles the books — every step configurable.
 
 ---
 
@@ -25,12 +25,12 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 | Item | Value |
 |---|---|
-| Game version | Minecraft **26.2** |
-| Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3) |
-| Java | **≥ 25** |
+| Game version | Minecraft **1.18.2–26.3** (10 Fabric nodes; Forge/NeoForge targets are not wired yet) |
+| Loader | Fabric Loader (version depends on the MC node) |
+| Java | **JDK 25 to build**; runtime Java follows the MC version (17+ for 1.18.2) |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
-| Required | Fabric API (0.154.2+26.2), **maLiLib** (0.29.3) |
-| Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
+| Required | The matching Fabric API and **maLiLib** per node |
+| Build | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
 | Optional | Mod Menu (config screen entry), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
 
@@ -301,9 +301,11 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 
 ```bash
 # requires JDK 25
-./gradlew build
-# output: build/libs/trade-master-1.0.jar
+./gradlew :1.21.4-fabric:build     # default node (or :1.18.2-fabric … :26.3-fabric)
+# output: versions/<version>-fabric/build/libs/trade-master-1.0.0.jar
 ```
+
+All Fabric nodes: `./gradlew :1.18.2-fabric:build :1.19.2-fabric:build :1.20.1-fabric:build :1.21.1-fabric:build :1.21.4-fabric:build :1.21.5-fabric:build :1.21.8-fabric:build :26.1-fabric:build :26.2-fabric:build :26.3-fabric:build`.
 
 ## License and credits
 

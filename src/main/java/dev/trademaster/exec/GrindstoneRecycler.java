@@ -839,6 +839,26 @@ public class GrindstoneRecycler implements BookDisposal {
 		return StepResult.RUNNING;
 	}
 
+	/** Best-effort reverse of an occupied-destination staging before a failure/stop:
+	 * the raw click is only sent when the exact post-drop state is observed (source
+	 * holds the occupant, destination empty). No wait is needed — the item is never
+	 * dropped, so a rejected click simply leaves it in the source slot. */
+	private void tryUnstageOnExit(net.minecraft.client.player.LocalPlayer player) {
+		if (!this.dropStageRaw || this.dropStageSource < 0 || this.dropStageDisplaced.isEmpty()) return;
+		if (player.containerMenu != player.inventoryMenu) return;
+		ItemStack sourceNow = player.containerMenu.slots
+				.get(inventoryMenuSlot(this.dropStageSource)).getItem();
+		ItemStack destNow = player.getInventory().getItem(this.dropSlot);
+		if (sourceNow.isEmpty()
+				|| !McItem.sameItemSameComponents(sourceNow, this.dropStageDisplaced)
+				|| sourceNow.getCount() != this.dropStageDisplaced.getCount()
+				|| !destNow.isEmpty()) return;
+		McClicks.sendContainerClick(player, player.containerMenu.containerId,
+				player.containerMenu.getStateId(), inventoryMenuSlot(this.dropStageSource),
+				this.dropSlot, McClicks.Click.SWAP);
+		clearDropStage();
+	}
+
 	/** Forgets the drop staging (the stack itself is where the server put it). */
 	private void clearDropStage() {
 		this.dropSlot = -1;
@@ -854,6 +874,9 @@ public class GrindstoneRecycler implements BookDisposal {
 		Minecraft mc = Minecraft.getInstance();
 		var player = mc.player;
 		if (player == null) return;
+		// best effort: return the occupant of an occupied drop destination while the
+		// inventory menu is still open, before closing it
+		tryUnstageOnExit(player);
 		// the helper closes only when the server can return the cursor stack; with a
 		// full inventory the menu is left for the player instead of dropping the item
 		Interactions.closeMenuSafely(player);
@@ -935,6 +958,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	}
 
 	private StepResult fail(net.minecraft.client.player.LocalPlayer player, String key) {
+		// best effort: return the occupant of an occupied drop destination while the
+		// inventory menu is still open
+		tryUnstageOnExit(player);
 		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		// best effort: if the staging swap's sync has arrived, put the displaced item
 		// back before the run stops (a still-stale client leaves it for the player)
@@ -946,6 +972,7 @@ public class GrindstoneRecycler implements BookDisposal {
 	/** Same unwind as {@link #fail}, but lenient: the caller re-checks for a free
 	 * slot and only stops when the inventory is genuinely still full. */
 	private StepResult failedFull(net.minecraft.client.player.LocalPlayer player, String key) {
+		tryUnstageOnExit(player);
 		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
 		undoOffhandStage(player);
 		restoreHotbarSelection(player);

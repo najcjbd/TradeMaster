@@ -556,7 +556,7 @@ public final class RerollController {
 			comboHuntPrices.clear();
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty() && !finalizingRun()) {
-				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stopAllDone();
 				return;
 			}
 		}
@@ -574,7 +574,7 @@ public final class RerollController {
 			debug("target config edited mid-run, rebuilding needs");
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty() && !finalizingRun()) {
-				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stopAllDone();
 				return;
 			}
 		}
@@ -1599,7 +1599,7 @@ public final class RerollController {
 								// AWAIT_VILLAGER with nothing left to roll for
 								refreshNeeds(client, s);
 								if (s.matcher.isEmpty()) {
-									stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+									stopAllDone();
 									return;
 								}
 								awaitNextVillager(client, s);
@@ -1874,7 +1874,7 @@ public final class RerollController {
 			// like the edited-out path does
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty()) {
-				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stopAllDone();
 				return;
 			}
 			awaitNextVillager(client, s);
@@ -1909,7 +1909,7 @@ public final class RerollController {
 		closeMerchantMenuIfOpen(client);
 		refreshNeeds(client, s);
 		if (s.matcher.isEmpty()) {
-			stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+			stopAllDone();
 			return;
 		}
 		enter(Phase.REROLL);
@@ -2356,7 +2356,7 @@ public final class RerollController {
 			// otherwise be re-targeted, looping the run forever
 			refreshNeeds(client, s);
 			if (s.matcher.isEmpty()) {
-				stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+				stopAllDone();
 				return;
 			}
 			s.tries = 0;
@@ -2584,6 +2584,18 @@ public final class RerollController {
 			}
 		}
 		return h;
+	}
+
+	/** Stops with the run's success message, unless an automatic stop was latched
+	 * while the run was finishing: report the real cause instead of a green "all done". */
+	private static void stopAllDone() {
+		if (deferredMoveStop) {
+			stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
+		} else if (deferredTimeoutStop) {
+			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+		} else {
+			stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
+		}
 	}
 
 	/** A rebuild drained the needs while the run is already committed: a LOCK

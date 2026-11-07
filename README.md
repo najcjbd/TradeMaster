@@ -2,7 +2,7 @@
 
 **[简体中文](README.md) ｜ [English](README.en.md)**
 
-Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交易**自动重刷流水线**：自动召唤/等位/破坏讲台/重刷职业/检测交易/锁定/命名/送走/存放，每一个环节都可配置。
+Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管理员附魔书交易**自动重刷流水线**：自动召唤/等位/破坏讲台/重刷职业/检测交易/锁定/命名/送走/存放，每一个环节都可配置。
 
 ---
 
@@ -25,12 +25,12 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 
 | 项 | 值 |
 |---|---|
-| 游戏版本 | Minecraft **26.2** |
-| 加载器 | Fabric Loader **≥ 0.19.0**（构建用 0.19.3） |
-| Java | **≥ 25** |
+| 游戏版本 | Minecraft **1.18.2–26.3**（Fabric 10 个节点；Forge/NeoForge 目标尚未接线） |
+| 加载器 | Fabric Loader（版本随对应 MC 节点） |
+| Java | **构建需 JDK 25**；游戏运行 Java 随对应 MC 版本（1.18.2 为 17+） |
 | 运行侧 | **纯客户端**（`"environment": "client"`，无需装到服务端） |
-| 必需前置 | Fabric API（0.154.2+26.2）、**maLiLib**（0.29.3） |
-| 构建 | Gradle 9.6.1 + Fabric Loom **1.17.21** |
+| 必需前置 | 对应版本的 Fabric API 与 **maLiLib**（见各节点依赖） |
+| 构建 | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
 | 可选前置 | Mod Menu（配置界面入口）、clientcommands（仅共存探测，**无 API 耦合**） |
 | 许可证 | **GPL-3.0** |
 
@@ -285,9 +285,11 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 
 ```bash
 # 需要 JDK 25
-./gradlew build
-# 产物： build/libs/trade-master-1.0.jar
+./gradlew :1.21.4-fabric:build     # 默认节点（也可 :1.18.2-fabric … :26.3-fabric）
+# 产物： versions/<版本>-fabric/build/libs/trade-master-1.0.0.jar
 ```
+
+全部 Fabric 节点：`./gradlew :1.18.2-fabric:build :1.19.2-fabric:build :1.20.1-fabric:build :1.21.1-fabric:build :1.21.4-fabric:build :1.21.5-fabric:build :1.21.8-fabric:build :26.1-fabric:build :26.2-fabric:build :26.3-fabric:build`。
 
 ## 许可证与致谢
 
