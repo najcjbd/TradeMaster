@@ -247,6 +247,8 @@ public final class RerollController {
 				// mark must not raise the precheck's emerald floor (buildNeeds and
 				// applyHuntOverrides use targetMatchable as well)
 				if (!target.enabled() || !TradeMatcher.targetMatchable(target)) continue;
+				// a budget priced in ANOTHER item must not raise the EMERALD floor
+				if (!pricedInEmeralds(TradeMasterConfig.INSTANCE.specFor(entry.getKey()))) continue;
 				int budget = Math.min(entry.getValue() - 1, target.maxPrice());
 				if (budget > max) max = budget;
 				continue;
@@ -255,6 +257,7 @@ public final class RerollController {
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(entry.getKey());
 			if (good != null) {
 				if (!good.enabled() || !TradeMatcher.goodMatchable(good)) continue;
+				if (!pricedInEmeralds(good.spec())) continue;
 				int goodBudget = Math.min(entry.getValue() - 1, good.maxPrice());
 				if (goodBudget > max) max = goodBudget;
 				continue;
@@ -262,6 +265,13 @@ public final class RerollController {
 			// a target removed mid-run has no demand at all: skip its mark
 		}
 		return max;
+	}
+
+	/** Whether the spec's PRICE slot charges emeralds (the unit of the emerald floor). */
+	private static boolean pricedInEmeralds(dev.trademaster.config.TradeOfferSpec spec) {
+		dev.trademaster.config.TradeOfferSpec.TradeCost price = spec.costAt(0);
+		return price != null && price.item() != null
+				&& price.item().equals(dev.trademaster.config.TradeOfferSpec.EMERALD);
 	}
 
 	public static void toggle() {
@@ -414,6 +424,7 @@ public final class RerollController {
 		sneakPaused = false;
 		xpNamingPaused = false;
 		LecternRestock.resetRestock();
+		dev.trademaster.exec.DispenserCheck.resetLateOpenMemory();
 		dispenserCheck = null;
 		dispenserWaitTicks = 0;
 		dispenserUnsetWarned = false;
@@ -3123,6 +3134,7 @@ public final class RerollController {
 
 	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
 		releaseCheck();
+		dev.trademaster.exec.DispenserCheck.resetLateOpenMemory();
 		dispenserUnsetWarned = false;
 		dispenserOutOfReachWarned = false;
 		dispenserFailedAttempts = 0;

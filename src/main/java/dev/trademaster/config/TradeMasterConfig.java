@@ -276,14 +276,12 @@ public final class TradeMasterConfig {
 				// a stored >=100 level truncates on display and the reconciliation
 				// responder would silently persist the truncated value
 				int level = Math.max(1, Math.min(existing.level(), Math.min(maxLevel, 99)));
-				// a hand-edited maxPrice below the vanilla minimum for the level can
-				// never match: raise it instead of leaving a silently dead target
-				// (capped at 64 like the GUI clamp, even when minPrice exceeds it).
-				// With discounted pricing the cap is compared against the charged
-				// price, which can sit below the base minimum: keep the user's value.
-				int price = this.discountedPriceAsSalePrice
-						? Math.min(existing.maxPrice(), 64)
-						: Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), minPrice(level, id)));
+				// a cap below the EFFECTIVE minimum (emerald price slot, charged-price
+				// basis off) can never match: raise it instead of leaving a silently
+				// dead target (capped at 64 like the GUI clamp, even when the minima
+				// exceed it)
+				int floor = Math.min(64, minimumEditablePrice(id, level));
+				int price = Math.min(64, Math.max(Math.min(existing.maxPrice(), 64), floor));
 				merged.put(id, existing.withLevel(level).withMaxPrice(price));
 			} else {
 				merged.put(id, new EnchantmentTarget(id, false, Math.min(enchantment.getMaxLevel(), 99), 64));

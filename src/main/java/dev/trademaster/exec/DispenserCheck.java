@@ -55,7 +55,9 @@ public final class DispenserCheck {
 	 * retry wait), so the next check may adopt and close it as its own. */
 	private static @Nullable BlockPos lateOpenPos = null;
 	private static long lateOpenTick = 0;
-	private static final long LATE_OPEN_WINDOW_TICKS = 200;
+	/** Covers the controller's 100-tick retry wait; a wider window would attribute an
+	 * unrelated menu to the old send. */
+	private static final long LATE_OPEN_WINDOW_TICKS = 120;
 
 	public DispenserCheck(BlockPos pos) {
 		this.pos = pos.immutable();
@@ -190,12 +192,19 @@ public final class DispenserCheck {
 	 * use packet for this same position (bounded to the caller's retry window). */
 	private boolean takeLateOwnMenu(Minecraft mc) {
 		if (lateOpenPos == null || !lateOpenPos.equals(this.pos)) return false;
-		if (mc.level == null || mc.level.getGameTime() - lateOpenTick > LATE_OPEN_WINDOW_TICKS) {
+		long elapsed = mc.level == null ? Long.MAX_VALUE : mc.level.getGameTime() - lateOpenTick;
+		if (elapsed < 0 || elapsed > LATE_OPEN_WINDOW_TICKS) {
 			lateOpenPos = null;
 			return false;
 		}
 		lateOpenPos = null;
 		return true;
+	}
+
+	/** Clears the cross-check late-open memory (a new run must not adopt an old menu). */
+	public static void resetLateOpenMemory() {
+		lateOpenPos = null;
+		lateOpenTick = 0;
 	}
 
 	/** Closes the container THIS check opened, and nothing else: the player may have opened
