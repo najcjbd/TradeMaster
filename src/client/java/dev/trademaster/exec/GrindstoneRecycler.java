@@ -842,6 +842,8 @@ public class GrindstoneRecycler implements BookDisposal {
 	 * holds the occupant, destination empty). No wait is needed — the item is never
 	 * dropped, so a rejected click simply leaves it in the source slot. */
 	private void tryUnstageOnExit(net.minecraft.client.player.LocalPlayer player) {
+		// a reverse swap already issued by DROP_UNSTAGE must not be sent twice
+		if (this.state == State.DROP_UNSTAGE || this.state == State.DROP_UNSTAGE_WAIT) return;
 		if (!this.dropStageRaw || this.dropStageSource < 0 || this.dropStageDisplaced.isEmpty()) return;
 		if (player.containerMenu != player.inventoryMenu) return;
 		ItemStack sourceNow = player.containerMenu.slots
@@ -967,15 +969,6 @@ public class GrindstoneRecycler implements BookDisposal {
 		return StepResult.failed(Component.translatable(key));
 	}
 
-	/** Same unwind as {@link #fail}, but lenient: the caller re-checks for a free
-	 * slot and only stops when the inventory is genuinely still full. */
-	private StepResult failedFull(net.minecraft.client.player.LocalPlayer player, String key) {
-		tryUnstageOnExit(player);
-		if (player.containerMenu != player.inventoryMenu) Interactions.closeMenuSafely(player);
-		undoOffhandStage(player);
-		restoreHotbarSelection(player);
-		return StepResult.failedFull(Component.translatable(key));
-	}
 
 	/** Whether the open menu is the grindstone THIS recycler opened; a replaced or
 	 * player-opened GrindstoneMenu has a different containerId and is never driven. */
