@@ -193,6 +193,19 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void anOverCappedAirListIsTruncatedToTheCapWithTheSentinel() {
+		StringBuilder json = new StringBuilder("{\"offers\":{\"airItems\":[");
+		for (int i = 0; i < TradeMasterConfig.MAX_AIR_ITEMS; i++) {
+			if (i > 0) json.append(',');
+			json.append("\"mod:item").append(i).append('"');
+		}
+		json.append("]}}");
+		ConfigTest.read(c(), parse(json.toString()));
+		assertEquals(TradeMasterConfig.MAX_AIR_ITEMS, c().airItems.size());
+		assertTrue(c().airItems.contains("minecraft:air"));
+	}
+
+	@Test
 	void airItemsAreNormalisedAndDeduped() {
 		ConfigTest.read(c(), parse("{\"offers\":{\"airItems\":[\"AIR\",\"minecraft:air\",\"\",\"  \",\"minecraft:void_air\"]}}"));
 		assertEquals(List.of("minecraft:air", "minecraft:void_air"), c().airItems);

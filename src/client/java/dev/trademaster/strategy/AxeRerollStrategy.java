@@ -145,12 +145,12 @@ public class AxeRerollStrategy implements RerollStrategy {
 			Vec3 villagerPos = new Vec3(session.villager.getX(), session.villager.getY(), session.villager.getZ());
 			// never land INSIDE the villager: its collision push would move the player
 			// past the movement guard's tolerance right after the tp exemption ends.
-			// Step 0.6 blocks away toward where the player already stands (sideways
-			// when already on top of it).
-			Vec3 away = player.position().subtract(villagerPos);
+			// Step 0.8 blocks away HORIZONTALLY (ignoring the Y difference, which would
+			// otherwise eat the offset); the Y stays at the villager's feet.
+			Vec3 away = new Vec3(player.getX() - villagerPos.x, 0.0, player.getZ() - villagerPos.z);
 			Vec3 tpTarget = villagerPos.add(away.lengthSqr() > 1.0E-4
-					? away.normalize().scale(0.6)
-					: new Vec3(0.6, 0.0, 0.0));
+					? away.normalize().scale(0.8)
+					: new Vec3(0.8, 0.0, 0.0));
 			session.movementGuard.permitTp(tpTarget);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
 					tpTarget.x, tpTarget.y, tpTarget.z, true, false));

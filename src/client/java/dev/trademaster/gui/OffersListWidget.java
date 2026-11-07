@@ -532,6 +532,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			// compare with the EFFECTIVE spec: a fresh target already equals the defaults
 			if (updated.equals(config.specFor(this.id))) return;
 			config.tradeSpecs.put(this.id, updated);
+			// changing Cost A to emeralds raises this target's effective minimum: a cap
+			// below it would be pruned by the next rebuild with no visible warning
+			dev.trademaster.config.EnchantmentTarget target = config.enchantments.get(this.id);
+			if (target != null) {
+				int floor = Math.min(64, config.minimumEditablePrice(this.id, target.level()));
+				if (target.maxPrice() < floor) {
+					config.enchantments.put(this.id, target.withMaxPrice(floor));
+				}
+			}
 			config.save();
 		}
 

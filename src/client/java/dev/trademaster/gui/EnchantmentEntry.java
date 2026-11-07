@@ -106,14 +106,6 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 			target = new EnchantmentTarget(this.id, false, editableMaxLevel(), 64);
 		}
 		if (enabled) {
-			// a cap lowered below the effective minimum while the charged-price basis
-			// was on is unmatchable now: raise it on enable instead of persisting a
-			// silently dead target
-			int floor = Math.min(64, TradeMasterConfig.INSTANCE.minimumEditablePrice(this.id, target.level()));
-			if (target.maxPrice() < floor) {
-				target = target.withMaxPrice(floor);
-				this.maxPriceField.setValue(String.valueOf(floor));
-			}
 			// enabling can introduce a name/alias that the deduction index cannot
 			// attribute (it drops every name shared by two ids): refuse instead of
 			// silently breaking named-villager deduction for both sides
@@ -126,6 +118,14 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 									.withStyle(net.minecraft.ChatFormatting.RED)));
 				}
 				return false;
+			}
+			// AFTER the gate (a refused enable must not persist a raised cap): a cap
+			// lowered below the effective minimum while the charged-price basis was on
+			// is unmatchable now, so lift it on enable
+			int floor = Math.min(64, TradeMasterConfig.INSTANCE.minimumEditablePrice(this.id, target.level()));
+			if (target.maxPrice() < floor) {
+				target = target.withMaxPrice(floor);
+				this.maxPriceField.setValue(String.valueOf(floor));
 			}
 		}
 		if (!enabled) {
@@ -155,10 +155,6 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 		} catch (NumberFormatException e) {
 			return null;
 		}
-	}
-
-	private int minPrice(int level) {
-		return TradeMasterConfig.minPrice(level, this.id);
 	}
 
 	/** Commits in-flight field edits to the config (R20-2). extractContent commits
@@ -230,7 +226,7 @@ public class EnchantmentEntry extends AbstractSelectionList.Entry<EnchantmentEnt
 	private EnchantmentTarget commitPrice(EnchantmentTarget target) {
 		Integer price = parseIntSafe(this.maxPriceField.getValue());
 		if (price != null) {
-			// minPrice() can exceed 64 for high-level treasures; Mth.clamp
+			// the effective minimum can exceed 64 for high-level treasures; Mth.clamp
 			// with min>max would then return min and store >64
 			int clamped = Mth.clamp(price, Math.min(minEditablePrice(target.level()), 64), 64);
 			if (clamped != target.maxPrice()) {

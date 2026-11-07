@@ -607,10 +607,9 @@ public class TradeMatcher {
 	 * the reserve option exists to keep hunting. */
 	private static int floorPrice(MatchPart part) {
 		if (part.level() <= 0) return 1;
-		// with the charged-price basis a cure / Hero discount can reach 1, so the
-		// vanilla BASE minimum no longer proves "nothing cheaper can exist"
-		if (TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice) return 1;
-		return TradeMasterConfig.minPrice(part.level(), part.id());
+		// the effective minimum: 1 for a non-emerald price slot or the charged-price
+		// basis, the vanilla formula only for an emerald-priced target
+		return TradeMasterConfig.INSTANCE.minimumEditablePrice(part.id(), part.level());
 	}
 
 	/** Budget slot for a target: the hunt LOWERS it (marked-1 — only a strictly

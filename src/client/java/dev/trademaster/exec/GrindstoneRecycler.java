@@ -83,6 +83,9 @@ public class GrindstoneRecycler implements BookDisposal {
 	private boolean openSent = false;
 	/** Generic per-operation sync wait counter. */
 	private int waitTicks = 0;
+	/** Ticks the one-book TAKE result has held: a QUICK_MOVE is predicted locally,
+	 * so a server rejection must not advance the cycle before the correction lands. */
+	private int takeConfirmTicks = 0;
 	private int delay;
 	/** Menu slot of the book currently being ground. */
 	private int placeSlot = -1;
@@ -378,6 +381,7 @@ public class GrindstoneRecycler implements BookDisposal {
 					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
 							2, 0, ContainerInput.QUICK_MOVE, player);
 					this.waitTicks = 0;
+					this.takeConfirmTicks = 0;
 					this.state = State.TAKE;
 				} else if (result.is(Items.ENCHANTED_BOOK)) {
 					// the grindstone keeps curses: an enchanted result means a curse
@@ -395,19 +399,28 @@ public class GrindstoneRecycler implements BookDisposal {
 					int enchanted = Preconditions.countItem(player, Items.ENCHANTED_BOOK);
 					int plain = Preconditions.countItem(player, Items.BOOK);
 					if (enchanted == this.preEnchanted - 1 && plain == this.prePlain + 1) {
+						// the QUICK_MOVE is predicted locally: hold the state for a
+						// round trip so a rejected click's correction can break it
+						// instead of advancing the cycle on a prediction
+						if (++this.takeConfirmTicks < 20) return StepResult.RUNNING;
 						this.state = State.SCAN;
 					} else {
+						this.takeConfirmTicks = 0;
 						// the item counts disagree with the expected one-book swap:
 						// something moved outside this pipeline — stop before the
 						// next cycle can build on a corrupted state
 						return fail(player, "trademaster.message.grind_verify_failed");
 					}
-				} else if (++this.waitTicks > 60) {
-					return fail(player, "trademaster.message.grind_take_failed");
-				} else if (this.waitTicks == 20 || this.waitTicks == 40) {
-					// lag resend — idempotent: an already-emptied result slot ignores it
-					mc.gameMode.handleContainerInput(player.containerMenu.containerId,
-							2, 0, ContainerInput.QUICK_MOVE, player);
+				} else {
+					this.takeConfirmTicks = 0;
+					if (++this.waitTicks > 60) {
+						return fail(player, "trademaster.message.grind_take_failed");
+					}
+					if (this.waitTicks == 20 || this.waitTicks == 40) {
+						// lag resend — idempotent: an already-emptied result slot ignores it
+						mc.gameMode.handleContainerInput(player.containerMenu.containerId,
+								2, 0, ContainerInput.QUICK_MOVE, player);
+					}
 				}
 			}
 			case CHEST_SEEK -> {

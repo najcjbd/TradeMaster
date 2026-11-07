@@ -150,12 +150,15 @@ public final class ConfigPersistence {
 	}
 
 	public static void save(TradeMasterConfig config) {
+		Path file = configFile();
 		// seed with the file as it is on disk: hand-written keys (and keys written by
 		// a NEWER version) must survive a save instead of being silently dropped
 		JsonObject root = existingRoot();
+		// a file edited over-cap AFTER startup would be truncated by this save too:
+		// keep a copy before the model's (capped) lists replace it
+		if (root != null && exceedsLoadCaps(root)) backupOverflow(file);
 		if (root == null) root = new JsonObject();
 		writeFrom(config, root);
-		Path file = configFile();
 		try {
 			Path dir = file.getParent();
 			if (dir != null && !Files.exists(dir)) {
@@ -181,7 +184,12 @@ public final class ConfigPersistence {
 		if (!Files.isRegularFile(file)) return null;
 		try {
 			JsonElement parsed = JsonParser.parseString(Files.readString(file, StandardCharsets.UTF_8));
-			return parsed.isJsonObject() ? parsed.getAsJsonObject() : null;
+			if (!parsed.isJsonObject()) {
+				// valid JSON but not a config (e.g. []): the next save would replace it
+				backupUnparsable(file);
+				return null;
+			}
+			return parsed.getAsJsonObject();
 		} catch (Exception e) {
 			// the save must not destroy a file that could still be hand-salvaged
 			backupUnparsable(file);
@@ -195,25 +203,25 @@ public final class ConfigPersistence {
 		Path backup = file.resolveSibling(file.getFileName() + ".unparsable");
 		try {
 			if (!Files.exists(backup)) {
-				Files.copy(file, backup, StandardCopyOption.COPY_ATTRIBUTES);
+				Files.copy(file, backup);
 				TradeMaster.LOGGER.error("Kept an unparsable trade-master.json as {}", backup.getFileName());
 			}
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
+			// must never turn a healthy load/save into a quarantine or an escape
 			TradeMaster.LOGGER.error("Failed to back up an unparsable trade-master.json", e);
 		}
 	}
 
-	/** Whether the file carries a list larger than the loader's cap. */
+	/** Whether the file carries a list larger than the loader's cap. Uses the same
+	 * section-or-flat-root lookup as the reader, so a legacy flat file is covered too. */
 	private static boolean exceedsLoadCaps(JsonObject root) {
-		JsonObject offers = getSection(root, "offers");
-		if (offers != null
-				&& (arraySize(offers, "airItems") > TradeMasterConfig.MAX_AIR_ITEMS
-						|| arraySize(offers, "goods") > TradeMasterConfig.MAX_GOODS)) return true;
-		JsonObject positions = getSection(root, "positions");
-		if (positions != null && arraySize(positions, "chests") > TradeMasterConfig.MAX_CHESTS) return true;
-		JsonObject villagers = getSection(root, "villagers");
-		return villagers != null
-				&& arraySize(villagers, "nonTradeableProfessions") > TradeMasterConfig.MAX_NON_TRADEABLE;
+		JsonObject offers = sectionOrRoot(root, "offers");
+		if (arraySize(offers, "airItems") > TradeMasterConfig.MAX_AIR_ITEMS
+				|| arraySize(offers, "goods") > TradeMasterConfig.MAX_GOODS) return true;
+		JsonObject positions = sectionOrRoot(root, "positions");
+		if (arraySize(positions, "chests") > TradeMasterConfig.MAX_CHESTS) return true;
+		JsonObject villagers = sectionOrRoot(root, "villagers");
+		return arraySize(villagers, "nonTradeableProfessions") > TradeMasterConfig.MAX_NON_TRADEABLE;
 	}
 
 	private static int arraySize(JsonObject root, String key) {
@@ -221,16 +229,26 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonArray() ? e.getAsJsonArray().size() : 0;
 	}
 
+	/** Adds the structural air sentinel without exceeding the load cap: the reader
+	 * caps the file's entries and then adds this one, which used to leave MAX+1 in
+	 * the model (a list the GUI would then refuse to commit). */
+	private static void ensureAirSentinel(java.util.List<String> items, String sentinel) {
+		if (items.contains(sentinel)) return;
+		while (items.size() >= TradeMasterConfig.MAX_AIR_ITEMS) items.remove(0);
+		items.add(sentinel);
+	}
+
 	/** Keeps the FIRST over-capped trade-master.json next to it (see {@link #exceedsLoadCaps}). */
 	private static void backupOverflow(Path file) {
 		Path backup = file.resolveSibling(file.getFileName() + ".overflow-backup");
 		try {
 			if (!Files.exists(backup)) {
-				Files.copy(file, backup, StandardCopyOption.COPY_ATTRIBUTES);
+				Files.copy(file, backup);
 				TradeMaster.LOGGER.warn("trade-master.json exceeds a load cap; kept a copy as {}",
 						backup.getFileName());
 			}
-		} catch (IOException e) {
+		} catch (IOException | RuntimeException e) {
+			// must never make a healthy load/save fail or quarantine
 			TradeMaster.LOGGER.error("Failed to back up an over-capped trade-master.json", e);
 		}
 	}
@@ -574,7 +592,7 @@ public final class ConfigPersistence {
 			}
 			// the sentinel is structural (specs write it): never let a file drop it
 			String airSentinel = "minecraft:air";
-			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
+			ensureAirSentinel(c.airItems, airSentinel);
 			// BEFORE reading goods: a good whose result is in airItems would be dropped by
 			// the isAirItem check below. Remove those ids (and the book result) first, like
 			// the Offers tab does. Target spec results are LEFT in the list: pointing a
@@ -594,7 +612,7 @@ public final class ConfigPersistence {
 			if (c.airItems.removeIf(id -> id == null || forbiddenAir.contains(id))) {
 				TradeMaster.LOGGER.warn("Removed result ids from offers.airItems (they would disable goods/book trades)");
 			}
-			if (!c.airItems.contains(airSentinel)) c.airItems.add(airSentinel);
+			ensureAirSentinel(c.airItems, airSentinel);
 			JsonObject specs = getSection(offers, "specs");
 			if (specs != null) {
 				c.tradeSpecs.clear();

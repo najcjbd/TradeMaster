@@ -168,6 +168,23 @@ class MatchingGateTest {
 	}
 
 	@Test
+	void minimumEditablePriceFollowsThePriceSlotItemAndBasis() {
+		c().tradeSpecs.clear();
+		c().discountedPriceAsSalePrice = false;
+		// the default spec prices emeralds: the vanilla formula applies
+		assertEquals(TradeMasterConfig.minPrice(5, MENDING), c().minimumEditablePrice(MENDING, 5));
+		// a non-emerald price slot has no vanilla emerald minimum
+		c().tradeSpecs.put(MENDING, new TradeOfferSpec(List.of(
+				new TradeOfferSpec.TradeCost(Identifier.withDefaultNamespace("diamond"), 0),
+				new TradeOfferSpec.TradeCost(TradeOfferSpec.BOOK, -1)), TradeOfferSpec.ENCHANTED_BOOK));
+		assertEquals(1, c().minimumEditablePrice(MENDING, 5));
+		// the charged-price basis also drops the floor to 1
+		c().tradeSpecs.clear();
+		c().discountedPriceAsSalePrice = true;
+		assertEquals(1, c().minimumEditablePrice(MENDING, 5));
+	}
+
+	@Test
 	void priceReachabilityUsesTheChargedPriceWhenTheOptionIsOn() {
 		// level 5: vanilla base minimum is 2+3*5 = 17, above this cap
 		EnchantmentTarget low = new EnchantmentTarget(MENDING, true, 5, 10);
