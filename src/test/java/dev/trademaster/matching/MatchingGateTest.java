@@ -9,6 +9,12 @@ import dev.trademaster.testutil.McTest;
 import com.google.gson.JsonObject;
 import dev.trademaster.compat.McIds;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.item.trading.MerchantOffer;
+//? if >=1.21 {
+import net.minecraft.world.item.trading.ItemCost;
+//?}
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -134,5 +141,57 @@ class MatchingGateTest {
 	void goodWithAirResultIsRejected() {
 		assertFalse(TradeMatcher.goodMatchable(new GoodSpec(AIR, 1, true, 10,
 				TradeOfferSpec.defaultGoodCosts())));
+	}
+
+	/** A real offer whose charged price (base 10, special diff -4) differs from its base. */
+	private static MerchantOffer pricedOffer(int base) {
+		//? if >=26.1 {
+		/*// 26.1+ binds item components from a datapack initializer a headless test does
+		// not run: bind the minimal set these two items need
+		net.minecraft.core.component.DataComponentMap map =
+				net.minecraft.core.component.DataComponentMap.builder()
+						.set(net.minecraft.core.component.DataComponents.MAX_STACK_SIZE, 64).build();
+		Items.EMERALD.builtInRegistryHolder().bindComponents(map);
+		Items.ENCHANTED_BOOK.builtInRegistryHolder().bindComponents(map);
+		*///?}
+		//? if >=1.21 {
+		MerchantOffer offer = new MerchantOffer(new ItemCost(Items.EMERALD, base),
+				new ItemStack(Items.ENCHANTED_BOOK), 12, 2, 0.05f);
+		//?} else {
+		/*MerchantOffer offer = new MerchantOffer(new ItemStack(Items.EMERALD, base),
+				new ItemStack(Items.ENCHANTED_BOOK), 12, 2, 0.05f);*/
+		//?}
+		offer.setSpecialPriceDiff(-4);
+		return offer;
+	}
+
+	@Test
+	void priceBasisOptionSelectsBaseOrChargedCost() {
+		MerchantOffer offer = pricedOffer(10);
+		c().discountedPriceAsSalePrice = false;
+		assertEquals(10, TradeMatcher.offerPrice(offer));
+		assertEquals(10, OfferCosts.pricingSlots(offer).get(0).getCount());
+
+		c().discountedPriceAsSalePrice = true;
+		assertEquals(6, TradeMatcher.offerPrice(offer));
+		assertEquals(6, OfferCosts.pricingSlots(offer).get(0).getCount());
+		// IDENTITY slots never follow the option: fingerprints and channel comparison
+		// must keep seeing the base cost while demand moves the charged one
+		assertEquals(10, OfferCosts.slots(offer).get(0).getCount());
+	}
+
+	@Test
+	void priceReachabilityUsesTheChargedPriceWhenTheOptionIsOn() {
+		// level 5: vanilla base minimum is 2+3*5 = 17, above this cap
+		EnchantmentTarget low = new EnchantmentTarget(MENDING, true, 5, 10);
+		c().discountedPriceAsSalePrice = false;
+		assertTrue(TradeMatcher.targetPriceUnreachable(low));
+		assertTrue(TradeMatcher.minimumOfferPrice(low) > 10);
+
+		// a cure / Hero discount can charge less than the base minimum: the same cap
+		// is reachable, so the target must stay in the needs instead of being pruned
+		c().discountedPriceAsSalePrice = true;
+		assertFalse(TradeMatcher.targetPriceUnreachable(low));
+		assertEquals(1, TradeMatcher.minimumOfferPrice(low));
 	}
 }

@@ -278,9 +278,25 @@ public class TradeMatcher {
 	 * precheck must all agree on this set, or the precheck demands materials for a trade
 	 * that no villager can ever offer. */
 	public static boolean targetMatchable(EnchantmentTarget target) {
-		if (TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) return false;
+		if (targetPriceUnreachable(target)) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) return false;
 		return registryTradeable(target.id());
+	}
+
+	/** The lowest price at which a target can ever be offered. 1 is the hard floor:
+	 * with {@code discountedPriceAsSalePrice} on, matching compares the ACTUALLY
+	 * charged price, and a cure / Hero discount may push it below the vanilla BASE
+	 * minimum (2+3*level, doubled for treasures), so pruning those targets would drop
+	 * trades the user asked to accept. */
+	public static int minimumOfferPrice(EnchantmentTarget target) {
+		if (TradeMasterConfig.INSTANCE.discountedPriceAsSalePrice) return 1;
+		return TradeMasterConfig.minPrice(target.level(), target.id());
+	}
+
+	/** Whether the target's price cap sits below every price it can ever be offered at
+	 * (see {@link #minimumOfferPrice}). */
+	public static boolean targetPriceUnreachable(EnchantmentTarget target) {
+		return minimumOfferPrice(target) > target.maxPrice();
 	}
 
 	/** Whether a custom good can ever be offered: its result item must still exist and
@@ -622,8 +638,7 @@ public class TradeMatcher {
 				// simply stops (the 1→0 ratchet is deliberate). The same applies when a
 				// mid-run maxPrice drop puts the budget below the vanilla minimum:
 				// re-queueing it would leave a need that can never be offered.
-				if (budget < 1
-						|| TradeMasterConfig.minPrice(target.level(), target.id()) > budget) continue;
+				if (budget < 1 || minimumOfferPrice(target) > budget) continue;
 				IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 				queue.enqueue(budget);
 				this.needs.put(entry.getKey(), queue);
@@ -657,7 +672,7 @@ public class TradeMatcher {
 			// exceeds its max can never be offered, and leaving it in `targets` let it
 			// ride along as a combo passenger on someone else's budget
 			if (!this.huntPrices.containsKey(target.id())
-					&& TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
+					&& targetPriceUnreachable(target)) continue;
 			// a row switched off with an AIR result is not offered either
 			if (TradeMasterConfig.INSTANCE.isAirItem(TradeMasterConfig.INSTANCE.specFor(target.id()).result())) continue;
 			// refresh the target reference: the user may have edited level/price
@@ -675,15 +690,14 @@ public class TradeMatcher {
 			// same guard as buildNeeds: config-budgeted targets that can never match
 			// stay out (hunt-marked targets keep their cheaper-than-mark budget)
 			if (!this.huntPrices.containsKey(target.id())
-					&& TradeMasterConfig.minPrice(target.level(), target.id()) > target.maxPrice()) continue;
+					&& targetPriceUnreachable(target)) continue;
 			if (!registryTradeable(target.id())) continue;
 			int budget = budgetFor(target.id(), target);
 			// hunt budget exhausted (marked ≤ 1): nothing cheaper can exist; and a
 			// budget below the vanilla minimum (e.g. after a mid-run maxPrice drop)
 			// can never be offered — queueing it would spin forever. The target stays
 			// in `targets` for combo use; only the need is withheld.
-			if (budget < 1
-					|| TradeMasterConfig.minPrice(target.level(), target.id()) > budget) continue;
+			if (budget < 1 || minimumOfferPrice(target) > budget) continue;
 			IntHeapPriorityQueue queue = new IntHeapPriorityQueue((a, b) -> Integer.compare(b, a));
 			queue.enqueue(budget);
 			this.needs.put(target.id(), queue);

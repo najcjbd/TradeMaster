@@ -60,8 +60,23 @@ class VersionProbeTest {
 		assertEquals(2, dev.trademaster.matching.OfferCosts.slots(offer).size(),
 				"the trade result must not be counted as a cost slot");*/
 		//?} else {
-		// 1.21+ costs are ItemCost, so the reflective scan cannot include the result
-		assertNotNull(net.minecraft.world.item.trading.MerchantOffer.class);
+		// 1.21+ costs are ItemCost, so the reflective scan cannot include the result —
+		// prove that on a real offer instead of only asserting the class exists
+		dev.trademaster.testutil.McTest.boot();
+		//? if >=26.1 {
+		/*// 26.1+ binds item components from a datapack initializer a headless test does
+		// not run: bind the minimal set the ItemCost and the result stack need
+		net.minecraft.core.component.DataComponentMap map =
+				net.minecraft.core.component.DataComponentMap.builder()
+						.set(net.minecraft.core.component.DataComponents.MAX_STACK_SIZE, 64).build();
+		net.minecraft.world.item.Items.EMERALD.builtInRegistryHolder().bindComponents(map);
+		net.minecraft.world.item.Items.ENCHANTED_BOOK.builtInRegistryHolder().bindComponents(map);
+		*///?}
+		var offer = new net.minecraft.world.item.trading.MerchantOffer(
+				new net.minecraft.world.item.trading.ItemCost(net.minecraft.world.item.Items.EMERALD, 5),
+				new net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.ENCHANTED_BOOK), 12, 2, 0.05f);
+		assertEquals(2, dev.trademaster.matching.OfferCosts.slots(offer).size(),
+				"the trade result must not be counted as a cost slot");
 		//?}
 	}
 

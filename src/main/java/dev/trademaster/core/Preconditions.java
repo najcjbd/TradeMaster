@@ -104,10 +104,15 @@ public final class Preconditions {
 				if (needed <= 0) continue;
 				Item item = McRegistry.value(McBuiltIn.items(), cost.item());
 				if (item == null) continue;
-				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
-				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
-				// the floor entirely and the run stopped late at the lock
-				if (cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				// The emerald FLOOR (see below) is derived from the price cap, so it only
+				// applies when the PRICE slot (slot 0) charges emeralds — or when a later
+				// emerald slot is unbounded and its real amount cannot be known. A later
+				// slot with a declared count demands exactly that count below; applying the
+				// price floor there made the precheck refuse emerald-cheap specs (e.g. 5
+				// emeralds in slot 2 with a book price slot) as "need 64 emeralds".
+				if (cost.item().equals(TradeOfferSpec.EMERALD) && (slot == 0 || cost.count() < 0)) {
+					emeraldPrice = true;
+				}
 				perTarget.merge(item, needed, Integer::sum);
 			}
 			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));
@@ -125,10 +130,15 @@ public final class Preconditions {
 				if (needed <= 0) continue;
 				Item item = McRegistry.value(McBuiltIn.items(), cost.item());
 				if (item == null) continue;
-				// ANY payable slot that charges emeralds arms the emerald floor: keying it on
-				// slot 1 alone meant a spec that declares emeralds in a later slot skipped
-				// the floor entirely and the run stopped late at the lock
-				if (cost.item().equals(TradeOfferSpec.EMERALD)) emeraldPrice = true;
+				// The emerald FLOOR (see below) is derived from the price cap, so it only
+				// applies when the PRICE slot (slot 0) charges emeralds — or when a later
+				// emerald slot is unbounded and its real amount cannot be known. A later
+				// slot with a declared count demands exactly that count below; applying the
+				// price floor there made the precheck refuse emerald-cheap specs (e.g. 5
+				// emeralds in slot 2 with a book price slot) as "need 64 emeralds".
+				if (cost.item().equals(TradeOfferSpec.EMERALD) && (slot == 0 || cost.count() < 0)) {
+					emeraldPrice = true;
+				}
 				perTarget.merge(item, needed, Integer::sum);
 			}
 			perTarget.forEach((item, amount) -> required.merge(item, amount, Math::max));

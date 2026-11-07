@@ -44,8 +44,8 @@ public final class DispenserCheck {
 	private boolean found = false;
 	private int ticks = 0;
 	private int stateTicks = 0;
-	/** Ticks the click has been blocked by a carried stack the inventory cannot take. */
-	private int cursorWaitTicks = 0;
+	/** Ticks a menu that belongs to the PLAYER has blocked the use click. */
+	private int foreignMenuTicks = 0;
 	/** The container id of the dispenser menu THIS check opened, or -1 before it opened one.
 	 * Closing is keyed on it so the player's own dispenser/chest is never touched. */
 	private int openedContainerId = -1;
@@ -94,26 +94,23 @@ public final class DispenserCheck {
 				if (player.containerMenu instanceof DispenserMenu menu) {
 					// a menu already open here is NOT ours (this cycle has not sent its use
 					// packet yet) unless it is the one we opened before: adopting the player's
-					// own dispenser would SCAN their slots and then close their container. Only
-					// ours is scanned; a foreign one is left alone for its owner to close.
+					// own dispenser would SCAN their slots and then close their container.
+					// Never close a foreign menu either — wait briefly for its owner to close
+					// it, then report it as the blocker instead of stealing their container.
 					if (this.openedContainerId >= 0 && menu.containerId == this.openedContainerId) {
 						enter(State.SCAN);
-					}
-					return Result.RUNNING;
-				}
-				// a leftover menu of unknown origin would swallow the click
-				if (player.containerMenu != player.inventoryMenu) {
-					// a carried stack must be returnable before the close/open; a
-					// permanently stuck one gets its own result (not a dispenser failure)
-					if (!Interactions.resolveDirtyCursorBeforeMenuOpen(player)) {
-						if (!mc.level.getBlockState(this.pos).is(Blocks.DISPENSER)) return Result.NO_DISPENSER;
-						if (++this.cursorWaitTicks > 40) return Result.CURSOR_BLOCKED;
 						return Result.RUNNING;
 					}
-					this.cursorWaitTicks = 0;
-					Interactions.closeMenuSafely(player);
+					if (++this.foreignMenuTicks > 40) return Result.MENU_BLOCKED;
 					return Result.RUNNING;
 				}
+				// a leftover menu of unknown origin would swallow the click — and it belongs
+				// to the PLAYER, so closing it is not this check's business either
+				if (player.containerMenu != player.inventoryMenu) {
+					if (++this.foreignMenuTicks > 40) return Result.MENU_BLOCKED;
+					return Result.RUNNING;
+				}
+				this.foreignMenuTicks = 0;
 				BlockHitResult hit = new BlockHitResult(Vec3.atCenterOf(this.pos), Direction.UP, this.pos, false);
 				McInteract.useItemOn(mc.gameMode, player, InteractionHand.MAIN_HAND, hit);
 				McPackets.swingOnly(player, InteractionHand.MAIN_HAND);

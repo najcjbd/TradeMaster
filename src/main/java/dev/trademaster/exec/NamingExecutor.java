@@ -169,7 +169,13 @@ public class NamingExecutor {
 		// slot and reporting a misleading "rename-cost"
 		if (!isAnvilSafeName(this.name)) return failed("invalid-name");
 		this.stageTicks++;
-		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 200) return failed("timeout:" + this.stage.name());
+		// RESTORE is exempt from the generic stage cap: it runs AFTER a failure and its
+		// only job is the already-sent swap-back, so cutting it at 200 ticks would strand
+		// the displaced item. It bounds itself (see tickRestore).
+		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 200
+				&& this.stage != Stage.RESTORE) {
+			return failed("timeout:" + this.stage.name());
+		}
 
 		return switch (this.stage) {
 			case FIND_ANVIL -> tickFindAnvil(mc, player);
@@ -475,7 +481,9 @@ public class NamingExecutor {
 	/** {@code mc} is unused (kept for call-site parity) — audited 2026-09-19. */
 	private Result tickClose(Minecraft mc, LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) {
-			Interactions.closeMenuSafely(player);
+			// a close blocked by a cursor stack the inventory cannot take must say so
+			// instead of dying as a generic "close-tag" (the tag is still in the menu)
+			if (!Interactions.closeMenuSafely(player) && this.stageTicks > 40) return failed("cursor-full");
 			return Result.RUNNING;
 		}
 		this.resultInvSlot = findNamedTag(player);
@@ -585,9 +593,11 @@ public class NamingExecutor {
 			return this.pendingFail != null ? Result.FAILED : Result.DONE;
 		}
 		// a leftover open menu would reject the swap click; close it first so the
-		// previously swapped item always makes it back to the selected hotbar slot
+		// previously swapped item always makes it back to the selected hotbar slot.
+		// Bounded: a dirty cursor the inventory cannot take makes the close unsafe, and
+		// the displaced item is safe in its slot, so report the original failure then.
 		if (player.containerMenu != player.inventoryMenu) {
-			Interactions.closeMenuSafely(player);
+			if (!Interactions.closeMenuSafely(player) && this.stageTicks > 40) return failed("cursor-full");
 			return Result.RUNNING;
 		}
 		if (!this.restoreSwapped) {
