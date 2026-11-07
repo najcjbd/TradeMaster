@@ -75,6 +75,8 @@
   "trademaster.pick.cancelled_running": "Position picking cancelled: the pipeline is running",
   "trademaster.pick.rejected": "That position cannot be used (not a chest, already bound, or the list is full)",
   "trademaster.offers.air_rejected": "Result ids (enchanted_book / a good's result) cannot be added to the air list: they would disable those rows",
+  "trademaster.offers.air_too_many": "Too many air items (max %s)",
+  "trademaster.offer.goods_full": "The goods list is full",
   "trademaster.pick.busy": "Cannot pick a position while the pipeline is running",
   "trademaster.pick.replaced": "Pick target changed; the previous pick was cancelled",
   "trademaster.pick.all_set": "All positions are already set; change them in the settings tab",

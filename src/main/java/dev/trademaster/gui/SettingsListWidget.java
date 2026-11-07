@@ -131,6 +131,20 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 				return;
 			}
 			c.discountedPriceAsSalePrice = v;
+			if (!v) {
+				// caps lowered below the vanilla minimum while charged pricing was on
+				// are unreachable under base pricing: raise them NOW instead of waiting
+				// for the next join's registry sync (which would silently rewrite them)
+				boolean changed = false;
+				for (dev.trademaster.config.EnchantmentTarget target : c.enabledTargets()) {
+					int floor = Math.min(64, c.minimumEditablePrice(target.id(), target.level()));
+					if (target.maxPrice() < floor) {
+						c.enchantments.put(target.id(), target.withMaxPrice(floor));
+						changed = true;
+					}
+				}
+				if (changed) c.save();
+			}
 		}));
 		addEntry(new BoolRow("trademaster.settings.multiEnchantProtection", () -> c.multiEnchantProtection, v -> c.multiEnchantProtection = v));
 		addEntry(new BoolRow("trademaster.settings.timeoutEnabled", () -> c.timeoutEnabled, v -> c.timeoutEnabled = v));

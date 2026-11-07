@@ -441,22 +441,18 @@ public class ChestDepositor implements BookDisposal {
 				}
 				boolean alreadyHeld = slot.index == 36 + selected;
 				if (!alreadyHeld && !player.getInventory().getItem(selected).isEmpty()) {
-					// the staging SWAP is applied LOCALLY before the server can reject it:
-					// prefer an EMPTY destination, where a stale prediction can at worst
-					// drop nothing
+					// prefer an EMPTY destination: there the exchange is a plain move, so
+					// the final state is easy to prove
 					int empty = findEmptyHotbarSlot(player);
 					if (empty >= 0) {
 						if (this.originalSlot < 0) this.originalSlot = selected;
 						Interactions.selectHotbarSlot(player, empty);
 						selected = empty;
 					}
-					// no empty hotbar slot: stage into the SELECTED occupied one. This is
-					// safe because DROP_STAGE_WAIT requires the whole exchange (book in the
-					// selected slot, displaced stack back in the source) to be observed, and
-					// DROP_WAIT re-checks the exact staged stack right before the packet — a
-					// rejected swap can never drop the occupant. Without this last resort a
-					// full hotbar reported "no slot" while the run continued, leaving the
-					// item in the inventory forever.
+					// no empty hotbar slot: stage into the SELECTED occupied one. The SWAP
+					// below is sent RAW (no client prediction), so the server's own slot
+					// sync is the only evidence DROP_STAGE_WAIT accepts; a rejected click
+					// leaves both slots unchanged and times out without dropping anything.
 				}
 				this.dropSlot = selected;
 				this.dropWaitTicks = 0;
@@ -469,38 +465,40 @@ public class ChestDepositor implements BookDisposal {
 					this.dropAimTicks = 0;
 					return StepResult.RUNNING;
 				}
-				// SWAP it into the (empty) selected slot, then wait for the server sync
+				// SWAP the stack into the selected hotbar slot as a RAW click: the client
+				// keeps the pre-swap state until the server broadcast lands, so the proof
+				// below can never be a stale prediction (which could make DROP_WAIT throw
+				// the occupant of an occupied destination).
 				this.dropSourceSlot = slot.index;
 				this.dropStagedBook = slot.getItem().copy();
 				this.dropDisplaced = player.getInventory().getItem(selected).copy();
-				McClicks.click(mc.gameMode, player.containerMenu.containerId, slot.index,
-						selected, McClicks.Click.SWAP, player);
+				McClicks.sendContainerClick(player, player.containerMenu.containerId,
+						player.containerMenu.getStateId(), slot.index, selected, McClicks.Click.SWAP);
 				this.state = State.DROP_STAGE_WAIT;
 			}
 			case DROP_STAGE_WAIT -> {
-				// a container SWAP click IS applied locally first, so both slots already
-				// show the result even when the server REJECTS the click: wait a round
-				// trip and confirm the whole exchange — the target holds the staged book
-				// AND the source holds exactly the displaced stack (EMPTY when the target
-				// was empty). A rejection restores both, so the prediction cannot pass.
-				if (++this.dropWaitTicks >= 10) {
-					// a locally applied SWAP click is not echoed back when the server
-					// accepts the prediction, so give it a fixed 2s grace before believing
-					// the predicted slots; a rejected click is corrected much sooner
-					boolean landed = this.dropSourceSlot < 0
-							|| (this.dropWaitTicks >= 40
-									&& player.containerMenu == player.inventoryMenu
-									&& McItem.sameItemSameComponents(
-											player.getInventory().getItem(this.dropSlot), this.dropStagedBook)
-									&& McItem.sameItemSameComponents(
-											player.containerMenu.slots.get(this.dropSourceSlot).getItem(),
-											this.dropDisplaced));
-					if (landed) {
-						this.state = State.DROP_AIM;
-						this.dropAimTicks = 0;
-					} else if (this.dropWaitTicks > 60) {
-						return StepResult.failed(McText.translatable("trademaster.message.curse_drop_failed"));
-					}
+				// The SWAP was sent RAW, so both slots still show the PRE-swap state until
+				// the server answers. Accept only the full server-observed exchange: the
+				// selected slot holds exactly the staged stack AND the source slot holds
+				// exactly the displaced stack (EMPTY when the destination was empty). A
+				// rejected click leaves the state unchanged and fails here — nothing is
+				// ever dropped on a prediction.
+				if (++this.dropWaitTicks > 60) {
+					return StepResult.failed(McText.translatable("trademaster.message.curse_drop_failed"));
+				}
+				if (player.containerMenu != player.inventoryMenu) return StepResult.RUNNING;
+				ItemStack stagedNow = player.getInventory().getItem(this.dropSlot);
+				ItemStack sourceNow = player.containerMenu.slots.get(this.dropSourceSlot).getItem();
+				boolean stagedLanded = McItem.sameItemSameComponents(stagedNow, this.dropStagedBook)
+						&& stagedNow.getCount() == this.dropStagedBook.getCount();
+				boolean displacedLanded = this.dropDisplaced.isEmpty()
+						? sourceNow.isEmpty()
+						: !sourceNow.isEmpty()
+								&& McItem.sameItemSameComponents(sourceNow, this.dropDisplaced)
+								&& sourceNow.getCount() == this.dropDisplaced.getCount();
+				if (stagedLanded && displacedLanded) {
+					this.state = State.DROP_AIM;
+					this.dropAimTicks = 0;
 				}
 			}
 			case DROP_AIM -> {

@@ -202,7 +202,10 @@ public class LecternGuardian {
 			return StepResult.RUNNING;
 		}
 
-		if (!LecternRestock.offhandHasWorkItem(player)) {
+		// also run while a raw batch is still settling: a partially-applied batch can
+		// leave the displaced item on the cursor even though the lectern is already in
+		// the offhand, and the recovery lives inside restock()
+		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
 			if (!LecternRestock.restock(player)) {
 				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}

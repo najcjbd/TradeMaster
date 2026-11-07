@@ -324,6 +324,21 @@ public final class TradeMasterConfig {
 		return result;
 	}
 
+	/**
+	 * The lowest price at which a target can ever be offered (and therefore the
+	 * lowest cap the GUI lets the user enter). The vanilla emerald minimum only
+	 * applies when the PRICE slot actually charges emeralds: a custom spec whose
+	 * slot 0 is another item has no such formula, and with
+	 * {@code discountedPriceAsSalePrice} on the charged price can fall to 1.
+	 */
+	public int minimumEditablePrice(ResourceLocation id, int level) {
+		if (this.discountedPriceAsSalePrice) return 1;
+		TradeOfferSpec.TradeCost price = this.specFor(id).costAt(0);
+		if (price == null || price.item() == null
+				|| !price.item().equals(TradeOfferSpec.EMERALD)) return 1;
+		return minPrice(level, id);
+	}
+
 	/** Vanilla minimum price formula: 2 + 3 * level. */
 	public static int minPrice(int level) {
 		return 2 + 3 * level;

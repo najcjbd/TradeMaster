@@ -17,6 +17,10 @@ public final class LookStep {
 
 	private boolean started = false;
 	private boolean finished = false;
+	/** A rotation was applied on an EARLIER tick, so the server has it by now. The
+	 * rotation packet is sent during the player tick, while this runs after it: acting
+	 * in the same tick would send the interact with the pre-turn view. */
+	private boolean snapped = false;
 
 	/** @return true once the aim is established and the caller may act. */
 	public boolean tick(LocalPlayer player, Vec3 target) {
@@ -29,15 +33,28 @@ public final class LookStep {
 				this.started = true;
 				return false;
 			}
-			if (SmoothRotation.isRotated && !this.finished) {
-				this.finished = true;
-				this.started = false;
-				SmoothRotation.isRotated = false;
-			} else if (!this.finished) {
+			if (!this.finished) {
+				if (SmoothRotation.isRotated) {
+					this.finished = true;
+					this.started = false;
+					SmoothRotation.isRotated = false;
+				} else {
+					return false;
+				}
+			}
+			// the final rotation reaches the server with the NEXT player tick
+			if (!this.snapped) {
+				this.snapped = true;
 				return false;
 			}
+			return true;
 		} else if (config.legitMode) {
+			// re-snap every tick so a drifting target stays tracked, but only act on a
+			// later tick: the packet for the snap goes out during the next player tick
 			player.lookAt(EntityAnchorArgument.Anchor.EYES, target);
+			boolean ready = this.snapped;
+			this.snapped = true;
+			return ready;
 		}
 		return true;
 	}
@@ -49,6 +66,7 @@ public final class LookStep {
 	public void reset() {
 		this.started = false;
 		this.finished = false;
+		this.snapped = false;
 		// a rotation started here can complete while this LookStep is no longer
 		// ticked; the dangling flag would let the next LookStep skip its own turn
 		SmoothRotation.reset();

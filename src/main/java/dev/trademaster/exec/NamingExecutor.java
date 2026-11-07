@@ -482,8 +482,12 @@ public class NamingExecutor {
 	private Result tickClose(Minecraft mc, LocalPlayer player) {
 		if (player.containerMenu != player.inventoryMenu) {
 			// a close blocked by a cursor stack the inventory cannot take must say so
-			// instead of dying as a generic "close-tag" (the tag is still in the menu)
-			if (!Interactions.closeMenuSafely(player) && this.stageTicks > 40) return failed("cursor-full");
+			// instead of dying as a generic "close-tag" (the tag is still in the menu).
+			// The bound honours the phase-timeout switch like every other stage limit.
+			boolean closed = Interactions.closeMenuSafely(player);
+			if (!closed && TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 40) {
+				return failed("cursor-full");
+			}
 			return Result.RUNNING;
 		}
 		this.resultInvSlot = findNamedTag(player);
@@ -597,7 +601,10 @@ public class NamingExecutor {
 		// Bounded: a dirty cursor the inventory cannot take makes the close unsafe, and
 		// the displaced item is safe in its slot, so report the original failure then.
 		if (player.containerMenu != player.inventoryMenu) {
-			if (!Interactions.closeMenuSafely(player) && this.stageTicks > 40) return failed("cursor-full");
+			boolean closed = Interactions.closeMenuSafely(player);
+			if (!closed && TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.stageTicks > 40) {
+				return failed("cursor-full");
+			}
 			return Result.RUNNING;
 		}
 		if (!this.restoreSwapped) {

@@ -291,6 +291,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		// the sentinel is structural (specs write it): never let clearing the field drop it
 		String airSentinel = McIds.mc("air").toString();
 		if (!items.contains(airSentinel)) items.add(0, airSentinel);
+		// refuse instead of writing a list the loader would truncate on the next
+		// start (which would silently delete the overflow)
+		if (items.size() > TradeMasterConfig.MAX_AIR_ITEMS) {
+			message(McText.translatable("trademaster.offers.air_too_many",
+					TradeMasterConfig.MAX_AIR_ITEMS).withStyle(net.minecraft.ChatFormatting.RED));
+			String stored = String.join(", ", config.airItems);
+			if (!this.airField.getValue().equals(stored)) this.airField.setValue(stored);
+			return;
+		}
 		// only write when the model actually changes: this runs on every left click
 		if (!items.equals(config.airItems)) {
 			config.airItems.clear();
@@ -1019,6 +1028,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			}
 			if (config.goodFor(result) != null) {
 				this.errorKey = "trademaster.offer.good_exists";
+				return true;
+			}
+			if (config.goods.size() >= TradeMasterConfig.MAX_GOODS) {
+				// the loader caps this list too: adding more would be silently lost
+				this.errorKey = "trademaster.offer.goods_full";
 				return true;
 			}
 			if (resultItemMissing(result)) {

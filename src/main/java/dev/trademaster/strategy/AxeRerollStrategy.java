@@ -145,8 +145,17 @@ public class AxeRerollStrategy implements RerollStrategy {
 				&& session.villager.isAlive()
 				&& session.villager.position().distanceTo(Vec3.atCenterOf(lecternPos)) <= 2) {
 			this.tpReturnPos = player.position();
-			session.movementGuard.permitTp(new Vec3(session.villager.getX(), session.villager.getY(), session.villager.getZ()));
-			McPackets.sendMovePlayerPos(mc.getConnection(), session.villager.getX(), session.villager.getY(), session.villager.getZ(), true, false);
+			Vec3 villagerPos = new Vec3(session.villager.getX(), session.villager.getY(), session.villager.getZ());
+			// never land INSIDE the villager: its collision push would move the player
+			// past the movement guard's tolerance right after the tp exemption ends.
+			// Step 0.6 blocks away toward where the player already stands (sideways
+			// when already on top of it).
+			Vec3 away = player.position().subtract(villagerPos);
+			Vec3 tpTarget = villagerPos.add(away.lengthSqr() > 1.0E-4
+					? away.normalize().scale(0.6)
+					: new Vec3(0.6, 0.0, 0.0));
+			session.movementGuard.permitTp(tpTarget);
+			McPackets.sendMovePlayerPos(mc.getConnection(), tpTarget.x, tpTarget.y, tpTarget.z, true, false);
 		}
 		if (config.tpToItem) {
 			this.phase = Phase.PICKUP;
@@ -248,7 +257,10 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// Click only with a lectern really in the offhand: restock() sends raw
 		// packets that take effect next tick, so clicking immediately would be an
 		// empty-hand click that places nothing.
-		if (!LecternRestock.offhandHasWorkItem(player)) {
+		// also run while a raw batch is still settling: a partially-applied batch can
+		// leave the displaced item on the cursor even though the lectern is already in
+		// the offhand, and the recovery lives inside restock()
+		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
 			if (!LecternRestock.restock(player)) {
 				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}

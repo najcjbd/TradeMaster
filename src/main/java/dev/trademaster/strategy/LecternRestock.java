@@ -60,6 +60,16 @@ public final class LecternRestock {
 	 * anything (the stack stays with the player) instead of dropping it. */
 	private static int restockRecoverTicks = 0;
 	private static final int RESTOCK_RECOVER_MAX_TICKS = 40;
+	/** The offhand stack the in-flight batch displaced (a copy, EMPTY when the offhand
+	 * was empty). The cursor-recovery may only deposit a stack that IS this one. */
+	private static ItemStack restockDisplaced = ItemStack.EMPTY;
+
+	/** Whether a raw batch is still waiting for its server broadcast: the callers must
+	 * keep calling {@link #restock} then, even when the offhand already holds the work
+	 * item, or a partially-applied batch's cursor stack is never resolved. */
+	public static boolean hasPendingBatch() {
+		return restockInFlightTicks >= 0;
+	}
 
 	/** Marks a batch as in flight from {@code fromContainerSlot} (-1 when the effect is
 	 * only visible on the offhand / in the menu state). */
@@ -114,6 +124,7 @@ public final class LecternRestock {
 		restockCarriedWaitTicks = 0;
 		equipCarriedWaitTicks = 0;
 		restockRecoverTicks = 0;
+		restockDisplaced = ItemStack.EMPTY;
 		// a stale tool lock from a previous run may point at an item that is gone, and
 		// the configured block may have changed
 		RigTarget.clearToolLock();
@@ -165,6 +176,7 @@ public final class LecternRestock {
 			restockInFlightTicks = -1;
 			restockFromSlot = -1;
 			restockRecoverTicks = 0;
+			restockDisplaced = ItemStack.EMPTY;
 			return true;
 		}
 		Minecraft mc = Minecraft.getInstance();
@@ -189,6 +201,7 @@ public final class LecternRestock {
 					restockRecoverTicks = 0;
 					restockInFlightTicks = -1;
 					restockFromSlot = -1;
+					restockDisplaced = ItemStack.EMPTY;
 					return false;
 				}
 				// one raw click every few ticks, always with the freshest state id
@@ -203,6 +216,10 @@ public final class LecternRestock {
 			if (!landed && ++restockInFlightTicks < RESTOCK_INFLIGHT_MAX_TICKS) return true;
 			restockInFlightTicks = -1;
 			restockFromSlot = -1;
+			restockDisplaced = ItemStack.EMPTY;
+			// a batch that LANDED has put the lectern in the offhand: return now instead
+			// of scanning the inventory again and swapping a second work stack in circles
+			if (offhandHasWorkItem(player)) return true;
 		}
 
 		if (player.inventoryMenu == player.containerMenu) {
@@ -230,6 +247,10 @@ public final class LecternRestock {
 				if (itemInOffhand) {
 					McClicks.sendContainerClick(player, container.containerId, stateId + 2, i, 0, McClicks.Click.PICKUP);
 				}
+				// snapshot what click 2 will push onto the cursor: the recovery may only
+				// put THAT stack back into the source slot, never an unrelated item the
+				// player happened to put there meanwhile
+				restockDisplaced = itemInOffhand ? player.getOffhandItem().copy() : ItemStack.EMPTY;
 				markRestockInFlight(i >= 36 ? i - 36 : i);
 				return true;
 			}
@@ -277,9 +298,12 @@ public final class LecternRestock {
 			// the deposit click was rejected: put the lectern into the offhand (slot 45
 			// of InventoryMenu); with another item there this swaps it onto the cursor
 			target = 45;
-		} else if (restockFromSlot >= 0 && player.getInventory().getItem(restockFromSlot).isEmpty()) {
+		} else if (restockFromSlot >= 0 && player.getInventory().getItem(restockFromSlot).isEmpty()
+				&& !restockDisplaced.isEmpty()
+				&& dev.trademaster.compat.McItem.sameItemSameComponents(carried, restockDisplaced)
+				&& carried.getCount() == restockDisplaced.getCount()) {
 			// the third click (returning the displaced offhand item to its source slot)
-			// was rejected: the slot is empty again, so put that item back there
+			// was rejected: the slot is empty again, so put THAT item back there
 			target = restockFromSlot < 9 ? restockFromSlot + 36 : restockFromSlot;
 		} else {
 			// not a state this batch can explain: leave the stack with the player
