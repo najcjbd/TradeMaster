@@ -37,7 +37,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 ## 安装
 
 1. 安装 Fabric Loader，把 **Fabric API** 与 **maLiLib** 放进 `mods/`；
-2. 把 `trade-master-1.0.jar` 放进 `mods/`；
+2. 把 `trade-master-1.0.0.jar` 放进 `mods/`；
 3. 启动游戏。
 
 ## 快速上手

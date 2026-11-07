@@ -644,6 +644,7 @@ public final class RerollController {
 			}
 		}
 		if (!config.timeoutEnabled) deferredTimeoutStop = false;
+		if (!config.stopOnPlayerMove) deferredMoveStop = false;
 		if (deferredTimeoutStop && !finalizingRun()) {
 			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
@@ -2172,6 +2173,8 @@ public final class RerollController {
 		}
 		// the tail obeys the same guard as the body: with no matched trade there is
 		// nothing to name, and NamingExecutor would NPE on trade.books()
+		// the finish has advanced: give the naming/send-away phase its own window
+		deferredStopTicks = 0;
 		if (s.matchedTrade != null && lockConfig.namingEnabled) {
 			namingExecutor = null;
 			enter(Phase.NAME);

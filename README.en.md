@@ -37,7 +37,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 ## Installation
 
 1. Install Fabric Loader and put **Fabric API** and **maLiLib** into `mods/`;
-2. Put `trade-master-1.0.jar` into `mods/`;
+2. Put `trade-master-1.0.0.jar` into `mods/`;
 3. Launch the game.
 
 ## Quick start

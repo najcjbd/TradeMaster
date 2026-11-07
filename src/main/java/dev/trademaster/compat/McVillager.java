@@ -9,7 +9,7 @@ import net.minecraft.world.entity.npc.VillagerProfession;
 /**
  * Version-gated Villager-profession access.
  *
- * <p>26.1 changed the profession model twice over:
+ * <p>1.21.5 changed the profession model twice over:
  * <ul>
  *   <li>{@code VillagerData.getProfession()} (a plain {@code VillagerProfession}) became
  *       {@code profession()} returning a {@code Holder<VillagerProfession>};</li>
