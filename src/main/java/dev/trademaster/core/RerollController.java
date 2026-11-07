@@ -1626,6 +1626,7 @@ public final class RerollController {
 				return;
 			}
 		}
+		Component failedFullReason = null;
 		if (!lockSlotPrepared) {
 			if (!Preconditions.hasFreeSlot(player) || depositor != null) {
 				if (depositor == null) {
@@ -1648,7 +1649,11 @@ public final class RerollController {
 					}
 					// DONE or FAILED_FULL: either way the depositor is spent. FAILED_FULL
 					// skips its own end-of-run restore, so clean it up here or the item
-					// a staging swap displaced stays in the offhand
+					// a staging swap displaced stays in the offhand. Keep its real reason
+					// (chests full / no drop slot) for the stop below.
+					if (result.step() == RerollStrategy.Step.FAILED_FULL) {
+						failedFullReason = result.reason();
+					}
 					depositor.abortCleanly();
 					depositor = null;
 					phaseTicks = 0;
@@ -1658,7 +1663,8 @@ public final class RerollController {
 					// be dropped on the ground (possibly into the void). Stop before
 					// locking and leave the villager in place — once the player frees
 					// a slot the run resumes and re-locks the same villager
-					stop(McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+					stop(failedFullReason != null ? failedFullReason
+							: McText.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 					return;
 				}
 			}
@@ -3173,17 +3179,17 @@ public final class RerollController {
 		return RigTarget.isUnusable(profession);
 	}
 
-	/** Whether the sand-wheel mode definition changed while the run was going. The
-	 * enable flag and the grindstone position define the mode itself, and the
-	 * deposit factory only re-reads them at deposit time — switching mid-run would
-	 * silently change how books are disposed of. The drop DIRECTION is deliberately
-	 * not checked: editing it mid-run is allowed, DROP_AIM re-reads it live. */
 	/** The rig-target definition as one string: the mid-run change guard compares this. */
 	private static String rigTargetDefinition(TradeMasterConfig config) {
 		return config.workBlockId + "\u0000" + config.professionId + "\u0000"
 				+ String.join(",", config.nonTradeableProfessions);
 	}
 
+	/** Whether the sand-wheel mode definition changed while the run was going. The
+	 * enable flag and the grindstone position define the mode itself, and the
+	 * deposit factory only re-reads them at deposit time — switching mid-run would
+	 * silently change how books are disposed of. The drop DIRECTION is deliberately
+	 * not checked: editing it mid-run is allowed, DROP_AIM re-reads it live. */
 	private static boolean grindstoneConfigChanged(TradeMasterConfig config) {
 		if (config.grindstoneEnabled != snapGrindstoneEnabled) return true;
 		if (config.grindstonePos == null) return snapGrindstonePos != null;

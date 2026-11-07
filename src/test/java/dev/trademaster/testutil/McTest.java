@@ -1,12 +1,15 @@
 package dev.trademaster.testutil;
 
 import dev.trademaster.compat.McBuiltIn;
+import dev.trademaster.compat.McIds;
 import dev.trademaster.compat.McRegistry;
 import net.minecraft.SharedConstants;
 import net.minecraft.core.Holder;
 //? if >=1.20.5 {
+import net.minecraft.core.HolderOwner;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
+import net.minecraft.core.registries.Registries;
 //?}
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.Bootstrap;
@@ -15,6 +18,8 @@ import net.minecraft.world.entity.npc.VillagerProfession;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.Tool;
+import net.minecraft.world.item.enchantment.Enchantment;
+import net.minecraft.world.item.enchantment.ItemEnchantments;
 import java.util.List;
 //?}
 
@@ -68,6 +73,23 @@ public final class McTest {
 		stack.set(DataComponents.TOOL, new Tool(List.of(), speed, 1));
 		//?}
 		return stack;
+	}
+
+	/** The same tool plus an Unbreaking level (a keyed stand-alone holder: no live
+	 * registry is needed, and unwrapKey() still reports the vanilla id). */
+	public static ItemStack tool(Item item, float speed, int maxDamage, int damage, int unbreaking) {
+		ItemStack stack = tool(item, speed, maxDamage, damage);
+		if (unbreaking > 0) {
+			ItemEnchantments.Mutable mutable = new ItemEnchantments.Mutable(ItemEnchantments.EMPTY);
+			mutable.set(unbreakingHolder(), unbreaking);
+			stack.set(DataComponents.ENCHANTMENTS, mutable.toImmutable());
+		}
+		return stack;
+	}
+
+	private static Holder<Enchantment> unbreakingHolder() {
+		return Holder.Reference.createStandAlone(new HolderOwner<Enchantment>() {},
+				ResourceKey.create(Registries.ENCHANTMENT, McIds.mc("unbreaking")));
 	}
 
 	/** A non-tool stack (no TOOL component). */

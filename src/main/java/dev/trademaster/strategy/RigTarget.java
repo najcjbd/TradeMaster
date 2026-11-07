@@ -2,6 +2,7 @@ package dev.trademaster.strategy;
 
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.compat.McEnchantments;
+import dev.trademaster.compat.McIds;
 import dev.trademaster.compat.McRegistry;
 import dev.trademaster.compat.McVillager;
 import dev.trademaster.compat.McBuiltIn;
@@ -335,8 +336,12 @@ public final class RigTarget {
 	/** The Unbreaking level of a stack, 0 when it has none. Read from the stack's own
 	 * enchantment component, so it needs no registry lookup. */
 	public static int unbreakingLevel(ItemStack stack) {
+		// compare by registry id: Enchantments.UNBREAKING is a ResourceKey from 1.21
+		// but a plain Enchantment value before, so a direct equals() is always false there
+		ResourceLocation unbreaking = McIds.mc("unbreaking");
 		for (var entry : McEnchantments.of(stack).entrySet()) {
-			if (entry.getKey().unwrapKey().map(key -> key.equals(Enchantments.UNBREAKING)).orElse(false)) {
+			if (entry.getKey().unwrapKey()
+					.map(key -> McRegistry.keyId(key).equals(unbreaking)).orElse(false)) {
 				return entry.getValue();
 			}
 		}

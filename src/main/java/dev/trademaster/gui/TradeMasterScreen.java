@@ -135,8 +135,11 @@ public class TradeMasterScreen extends Screen {
 		this.addRenderableWidget(McButton.builder(
 						McText.translatable("trademaster.button.stop").withStyle(ChatFormatting.RED),
 						button -> {
-							RerollController.stopManual();
+							// a refused stop (not running) keeps the screen open, like Start
+							if (RerollController.isRunning()) {
+								RerollController.stopManual();
 								if (this.minecraft != null) McClient.setScreen(this.minecraft, this.parent);
+							}
 						})
 				.bounds(left + saveWidth + 8 + actionWidth, this.height - 26, actionWidth, 20)
 				.build());

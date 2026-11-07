@@ -67,10 +67,13 @@ class RigTargetToolTest {
 	}
 
 	@Test
-	void remainingDurability() {
+	void remainingDurabilityAndUnbreaking() {
 		assertEquals(100, RigTarget.remainingDurability(McTest.tool(Items.DIAMOND_SHOVEL, 8, 100, 0)));
 		assertEquals(4, RigTarget.remainingDurability(McTest.tool(Items.DIAMOND_HOE, 8, 100, 96)));
 		assertEquals(0, RigTarget.remainingDurability(McTest.plain(Items.PAPER)));
+
+		assertEquals(3, RigTarget.unbreakingLevel(McTest.tool(Items.DIAMOND_SWORD, 8, 100, 0, 3)));
+		assertEquals(0, RigTarget.unbreakingLevel(McTest.tool(Items.STONE_AXE, 8, 100, 0)));
 	}
 
 	@Test
@@ -131,6 +134,23 @@ class RigTargetToolTest {
 		ItemStack fresh = McTest.tool(Items.IRON_PICKAXE, 8, 100, 0);
 		// the tie-break (durability/unbreaking) applies to the chosen tool, not the precheck
 		assertSame(Items.IRON_PICKAXE, RigTarget.chooseTool(LECTERN, List.of(worn, fresh), RNG));
+	}
+
+	@Test
+	void tieBreakPrefersUnbreakingWhenDurabilityTies() {
+		c().preventAxeBreaking = false;
+		ItemStack plain = McTest.tool(Items.STONE_AXE, 8, 100, 0, 0);
+		ItemStack enchanted = McTest.tool(Items.STONE_PICKAXE, 8, 100, 0, 3);
+		assertSame(Items.STONE_PICKAXE, RigTarget.chooseTool(LECTERN, List.of(plain, enchanted), RNG));
+	}
+
+	@Test
+	void remainingDurabilityOutranksUnbreaking() {
+		c().preventAxeBreaking = false;
+		// the fresher tool wins even though the other has Unbreaking
+		ItemStack fresher = McTest.tool(Items.WOODEN_AXE, 8, 100, 0, 0);
+		ItemStack enchantedButWorn = McTest.tool(Items.WOODEN_PICKAXE, 8, 100, 50, 3);
+		assertSame(Items.WOODEN_AXE, RigTarget.chooseTool(LECTERN, List.of(fresher, enchantedButWorn), RNG));
 	}
 
 	@Test
