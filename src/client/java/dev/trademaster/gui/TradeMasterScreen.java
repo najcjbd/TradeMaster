@@ -123,11 +123,11 @@ public class TradeMasterScreen extends Screen {
 		this.addRenderableWidget(Button.builder(
 						Component.translatable("trademaster.button.stop").withStyle(ChatFormatting.RED),
 						button -> {
-							// a refused stop (not running) keeps the screen open, like Start
-							if (RerollController.isRunning()) {
-								RerollController.stopManual();
-								if (this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
-							}
+							// a refused stop (not running) still says so, but keeps the
+							// screen open like Start; only a real stop returns to the parent
+							boolean running = RerollController.isRunning();
+							RerollController.stopManual();
+							if (running && this.minecraft != null) this.minecraft.gui.setScreen(this.parent);
 						})
 				.bounds(left + saveWidth + 8 + actionWidth, this.height - 26, actionWidth, 20)
 				.build());
