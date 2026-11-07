@@ -339,8 +339,10 @@ public final class RigTarget {
 	/** The Unbreaking level of a stack, 0 when it has none. Read from the stack's own
 	 * enchantment component, so it needs no registry lookup. */
 	public static int unbreakingLevel(ItemStack stack) {
+		Identifier unbreaking = Identifier.withDefaultNamespace("unbreaking");
 		for (var entry : stack.getEnchantments().entrySet()) {
-			if (entry.getKey().unwrapKey().map(key -> key.equals(Enchantments.UNBREAKING)).orElse(false)) {
+			if (entry.getKey().unwrapKey()
+					.map(key -> key.identifier().equals(unbreaking)).orElse(false)) {
 				return entry.getIntValue();
 			}
 		}
