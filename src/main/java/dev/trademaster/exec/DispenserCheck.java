@@ -57,7 +57,7 @@ public final class DispenserCheck {
 	private static long lateOpenTick = 0;
 	/** Covers the controller's 100-tick retry wait; a wider window would attribute an
 	 * unrelated menu to the old send. */
-	private static final long LATE_OPEN_WINDOW_TICKS = 120;
+	private static final long LATE_OPEN_WINDOW_TICKS = 400;
 
 	public DispenserCheck(BlockPos pos) {
 		this.pos = pos.immutable();
@@ -127,6 +127,10 @@ public final class DispenserCheck {
 					return Result.RUNNING;
 				}
 				this.foreignMenuTicks = 0;
+				// opening a container with a carried stack the inventory cannot take
+				// would make the server drop it: refuse like the other menu-open sites
+				if (!player.containerMenu.getCarried().isEmpty()
+						&& !Interactions.hasRoomForCarried(player)) return Result.CURSOR_BLOCKED;
 				// this check now has its own use in flight: a previous attempt's late
 				// memory must not attribute an unrelated menu to it later
 				lateOpenPos = null;

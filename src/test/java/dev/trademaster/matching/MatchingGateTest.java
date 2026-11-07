@@ -184,8 +184,9 @@ class MatchingGateTest {
 	void minimumEditablePriceFollowsThePriceSlotItemAndBasis() {
 		c().tradeSpecs.clear();
 		c().discountedPriceAsSalePrice = false;
-		// the default spec prices emeralds: the vanilla formula applies
-		assertEquals(TradeMasterConfig.minPrice(5, MENDING), c().minimumEditablePrice(MENDING, 5));
+		// the default spec prices emeralds: the vanilla formula applies (headless the
+		// double_trade_price tag cache is empty, so level 5 is 2+3*5)
+		assertEquals(17, c().minimumEditablePrice(MENDING, 5));
 		// a non-emerald price slot has no vanilla emerald minimum
 		c().tradeSpecs.put(MENDING, new TradeOfferSpec(List.of(
 				new TradeOfferSpec.TradeCost(McIds.mc("diamond"), 0),
