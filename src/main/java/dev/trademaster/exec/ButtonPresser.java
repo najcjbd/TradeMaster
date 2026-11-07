@@ -59,7 +59,9 @@ public class ButtonPresser {
 			return StepResult.failed(McText.literal("TradeMaster: player/level unavailable"));
 		}
 		this.ticks++;
-		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 100) {
+		// a rejected press may spend three 10-tick retry windows plus the look/slot/
+		// residual-power lead-in: 100 ticks could cut the last confirmation short
+		if (TradeMasterConfig.INSTANCE.phaseTimeoutsEnabled && this.ticks > 160) {
 			restoreSlot(player);
 			return StepResult.failed(McText.translatable("trademaster.error.button-timeout"));
 		}
