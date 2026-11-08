@@ -85,27 +85,21 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 
 #### 参考配置（来自 26.2 参考存档）
 
-完整存档与配置见 [`examples/26.2-rig-save`](https://github.com/najcjbd/TradeMaster/tree/multiversion/examples/26.2-rig-save)（世界 zip + `trade-master.json`）。坐标（除注明外均为世界坐标）：
+配置文件里写的**全部坐标**（`trade-master.json` 的 `positions`）：
 
-| 用途 | 坐标 |
+| 配置项 | 坐标 |
 |---|---|
-| 讲台 | `14, -60, 8`（存档保存时为空气，运行后由模组补放） |
-| 召唤按钮 | `17, -58, 8` |
-| 送走按钮 | `15, -60, 8` |
-| 工作发射器（配置里的 dispenser） | `17, -58, 7` |
-| 模板发射器（1 辆矿车） | `19, -59, 8` |
-| 克隆循环命令方块 | `19, -60, 8` |
-| 召唤循环命令方块 | `20, -60, 8` |
-| 动力铁轨 | `14,-60,7`、`15,-58,7`、`16,-58,7` |
-| 水渠/村民运送 | `17..19, -58, 4..6` |
-| 召唤点（命令） | `19, -58, 4` |
-| 暂存区（配置） | 原点 `16,-58,6` + 延伸 `0,2,0` |
-| 召唤命令的判定框 | `x 17..18, y -58..-56, z 5..6` |
-| 告示牌 / 栅栏门 | `16,-58,6` / `16,-57,6` |
-| 铁砧（chipped，命名未启用） | `15,-60,10` |
-| 箱子 | `14,-60,11`（配置）、`13,-60,11`（世界） |
+| lectern（讲台） | `14, -60, 8`（存档保存时为空气，运行后由模组补放） |
+| summonButton（召唤按钮） | `17, -58, 8` |
+| sendAwayButton（送走按钮） | `15, -60, 8` |
+| dispenser（发射器） | `17, -58, 7`（示例配置补入；原始配置没有此项） |
+| villagerRegionOrigin（暂存区原点） | `16, -58, 6` |
+| villagerRegionDelta（暂存区延伸） | `0, 2, 0` |
+| chests（箱子） | `14, -60, 11` |
 
-**完整配置**（示例文件 `trade-master.json`）：
+配置中没有设置砂轮/命名相关位置；完整文件见 [`examples/26.2-rig-save/trade-master.json`](https://github.com/najcjbd/TradeMaster/blob/multiversion/examples/26.2-rig-save/trade-master.json)。
+
+**完整配置**（示例文件）：
 
 - `configVersion: 1`（旧版，加载时自动迁移）；含旧键 `lockTarget: BOOK_TRADE`（当前版本已不读取）
 - mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`
@@ -114,7 +108,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 - hotkeys：`startStop=""`、`pickPosition=KP_3`
 - 启用的目标：节肢杀手 5、绑定诅咒 1、效率 5、摔落保护 4、火焰保护 4、穿刺 5、穿透 4、力量 5（其余附魔关闭，价格上限 64）
 
-**矿车补给（本存档实际做法）**：工作发射器 `(17,-58,7)` 在召唤按钮旁；模板发射器 `(19,-59,8)` 内含 1 辆矿车；`(19,-60,8)` 的**循环命令方块**执行 `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`，持续把模板克隆到工作发射器；`(20,-60,8)` 的循环命令方块在暂存区无村民时召唤。工作矿车被发射后由克隆补回，模板不消耗，所以**不需要回收矿车**。示例配置的 `positions.dispenser` 已补为 `[17,-58,7]`。
+**矿车补给（本存档实际做法）**：存档世界中的工作发射器 `(17,-58,7)` 在召唤按钮旁；模板发射器 `(19,-59,8)` 内含 1 辆矿车；`(19,-60,8)` 的**循环命令方块**执行 `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`，持续把模板克隆到工作发射器；`(20,-60,8)` 的循环命令方块在暂存区无村民时召唤。工作矿车被发射后由克隆补回，模板不消耗，所以**不需要回收矿车**。这些是世界里的方块坐标，不在配置文件里；配置里只需把 `dispenser` 指向工作发射器 `[17,-58,7]`。
 
 ## 流水线（12 个阶段）
 
