@@ -85,36 +85,30 @@ This is the **provide** method: after the summon button dispenses the working ca
 
 #### Reference configuration (from the 26.2 save)
 
-The full save and config live in [`examples/26.2-rig-save`](https://github.com/najcjbd/TradeMaster/tree/multiversion/examples/26.2-rig-save) (world zip + `trade-master.json`). Coordinates (world coordinates unless noted):
+**All coordinates written in the config file** (`positions` in `trade-master.json`):
 
-| Purpose | Position |
+| Config key | Position |
 |---|---|
-| Lectern | `14, -60, 8` (air in the save; the mod re-places it) |
-| Summon button | `17, -58, 8` |
-| Send-away button | `15, -60, 8` |
-| Working dispenser (the configured one) | `17, -58, 7` |
-| Template dispenser (one minecart) | `19, -59, 8` |
-| Clone repeating command block | `19, -60, 8` |
-| Summon repeating command block | `20, -60, 8` |
-| Powered rails | `14,-60,7`, `15,-58,7`, `16,-58,7` |
-| Water channel / villager transport | `17..19, -58, 4..6` |
-| Summon point (command) | `19, -58, 4` |
-| Staging area (config) | origin `16,-58,6` + delta `0,2,0` |
-| Summon command's selector box | `x 17..18, y -58..-56, z 5..6` |
-| Sign / fence gate | `16,-58,6` / `16,-57,6` |
-| Anvil (chipped, naming off) | `15,-60,10` |
-| Chest | `14,-60,11` (config), `13,-60,11` (world) |
+| lectern | `14, -60, 8` (air in the save; the mod re-places it) |
+| summonButton | `17, -58, 8` |
+| sendAwayButton | `15, -60, 8` |
+| dispenser | `17, -58, 7` (added in the example config; the original file had no such key) |
+| villagerRegionOrigin | `16, -58, 6` |
+| villagerRegionDelta | `0, 2, 0` |
+| chests | `14, -60, 11` |
 
-**Full configuration** (the example `trade-master.json`):
+No grindstone/naming positions are configured; the full file is [`examples/26.2-rig-save/trade-master.json`](https://github.com/najcjbd/TradeMaster/blob/multiversion/examples/26.2-rig-save/trade-master.json).
+
+**Full configuration** (the example file):
 
 - `configVersion: 1` (old layout, migrated on load); carries the obsolete `lockTarget: BOOK_TRADE` key (not read anymore)
 - mechanism: `reroll=AXE`, `detection=PACKET`, `reserveCheaperTraders=false`, `minLockEmeralds=1`, `timeoutEnabled=false`, `timeoutTicks=1h`, `phaseTimeoutsEnabled=true`, `villagerCheckInterval=1s`, `lecternHealGrace=6s`, `professionHealCapEnabled=false`, `professionHealCap=3`, `autoDisableAfterLock=true`, `displayRolls=true`, `debugLog=true`
 - naming: `enabled=false`, `forceNamePriceOne=true`, `customNames={}`
-- antiCheat: `legitMode=true`, `slowMode=false`, `tpToVillager=true`, `preventAxeBreaking=false`, `stopOnPlayerMove=true`, `placeDelay=3`, `interactDelay=2` (no `tpToItem` key in this file, so the default applies)
+- antiCheat: `legitMode=true`, `slowMode=false`, `tpToVillager=true`, `preventAxeBreaking=false`, `stopOnPlayerMove=true`, `placeDelay=3`, `interactDelay=2` (no `tpToItem` key, so the default applies)
 - hotkeys: `startStop=""`, `pickPosition=KP_3`
 - enabled targets: bane of arthropods 5, binding curse 1, efficiency 5, feather falling 4, fire protection 4, impaling 5, piercing 4, power 5 (all others disabled, price cap 64)
 
-**Minecart supply (what this save does)**: the working dispenser `(17,-58,7)` sits next to the summon button; the template dispenser `(19,-59,8)` holds one minecart; the **repeating command block** at `(19,-60,8)` runs `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`, continuously cloning the template onto the working dispenser; the repeating block at `(20,-60,8)` summons when the staging area has no villager. The working cart is dispensed and the clone puts the template's cart back; the template is never consumed, so **no cart recycling is needed**. The example config's `positions.dispenser` is `[17,-58,7]`.
+**Minecart supply (what this save does)**: in the save world, the working dispenser `(17,-58,7)` sits next to the summon button; the template dispenser `(19,-59,8)` holds one minecart; the **repeating command block** at `(19,-60,8)` runs `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`, continuously cloning the template onto the working dispenser; the repeating block at `(20,-60,8)` summons when the staging area has no villager. The working cart is dispensed and the clone puts the template's cart back; the template is never consumed, so **no cart recycling is needed**. Those are world-block coordinates, not config entries; the config only needs `dispenser` pointing at the working dispenser `[17,-58,7]`.
 
 ## Pipeline (12 phases)
 
