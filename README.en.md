@@ -278,6 +278,8 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Hotkey `V` | Opens the main menu (six tabs: enchantments / settings / keybinds / **aliases** / **offers** / **villagers**) |
 | maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
 
+> The **1.18.2 node registers hotkeys only**; the `/trademaster` command exists from 1.19.2 on.
+
 ## Config entry points
 
 All three share the **same** `config/trade-master.json`:
