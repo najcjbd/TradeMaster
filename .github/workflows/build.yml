@@ -13,7 +13,7 @@ jobs:
   build:
     name: Build and test all Fabric nodes (JDK 25)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -33,6 +33,18 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: gradle
+
+      # Minecraft/Loom downloads and the per-node Stonecutter caches are the slow,
+      # network-bound part of a cold run: persist them between workflow runs.
+      - name: Cache Loom and Stonecutter caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .gradle/loom-cache
+            versions/*/build/loom-cache
+          key: loom-${{ runner.os }}-${{ hashFiles('settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            loom-${{ runner.os }}-
 
       # One Stonecutter node = one Minecraft version. Building every Fabric node
       # runs each node's headless JUnit suite (src/test) against that version.
