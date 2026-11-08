@@ -42,7 +42,7 @@ jobs:
           path: |
             .gradle/loom-cache
             versions/*/build/loom-cache
-          key: loom-${{ runner.os }}-${{ hashFiles('settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
+          key: loom-${{ runner.os }}-${{ hashFiles('settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'versions/*/gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
             loom-${{ runner.os }}-
 

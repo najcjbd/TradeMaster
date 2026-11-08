@@ -25,7 +25,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 
 | 项 | 值 |
 |---|---|
-| 游戏版本 | Minecraft **1.18.2–26.3**（Fabric 10 个节点；Forge/NeoForge 目标尚未接线） |
+| 游戏版本 | Minecraft **1.18.2–26.3**（Fabric 10 个节点；Forge/NeoForge 目标已声明但未构建/未验证） |
 | 加载器 | Fabric Loader（版本随对应 MC 节点） |
 | Java | **构建需 JDK 25**；游戏运行 Java 随对应 MC 版本（1.18.2 为 17+） |
 | 运行侧 | **纯客户端**（`"environment": "client"`，无需装到服务端） |

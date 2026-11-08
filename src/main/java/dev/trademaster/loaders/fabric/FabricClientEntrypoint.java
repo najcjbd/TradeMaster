@@ -6,6 +6,7 @@ import dev.trademaster.core.RerollController;
 import dev.trademaster.gui.PositionPicker;
 import dev.trademaster.platform.Platforms;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
@@ -26,6 +27,11 @@ public class FabricClientEntrypoint implements ClientModInitializer {
 		//?}
 		registerClientEvents();
 		TradeMasterClient.initialize();
+		// optional coexistence probe: no API coupling is required
+		if (FabricLoader.getInstance().isModLoaded("clientcommands")) {
+			TradeMasterClient.LOGGER.info(
+					"clientcommands detected; coexistence mode (no API coupling required)");
+		}
 	}
 
 	private static void registerClientEvents() {

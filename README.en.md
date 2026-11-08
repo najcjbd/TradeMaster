@@ -25,7 +25,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 | Item | Value |
 |---|---|
-| Game version | Minecraft **1.18.2–26.3** (10 Fabric nodes; Forge/NeoForge targets are not wired yet) |
+| Game version | Minecraft **1.18.2–26.3** (10 Fabric nodes; Forge/NeoForge targets are declared but not built/verified) |
 | Loader | Fabric Loader (version depends on the MC node) |
 | Java | **JDK 25 to build**; runtime Java follows the MC version (17+ for 1.18.2) |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
