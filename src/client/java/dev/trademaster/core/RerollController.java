@@ -1974,6 +1974,7 @@ public final class RerollController {
 	 * pending state can never fall through into villager interaction.
 	 */
 	private static void finishLockExhaustion(Minecraft client, LocalPlayer player) {
+		Component failedFullReason = null;
 		// Defensive, unreachable today (audited 2026-09-19): the flag is only set
 		// together with the depositor in lockRejected.
 		if (depositor != null) {
@@ -1983,13 +1984,18 @@ public final class RerollController {
 				return;
 			}
 			if (result.step() == RerollStrategy.Step.RUNNING) return;
-			// DONE or FAILED_FULL: the recheck below decides whether to resume
+			// DONE or FAILED_FULL: the recheck below decides whether to resume.
+			// Keep the real reason (chests full / no drop slot) for the stop below.
+			if (result.step() == RerollStrategy.Step.FAILED_FULL) {
+				failedFullReason = result.reason();
+			}
 			depositor.abortCleanly();
 			depositor = null;
 		}
 		lockExhaustionDepositPending = false;
 		if (!Preconditions.hasFreeSlot(player)) {
-			stop(Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
+			stop(failedFullReason != null ? failedFullReason
+					: Component.translatable("trademaster.message.inventory_full"), ChatFormatting.RED);
 			return;
 		}
 		resumeAfterLockExhaustion(client);
