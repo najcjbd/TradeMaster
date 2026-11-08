@@ -77,6 +77,11 @@ The mod **never crafts, dispenses or collects minecarts** — it only checks and
 
 Requirements: the dispenser must be within the player's interaction range (about 4.5 blocks) and visible; the summon machinery must actually consume a cart (otherwise the check is meaningless); the send-away path should return the cart or a refill must replace it. With no cart the mod waits instead of failing, so an interrupted supply typically looks like **a run parked in the summon phase**.
 
+**Reference wiring (from the author's 26.2 save)**: the working dispenser sits next to the summon button at `(17,-58,7)`; the template dispenser is at `(19,-59,8)` (holding one minecart). The command block at `(19,-60,8)` runs
+`clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`, cloning the template onto the working dispenser; a second command block at `(20,-60,8)` summons a villager at `(19,-58,4)` unless one is present in the staging box:
+`execute unless entity @e[x=17,y=-58,z=6,dx=1,dy=2,dz=-1,type=minecraft:villager] run summon minecraft:villager 19 -58 4`.
+This is the **provide** method: after the summon button dispenses the working cart, the clone copies the template's cart back; the template itself is never consumed, so **no cart recycling is needed**. Point the dispenser coordinate at the **working** dispenser `(17,-58,7)`, not the template.
+
 ## Pipeline (12 phases)
 
 | Phase | What it does |
