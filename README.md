@@ -82,6 +82,25 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 `execute unless entity @e[x=17,y=-58,z=6,dx=1,dy=2,dz=-1,type=minecraft:villager] run summon minecraft:villager 19 -58 4`。
 这是“提供”方式：工作发射器的矿车被按钮发射后，克隆会把模板里的 1 辆补回，模板本身不会被消耗，所以**不需要回收矿车**。配置发射器坐标时填**工作发射器** `(17,-58,7)`，不要填模板。
 
+
+#### 参考配置（来自 26.2 参考存档）
+
+完整存档与配置见 [`examples/26.2-rig-save`](https://github.com/najcjbd/TradeMaster/tree/multiversion/examples/26.2-rig-save)（内含可直接解压到 `saves/` 的世界 zip 与 `trade-master.json`）。关键坐标：
+
+| 用途 | 坐标 |
+|---|---|
+| 讲台 | `14, -60, 8` |
+| 召唤按钮 | `17, -58, 8` |
+| 送走按钮 | `15, -60, 8` |
+| 工作发射器（配置里的 dispenser） | `17, -58, 7` |
+| 模板发射器（1 辆矿车） | `19, -59, 8` |
+| 克隆命令方块 | `19, -60, 8` |
+| 召唤命令方块 | `20, -60, 8` |
+| 箱子 | `14, -60, 11`（另有 `13, -60, 11`） |
+| 暂存区 | 原点 `16, -58, 6`，延伸 `0, 2, 0` |
+
+配置要点：`AXE` / `PACKET`；`legitMode=true`、`slowMode=false`、`tpToVillager=true`、`stopOnPlayerMove=true`、`preventAxeBreaking=false`；`placeDelay=3`、`interactDelay=2`；`autoDisableAfterLock=true`、命名关、`minLockEmeralds=1`、阶段超时开/全局超时关；启用目标：节肢杀手 5、绑定诅咒 1、效率 5、摔落保护 4、火焰保护 4、穿刺 5、穿透 4、力量 5。示例配置的 `positions.dispenser` 已补为 `[17,-58,7]`。
+
 ## 流水线（12 个阶段）
 
 | 阶段 | 做什么 |
