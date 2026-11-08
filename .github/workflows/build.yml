@@ -4,6 +4,7 @@ on:
   push:
     branches: [ multiversion ]
   pull_request:
+    branches: [ multiversion ]
   workflow_dispatch:
 
 permissions:
