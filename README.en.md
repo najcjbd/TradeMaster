@@ -82,6 +82,25 @@ Requirements: the dispenser must be within the player's interaction range (about
 `execute unless entity @e[x=17,y=-58,z=6,dx=1,dy=2,dz=-1,type=minecraft:villager] run summon minecraft:villager 19 -58 4`.
 This is the **provide** method: after the summon button dispenses the working cart, the clone copies the template's cart back; the template itself is never consumed, so **no cart recycling is needed**. Point the dispenser coordinate at the **working** dispenser `(17,-58,7)`, not the template.
 
+
+#### Reference configuration (from the 26.2 save)
+
+The full save and config live in [`examples/26.2-rig-save`](https://github.com/najcjbd/TradeMaster/tree/multiversion/examples/26.2-rig-save) (a world zip ready to extract into `saves/` plus `trade-master.json`). Key coordinates:
+
+| Purpose | Position |
+|---|---|
+| Lectern | `14, -60, 8` |
+| Summon button | `17, -58, 8` |
+| Send-away button | `15, -60, 8` |
+| Working dispenser (the configured one) | `17, -58, 7` |
+| Template dispenser (one minecart) | `19, -59, 8` |
+| Clone command block | `19, -60, 8` |
+| Summon command block | `20, -60, 8` |
+| Chest | `14, -60, 11` (another at `13, -60, 11`) |
+| Staging area | origin `16, -58, 6`, delta `0, 2, 0` |
+
+Key settings: `AXE` / `PACKET`; `legitMode=true`, `slowMode=false`, `tpToVillager=true`, `stopOnPlayerMove=true`, `preventAxeBreaking=false`; `placeDelay=3`, `interactDelay=2`; `autoDisableAfterLock=true`, naming off, `minLockEmeralds=1`, phase timeouts on / global timeout off; enabled targets: bane of arthropods 5, binding curse 1, efficiency 5, feather falling 4, fire protection 4, impaling 5, piercing 4, power 5. The example config's `positions.dispenser` is `[17,-58,7]`.
+
 ## Pipeline (12 phases)
 
 | Phase | What it does |
