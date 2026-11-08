@@ -307,10 +307,6 @@ public final class TradeMasterConfig {
 		return raised;
 	}
 
-	public int emeraldFloor() {
-		return emeraldFloor(enabledTargets());
-	}
-
 	public int emeraldFloor(List<EnchantmentTarget> enabled) {
 		int max = 0;
 		for (EnchantmentTarget target : enabled) {

@@ -124,16 +124,6 @@ public class LockTradeExecutor {
 		return this.stage >= 2;
 	}
 
-	/** True once the purchase is PROVEN by the server, not by our own prediction:
-	 * {@code handleContainerInput} runs {@code AbstractContainerMenu.clicked} locally
-	 * before the packet, so "a book is on the cursor" is client state only. The proof
-	 * is the server moving the held book into the inventory when the container closes
-	 * ({@code AbstractContainerMenu.removed} -> {@code dropOrPlaceInInventory}, which
-	 * runs for ServerPlayer only) — see the stage-3 check. */
-	public boolean purchaseConfirmed() {
-		return this.verified;
-	}
-
 	/** True once we closed the container ourselves (stage 3 onwards). The controller
 	 * must not read the resulting menu mismatch as "the server closed it". */
 	public boolean closing() {
