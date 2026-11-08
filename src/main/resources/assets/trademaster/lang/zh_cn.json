@@ -176,7 +176,7 @@
   "trademaster.malilib.title": "Trade Master 配置",
   "trademaster.hotkey.startStop": "启动/停止流水线",
   "trademaster.hotkey.pickPosition": "选取坐标",
-  "trademaster.keybinds.hint": "键位只能在 maLiLib 配置界面中修改。",
+  "trademaster.keybinds.hint": "键位可在「选项 → 控制 → 按键绑定」中修改。",
   "trademaster.error.reroll-timeout": "重刷超时",
   "trademaster.error.wait-none-timeout": "等待村民失业超时",
   "trademaster.error.wait-librarian-timeout": "等待村民转职图书管理员超时",

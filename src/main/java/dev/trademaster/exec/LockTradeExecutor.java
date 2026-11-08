@@ -39,7 +39,6 @@ public class LockTradeExecutor {
 	private int pickupWaitTicks = 0;
 	private int confirmTicks = 0;
 	private boolean drifted = false;
-	private boolean verified = false;
 	private boolean uncertain = false;
 	/** Nearby matching drops before the clicks (see {@link #droppedMatches}). */
 	private int droppedBaseline = -1;
@@ -217,7 +216,7 @@ public class LockTradeExecutor {
 				// by at least the trade's result AMOUNT — a stricter bar than "rose at all",
 				// so an unrelated identical book picked up during the wait cannot pass as
 				// our purchase. Residual: an identical book acquired in the window and the
-				// server refusing the click would still read as verified.
+				// server refusing the click would still satisfy this proof.
 				int need = this.expected == null ? 1
 						: Math.max(1, this.expected.purchase().result().getCount());
 				// the delivery can be SPLIT: the slots the trade freed take what fits and the
@@ -232,7 +231,6 @@ public class LockTradeExecutor {
 				int dropped = droppedDelivery
 						? Math.max(0, droppedMatches(client) - this.droppedBaseline) : 0;
 				if (gained + dropped >= need) {
-					this.verified = true;
 					return Result.DONE;
 				}
 				// A ground drop is what the server produced when a slot was missing, so it is

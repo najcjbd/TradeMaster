@@ -176,7 +176,7 @@
   "trademaster.malilib.title": "Trade Master config",
   "trademaster.hotkey.startStop": "Start/Stop pipeline",
   "trademaster.hotkey.pickPosition": "Pick position",
-  "trademaster.keybinds.hint": "Keybinds can only be changed in the maLiLib config screen.",
+  "trademaster.keybinds.hint": "Keybinds can be changed in Options → Controls → Key Binds.",
   "trademaster.error.reroll-timeout": "Reroll timed out",
   "trademaster.error.wait-none-timeout": "Timed out waiting for villager to lose profession",
   "trademaster.error.wait-librarian-timeout": "Timed out waiting for librarian profession",

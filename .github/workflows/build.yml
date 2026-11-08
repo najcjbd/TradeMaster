@@ -41,6 +41,7 @@ jobs:
         with:
           path: |
             .gradle/loom-cache
+            versions/*/.gradle/loom-cache
             versions/*/build/loom-cache
           key: loom-${{ runner.os }}-${{ hashFiles('settings.gradle.kts', 'build.gradle.kts', 'gradle.properties', 'versions/*/gradle.properties', 'gradle/wrapper/gradle-wrapper.properties') }}
           restore-keys: |
