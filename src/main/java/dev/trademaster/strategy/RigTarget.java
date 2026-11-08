@@ -332,8 +332,9 @@ public final class RigTarget {
 		return stack.isDamageableItem() && stack.getMaxDamage() - stack.getDamageValue() <= 5;
 	}
 
-	/** The Unbreaking level of a stack, 0 when it has none. Read from the stack's own
-	 * enchantment component, so it needs no registry lookup. */
+	/** The Unbreaking level of a stack, 0 when it has none. Read from the stack's
+	 * enchantment data (component on 1.20.5+, NBT before); the pre-1.21 path resolves
+	 * the holder through the enchantment registry. */
 	public static int unbreakingLevel(ItemStack stack) {
 		// compare by registry id: Enchantments.UNBREAKING is a ResourceKey from 1.21
 		// but a plain Enchantment value before, so a direct equals() is always false there

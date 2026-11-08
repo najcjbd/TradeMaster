@@ -29,21 +29,21 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Loader | Fabric Loader (version depends on the MC node) |
 | Java | **JDK 25 to build**; runtime Java follows the MC version (17+ for 1.18.2) |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
-| Required | The matching Fabric API and **maLiLib** per node |
+| Required | The matching **Fabric API** |
 | Build | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
-| Optional | Mod Menu (config screen entry), clientcommands (coexistence probe only, **no API coupling**) |
+| Optional | clientcommands (coexistence probe only, **no API coupling**); maLiLib / Mod Menu are not wired yet |
 | License | **GPL-3.0** |
 
 ## Installation
 
-1. Install Fabric Loader and put **Fabric API** and **maLiLib** into `mods/`;
+1. Install Fabric Loader and put **Fabric API** into `mods/`;
 2. Put `trade-master-1.0.0.jar` into `mods/`;
 3. Launch the game.
 
 ## Quick start
 
 1. **Build the rig**: lectern + summon button + send-away button (optional: chests / grindstone + anvil + name tags);
-2. **Fill in the coordinates**: press `V` to open the main menu → "Settings" tab → click the row's `[pick in game]` suffix to arm the picker, then right-click the target block (or use maLiLib's `P` key);
+2. **Fill in the coordinates**: press `V` to open the main menu → "Settings" tab → click the row's `[pick in game]` suffix to arm the picker, then right-click the target block (or press the `P` hotkey);
 3. **Pick targets**: on the "Enchantments" tab, tick the enchantments you want and set **level** and **max price**;
 4. **Start**: hotkey `R`, or `/trademaster start`.
 
@@ -222,7 +222,6 @@ The **Villagers** tab turns the whole rig from "lectern + librarian" into any **
 - **Idle wait**: with no villager in the staging area the run simply waits; that is **not** a stop, and it resumes as soon as someone shows up.
 - **Timeouts**: `timeoutEnabled` (default **off**) is the global watchdog; `phaseTimeoutsEnabled` (default **on**) bounds a single phase; the wait-for-villager phase is exempt. Turning it OFF disables **every** phase limit (deliberately: off means off, even if something can then hang).
 - **Stops the run on its own**: player moved (`stopOnPlayerMove`, the mod's own teleports are exempt), player died, **dimension change** (portal / server teleport; compared by dimension, so a same-dimension reconnect is fine), out of materials (emeralds / books / work block / name tags / derived tool or axe), a dispenser position that holds no dispenser or repeatedly refuses to open, a mid-run edit of the **work block / target profession / non-tradeable list**, or an invalid mid-run config edit.
-- **Starting while a config screen is open is refused**: maLiLib's config screen only writes its edits back when it **closes**, so a start then is refused with a red message (our own screen is unaffected: it commits drafts immediately).
 
 ## Anti-cheat / legit mode
 
@@ -266,7 +265,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Anti-cheat | see the table above | — | — |
 | Positions | see "The rig and coordinates" | — | — |
 | Chests | dynamic list | empty | add/remove rows |
-| Hotkeys | start/stop, pick coordinate | — | **editable only inside maLiLib** |
+| Hotkeys | start/stop, pick coordinate | — | edit in **vanilla Options → Controls → Key Binds** (the in-mod Keybinds tab is read-only) |
 
 ## Commands and hotkeys
 
@@ -276,17 +275,13 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
 | Hotkey `V` | Opens the main menu (six tabs: enchantments / settings / keybinds / **aliases** / **offers** / **villagers**) |
-| maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
+| Hotkeys `R` / `P` (Fabric key mappings) | start-stop / capture the looked-at block for the pending coordinate slot; rebindable in vanilla Controls |
 
 > The **1.18.2 node registers hotkeys only**; the `/trademaster` command exists from 1.19.2 on.
 
 ## Config entry points
 
-All three share the **same** `config/trade-master.json`:
-
-1. the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**;
-2. **Mod Menu** (provides the config-screen entry);
-3. the **maLiLib** config GUI (the hotkey page lives only here).
+This branch has exactly **one** entry: the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**; it shares the **same** `config/trade-master.json` with the other branches. maLiLib / Mod Menu are not wired yet.
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
 
@@ -329,9 +324,9 @@ The derived parts have been rewritten/split up to fit this project's structure.
 | Project | License | Relationship |
 |---|---|---|
 | Fabric API | Apache-2.0 | Required |
-| maLiLib | see its project | Required (config GUI) |
-| Mod Menu | MIT | Optional (config-screen entry) |
 | clientcommands | LGPL-3.0-or-later | Optional (coexistence probe only) |
+
+maLiLib and Mod Menu are not wired yet and are **not** dependencies of this branch.
 
 Those licenses apply to those projects; this mod does not bundle their jars.
 
