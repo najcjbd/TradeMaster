@@ -1,6 +1,6 @@
 # 26.2 参考存档与配置
 
-这是发布者调试 Trade Master 1.0.0 时使用的 **26.2 生存存档**（`新的世界 (1)`）与配置快照。它包含完整的装置、命令方块和矿车补给示例。
+这是发布者调试 Trade Master 1.0.0 时使用的 **26.2 生存存档**（`新的世界 (1)`）与配置快照。它包含完整的装置、命令方块、水渠/铁轨和矿车补给示例。
 
 ## 安装
 
@@ -15,29 +15,38 @@
 
 | 用途 | 坐标 |
 |---|---|
-| 讲台 | `14, -60, 8` |
+| 讲台 | `14, -60, 8`（存档里为空气，运行后由模组补放） |
 | 召唤按钮 | `17, -58, 8` |
 | 送走按钮 | `15, -60, 8` |
 | 工作发射器（配置里的 dispenser） | `17, -58, 7` |
 | 模板发射器（内含 1 辆矿车） | `19, -59, 8` |
-| 克隆命令方块 | `19, -60, 8` |
-| 召唤命令方块 | `20, -60, 8` |
-| 箱子 | `14, -60, 11`（另有 `13, -60, 11`） |
-| 暂存区 | 原点 `16, -58, 6`，延伸 `0, 2, 0` |
+| 克隆循环命令方块 | `19, -60, 8` |
+| 召唤循环命令方块 | `20, -60, 8` |
+| 动力铁轨 | `14,-60,7`、`15,-58,7`、`16,-58,7` |
+| 水渠/村民运送 | `17..19, -58, 4..6` |
+| 召唤点（命令） | `19, -58, 4` |
+| 暂存区（配置） | 原点 `16,-58,6`，延伸 `0,2,0` |
+| 召唤命令的判定框 | `x 17..18, y -58..-56, z 5..6` |
+| 告示牌 / 栅栏门 | `16,-58,6` / `16,-57,6` |
+| 铁砧（chipped，命名未启用） | `15,-60,10` |
+| 箱子 | `14,-60,11`（配置）、`13,-60,11`（世界） |
 
 ## 矿车补给（本存档的实际做法）
 
 - 工作发射器 `(17,-58,7)` 在召唤按钮旁；模板发射器 `(19,-59,8)` 内含 1 辆矿车。
-- 命令方块 `(19,-60,8)` 执行 `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`，把模板克隆到工作发射器。
-- 命令方块 `(20,-60,8)` 执行
+- `(19,-60,8)` 的**循环命令方块**执行 `clone ~ ~1 ~ ~ ~1 ~ 17 -58 7 strict`，持续把模板克隆到工作发射器。
+- `(20,-60,8)` 的**循环命令方块**执行
   `execute unless entity @e[x=17,y=-58,z=6,dx=1,dy=2,dz=-1,type=minecraft:villager] run summon minecraft:villager 19 -58 4`，
   在暂存区没有村民时召唤一个。
-- 这是**“提供”方式**：工作发射器的矿车被召唤按钮发射后，克隆会把模板里的 1 辆补回；模板本身不会被消耗，因此**不需要回收矿车**。如果克隆方块只执行一次，请把它改成循环命令方块或加红石时钟；同时不要给模板发射器接按钮/红石。
+- 这是**“提供”方式**：工作发射器的矿车被召唤按钮发射后，克隆会把模板里的 1 辆补回；模板本身不会被消耗，因此**不需要回收矿车**。本存档的两个命令方块是循环命令方块（会持续执行）；如果你自建的是脉冲命令方块，请改成循环或加红石时钟，并且不要给模板发射器接按钮/红石。
 
 ## 配置摘要
 
-- 机制 `AXE`，检测 `PACKET`；`legitMode` 开、`slowMode` 关、`tpToVillager` 开、`stopOnPlayerMove` 开、`preventAxeBreaking` 关；`placeDelay` 3、`interactDelay` 2。
-- `autoDisableAfterLock` 开、命名关、`minLockEmeralds` 1、全局超时关/阶段超时开、调试日志开。
-- 启用的目标：节肢杀手 5、绑定诅咒 1、效率 5、摔落保护 4、火焰保护 4、穿刺 5、穿透 4、力量 5。
+- `configVersion: 1`（加载时迁移）；含旧键 `lockTarget: BOOK_TRADE`（当前版本不读取）。
+- mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`。
+- naming：`enabled=false`、`forceNamePriceOne=true`、`customNames={}`。
+- antiCheat：`legitMode=true`、`slowMode=false`、`tpToVillager=true`、`preventAxeBreaking=false`、`stopOnPlayerMove=true`、`placeDelay=3`、`interactDelay=2`（没有 `tpToItem` 键，使用默认值）。
+- hotkeys：`startStop=""`、`pickPosition=KP_3`。
+- 启用的目标：节肢杀手 5、绑定诅咒 1、效率 5、摔落保护 4、火焰保护 4、穿刺 5、穿透 4、力量 5；其余附魔关闭，价格上限 64。
 
 完整配置见本目录的 [`trade-master.json`](trade-master.json)，世界见 [`trade-master-26.2-rig-world.zip`](trade-master-26.2-rig-world.zip)。
