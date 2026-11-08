@@ -63,6 +63,20 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 **Direction convention**: `yaw` −180 = north, −90 = east, 0 = south, 90 = west; `pitch` positive looks down (max ±90).
 **Input behaviour**: coordinates accept relative `~` / `~n` syntax (relative to the player, same semantics as target selectors) — **the only exception is the "staging delta" row, which takes absolute integers only**; **every** text field commits when you click elsewhere or when the screen closes (an involuntary blur — a mouse-wheel scroll — only drops focus without committing, so a scroll never writes a half-typed value).
 
+
+### Dispenser and minecart supply (the summon gate)
+
+When a dispenser is configured, the mod **opens it before every summon** and checks that **at least one minecart** sits in its first nine slots. With no cart it does not summon; it re-checks every 60 seconds (refills are normally transient). A position without a dispenser, or one that repeatedly refuses to open, stops the run.
+
+The mod **never crafts, dispenses or collects minecarts** — it only checks and presses buttons. The machinery behind the summon button (redstone / command blocks / the dispenser) delivers the villager, so you must keep **at least one minecart in the dispenser**. Common ways (pick one or combine):
+
+- **Clone-command refill (what the rig used during development)**: keep a template dispenser full of carts and periodically clone it over the working dispenser. Cloning overwrites the working dispenser, so do not store anything there that you want to keep.
+- **Hopper/dropper feed**: feed carts from an upstream chest into the dispenser; it is refilled after each summon consumes one.
+- **Recycling loop**: unload the send-away cart at the end of its track with a hopper minecart or hopper and return it to the dispenser. If the cart can fall into the void or be destroyed, pair this with a clone/refill, or you will eventually run dry.
+- **Manual/semi-automatic**: put a cart in before each run; only suitable for short unattended periods.
+
+Requirements: the dispenser must be within the player's interaction range (about 4.5 blocks) and visible; the summon machinery must actually consume a cart (otherwise the check is meaningless); the send-away path should return the cart or a refill must replace it. With no cart the mod waits instead of failing, so an interrupted supply typically looks like **a run parked in the summon phase**.
+
 ## Pipeline (12 phases)
 
 | Phase | What it does |
