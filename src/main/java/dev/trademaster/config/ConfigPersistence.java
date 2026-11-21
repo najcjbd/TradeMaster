@@ -1059,22 +1059,28 @@ public final class ConfigPersistence {
 						continue;
 					}
 					if (o.has("minLevel") || o.has("maxLevel")) {
-						int min = readInt(o, "minLevel", 0);
-						int max = readInt(o, "maxLevel", 0);
-						if (!validRange(min, max)) {
+						int min = readLevel(o, "minLevel", 0);
+						int max = readLevel(o, "maxLevel", 0);
+						if (min == INVALID_LEVEL || max == INVALID_LEVEL || !validRange(min, max)) {
 							invalid = true;
 							warnBadEnchant(key, e.toString(), "bad min/max range");
 							continue;
 						}
 						result.add(GoodSpec.GoodEnchant.range(id, min, max));
 					} else {
-						int level = readInt(o, "level", 0);
-						if (level < 0 || level > 99) {
+						int level = readLevel(o, "level", 0);
+						if (level == INVALID_LEVEL || level < 0 || level > 99) {
 							invalid = true;
 							warnBadEnchant(key, e.toString(), "level out of range");
 							continue;
 						}
-						if (readBool(o, "atLeast", false)) {
+						int atLeast = readOptionalBool(o, "atLeast");
+						if (atLeast == BOOLEAN_INVALID) {
+							invalid = true;
+							warnBadEnchant(key, e.toString(), "bad atLeast");
+							continue;
+						}
+						if (atLeast == 1) {
 							result.add(GoodSpec.GoodEnchant.range(id, level <= 0 ? 1 : level, 0));
 						} else {
 							result.add(level == 0 ? GoodSpec.GoodEnchant.absent(id)
@@ -1098,6 +1104,44 @@ public final class ConfigPersistence {
 	private static boolean validRange(int min, int max) {
 		if (min < 0 || max < 0 || min > 99 || max > 99) return false;
 		return max == 0 || max >= min;
+	}
+
+	private static final int INVALID_LEVEL = Integer.MIN_VALUE;
+
+	/** Reads an optional level field strictly: a present non-number must not fall back
+	 * to 0 (which means ABSENCE and would invert the filter). */
+	private static int readLevel(JsonObject o, String key, int fallback) {
+		JsonElement e = o.get(key);
+		if (e == null) return fallback;
+		if (!e.isJsonPrimitive()) return INVALID_LEVEL;
+		try {
+			return e.getAsInt();
+		} catch (RuntimeException ex) {
+			if (e.getAsJsonPrimitive().isString()) {
+				try {
+					return Integer.parseInt(e.getAsString().trim());
+				} catch (RuntimeException ignored) {
+					// fall through: invalid
+				}
+			}
+			return INVALID_LEVEL;
+		}
+	}
+
+	private static final int BOOLEAN_INVALID = -1;
+
+	/** Strict optional boolean: a present garbage value must not silently mean false. */
+	private static int readOptionalBool(JsonObject o, String key) {
+		JsonElement e = o.get(key);
+		if (e == null) return 0;
+		if (!e.isJsonPrimitive()) return BOOLEAN_INVALID;
+		JsonPrimitive p = e.getAsJsonPrimitive();
+		if (p.isBoolean()) return p.getAsBoolean() ? 1 : 0;
+		if (p.isString()) {
+			if (p.getAsString().equalsIgnoreCase("true")) return 1;
+			if (p.getAsString().equalsIgnoreCase("false")) return 0;
+		}
+		return BOOLEAN_INVALID;
 	}
 
 	private static void warnBadEnchant(ResourceLocation key, String token, String reason) {
