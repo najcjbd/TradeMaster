@@ -807,9 +807,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 	}
 
-	/** One custom good. The result item is the good's identity, so it is shown as a
-	 * label; the row edits its amount, its price cap and its cost slots, and carries an
-	 * enable toggle plus a remove button on the right. */
+	/** One custom good. Its stable key is the identity; the result item and the three
+	 * filter rows below describe which offers it accepts. */
 	public static class GoodRow extends Row {
 
 		private final ResourceLocation id;
@@ -1155,7 +1154,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			return false;
 		}
 
-		/** Creates the good, refusing an unusable or already used result item. */
+		/** Creates a good variant with a fresh stable key. */
 		private boolean add() {
 			ResourceLocation result = parseItem(this.resultField.getValue());
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;

@@ -165,17 +165,32 @@ The lower half of the Offers tab lets you **add goods**: the result does not hav
 an enchanted book — any item will do (useful when a datapack/modded server puts
 something else into a librarian's trade).
 
-- **One good = one result item** (the result item IS its identity, so two goods cannot
-  share one; to change the result, remove the row and add it again).
+- **One good = one stable key + one result item**: several NBT variants of the same
+  result item are allowed (a new variant gets `trademaster:good_N`; legacy goods without
+  an `id` keep using their result id as the key, preserving old aliases/deduction).
 - Each row edits: the **amount** (the trade must yield at least this many), the **price
   cap** (slot 1's amount, the same notion as an enchantment's price: pay more and it is
   not bought, and it is the scale hunt/reservation compare on), the three cost fields
   (**cost A / cost B / B amount**; identical rules to the enchantment rows, including
   `-1 no limit / 0 not required` and the air-item list), plus **enable ▣** and
   **remove ✕** on the right.
+- Three optional **filter rows** sit below each good (all "contains" semantics; extra
+  fields/enchantments are allowed):
+  - **Item name**: the result's custom name must equal this text exactly; blank = any.
+  - **Enchantments**: `id:level, id`, e.g. `minecraft:sharpness:5, minecraft:mending`.
+    A positive level requires **at least** that level; level 0 (or an id alone) only
+    requires presence; extra enchantments are allowed.
+  - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ it is the
+    **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`); on
+    1.20.4- it is the **item tag** (e.g.
+    `{Enchantments:[{id:"minecraft:sharpness",lvl:5}]}`). Blank = no NBT filter; invalid
+    text is shown in red and not saved.
+  - If one offer matches several variants, the **most constrained** variant wins (more
+    name/enchantment/NBT fields), so a generic variant cannot steal a specific one.
 - Goods follow **exactly the same rules** as enchantments: hunt cheaper, disable after
   lock, naming and named-villager deduction (the villager is named with the **item's
-  display name**, and the alias tab can alias it too).
+  display name**; additional variants default to `Item (good_N)`, and the alias tab can
+  give them any unique name).
 - **Disposal**: a good is not an enchanted book, so the **grindstone cannot disenchant
   it**. A bought good is only ever stored in the bound chests; when every chest refuses
   it, the "custom good disposal" setting decides — **stop** (the default) or **drop it

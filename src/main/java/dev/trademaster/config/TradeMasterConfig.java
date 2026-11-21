@@ -157,7 +157,7 @@ public final class TradeMasterConfig {
 	 * key or an enchantment id (all three share the needs table). */
 	public ResourceLocation nextGoodKey() {
 		for (int i = 1; ; i++) {
-			ResourceLocation candidate = McIds.mc("good_" + i);
+			ResourceLocation candidate = McIds.of("trademaster", "good_" + i);
 			if (candidate == null) continue;
 			if (goodFor(candidate) != null || this.enchantments.containsKey(candidate)) continue;
 			return candidate;
