@@ -1,6 +1,7 @@
 package dev.trademaster.strategy;
 
 import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.anticheat.SafeTeleport;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RunSession;
@@ -69,7 +70,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 	@Override
 	public void abort() {
 		this.runner.abort();
-		if (this.pickupStep != null) this.pickupStep.tpBack(this.session);
+		if (this.pickupStep != null) this.pickupStep.tpBack(this.session, false);
 		this.session = null;
 		SmoothRotation.reset();
 	}
@@ -156,9 +157,14 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		boolean seenDrop = false;
 		Vec3 tpReturnPos = null;
 		ItemEntity lastPickupTarget = null;
+		boolean returning = false;
 
 		@Override
 		public StepResult tick(RunSession session) {
+			if (this.returning) {
+				this.returning = false;
+				return StepResult.DONE;
+			}
 			Minecraft mc = Minecraft.getInstance();
 			LocalPlayer player = mc.player;
 			if (player == null || mc.level == null) return StepResult.DONE;
@@ -177,7 +183,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 			int limit = config.tpToItem ? 60 : 25;
 			if (this.ticks > limit
 					|| (drops.isEmpty() && (this.seenDrop || this.ticks > 20))) {
-				tpBack(session);
+				if (tpBack(session)) return StepResult.RUNNING;
 				return StepResult.DONE;
 			}
 			if (!config.tpToItem) return StepResult.RUNNING;
@@ -191,24 +197,43 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 				}
 			}
 			if (mc.getConnection() != null && nearest != null && nearest != this.lastPickupTarget) {
-				if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 				this.lastPickupTarget = nearest;
 				Vec3 target = nearest.position();
+				if (config.safeTp) {
+					if (SafeTeleport.start(target, session.movementGuard, null)) {
+						if (this.tpReturnPos == null) this.tpReturnPos = player.position();
+						return StepResult.RUNNING;
+					}
+					return StepResult.RUNNING;
+				}
+				if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 				session.movementGuard.permitTp(target);
 				McPackets.sendMovePlayerPos(mc.getConnection(), target.x, target.y, target.z, true, false);
 			}
 			return StepResult.RUNNING;
 		}
 
-		/** Teleport back to the rig after (or when interrupted during) the pickup trip. */
-		void tpBack(RunSession session) {
-			if (this.tpReturnPos == null) return;
+		/** Teleport back to the rig after (or when interrupted during) the pickup trip.
+		 * @return true when a safe teleport was started and the step must wait */
+		boolean tpBack(RunSession session) {
+			return tpBack(session, true);
+		}
+
+		boolean tpBack(RunSession session, boolean allowSafe) {
+			if (this.tpReturnPos == null) return false;
 			Minecraft mc = Minecraft.getInstance();
+			Vec3 returnPos = this.tpReturnPos;
 			if (session != null && mc.getConnection() != null) {
-				session.movementGuard.permitTp(this.tpReturnPos);
-				McPackets.sendMovePlayerPos(mc.getConnection(), this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false);
+				if (allowSafe && TradeMasterConfig.INSTANCE.safeTp
+						&& SafeTeleport.start(returnPos, session.movementGuard, () -> this.tpReturnPos = null)) {
+					this.returning = true;
+					return true;
+				}
+				session.movementGuard.permitTp(returnPos);
+				McPackets.sendMovePlayerPos(mc.getConnection(), returnPos.x, returnPos.y, returnPos.z, true, false);
 			}
 			this.tpReturnPos = null;
+			return false;
 		}
 	}
 

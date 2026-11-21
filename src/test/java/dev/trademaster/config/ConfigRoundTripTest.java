@@ -275,6 +275,17 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void safeTpDefaultsOnAndRoundTrips() {
+		assertTrue(TradeMasterConfig.defaults().safeTp);
+		c().safeTp = false;
+		JsonObject root = ConfigTest.write(c());
+		assertFalse(root.getAsJsonObject("antiCheat").get("safeTp").getAsBoolean());
+		c().safeTp = true;
+		ConfigTest.read(c(), root);
+		assertFalse(c().safeTp);
+	}
+
+	@Test
 	void pendingUnprovenRoundTripsAndClears() {
 		c().pendingUnprovenMatches.clear();
 		c().pendingUnprovenMatches.add(McIds.mc("sharpness"));

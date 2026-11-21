@@ -57,6 +57,7 @@
   "trademaster.settings.debugLog": "Debug log",
   "trademaster.settings.legitMode": "Legit mode (smooth rotation)",
   "trademaster.settings.slowMode": "Slow mode (delays)",
+  "trademaster.settings.safeTp": "Safe teleport (server-friendly small steps)",
   "trademaster.settings.tpToVillager": "TP to villager (risky)",
   "trademaster.settings.tpToItem": "TP to lectern drops",
   "trademaster.settings.preventAxeBreaking": "Protect axe durability",

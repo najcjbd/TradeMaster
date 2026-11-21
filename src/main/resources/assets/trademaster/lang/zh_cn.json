@@ -57,6 +57,7 @@
   "trademaster.settings.debugLog": "调试日志",
   "trademaster.settings.legitMode": "拟真模式（平滑转头）",
   "trademaster.settings.slowMode": "慢速模式（延时）",
+  "trademaster.settings.safeTp": "安全传送（服务器友好小步移动）",
   "trademaster.settings.tpToVillager": "瞬移到村民（高风险）",
   "trademaster.settings.tpToItem": "瞬移捡讲台掉落物",
   "trademaster.settings.preventAxeBreaking": "保护斧头耐久",

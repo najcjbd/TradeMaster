@@ -258,6 +258,9 @@ public final class TradeMasterConfig {
 	public boolean slowMode = false;
 	public boolean tpToVillager = false;
 	public boolean tpToItem = false;
+	/** Server-friendly stepping teleport: move client+server together in small steps
+	 * instead of one raw multi-block Pos packet. Default on. */
+	public boolean safeTp = true;
 	public boolean preventAxeBreaking = true;
 	public boolean stopOnPlayerMove = true;
 	public int placeDelay = 3;
