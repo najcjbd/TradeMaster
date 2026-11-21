@@ -170,6 +170,26 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 	}
 
 	/** Whether the live offer result satisfies this good's result item/count and filters. */
+	/** Filter ids that are absent from {@code known}: callers pass the live
+	 * enchantment registry so a typo like {@code sharpness..} (a legal-looking id)
+	 * is reported instead of silently never matching. */
+	public List<ResourceLocation> unknownEnchantIds(Set<ResourceLocation> known) {
+		List<ResourceLocation> unknown = new ArrayList<>();
+		for (GoodEnchant enchantment : this.filterEnchantments) {
+			if (enchantment == null || enchantment.id() == null) continue;
+			if (!known.contains(enchantment.id()) && !unknown.contains(enchantment.id())) {
+				unknown.add(enchantment.id());
+			}
+		}
+		for (GoodEnchant enchantment : this.excludedEnchantments) {
+			if (enchantment == null || enchantment.id() == null) continue;
+			if (!known.contains(enchantment.id()) && !unknown.contains(enchantment.id())) {
+				unknown.add(enchantment.id());
+			}
+		}
+		return unknown;
+	}
+
 	public boolean matches(ItemStack stack) {
 		if (stack == null || stack.isEmpty()) return false;
 		Item item = this.resultItem();

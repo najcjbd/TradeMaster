@@ -27,6 +27,15 @@ class AliasChoicesTest {
 	}
 
 	@Test
+	void duplicateCanonicalNamesWithDifferentOwnersAreAmbiguous() {
+		java.util.Map<String, ResourceLocation> raw = new java.util.LinkedHashMap<>();
+		raw.put("Diamond  Sword", GOOD);
+		raw.put("Diamond Sword", McIds.mc("other_good"));
+		assertNull(AliasChoices.resolve("Diamond Sword", raw));
+		assertNull(AliasChoices.resolve("Diamond  Sword", raw));
+	}
+
+	@Test
 	void unknownNamesAndStaleEntriesAreIgnored() {
 		assertNull(AliasChoices.resolve("missing", Map.of("other", GOOD)));
 		assertNull(AliasChoices.resolve(null, Map.of("other", GOOD)));

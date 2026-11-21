@@ -81,6 +81,11 @@ public final class RerollController {
 	private static @Nullable ButtonPresser summonPresser = null;
 	/** The pending dispenser check (open/scan/close), or null when idle. */
 	private static @Nullable dev.trademaster.exec.DispenserCheck dispenserCheck = null;
+	/** The configured dispenser gate could not verify a cart (unopenable/missing/
+	 * unreachable): from now on press the summon button directly, and retry it at an
+	 * interval while a villager remains in the staging area. */
+	private static boolean dispenserUnverified = false;
+	private static final int FALLBACK_SUMMON_RETRY_TICKS = 40;
 	/** Ticks left before re-checking a dispenser whose minecart is missing. */
 	private static int dispenserWaitTicks = 0;
 	/** Whether the once-per-run "no dispenser configured" warning was shown. */
@@ -155,6 +160,9 @@ public final class RerollController {
 	private static boolean regionFallbackPending = false;
 	/** WAIT_PROFESSION self-heal refreshes for the current villager; capped per villager. */
 	private static int professionHealCycles = 0;
+	/** Consecutive ticks the arrival villager read as the wanted profession;
+	 * a single lagged/claiming read must not trigger a needless heal cycle. */
+	private static int professionStableTicks = 0;
 	/** Consecutive ticks of rejected villager interactions in CHECK_TRADE. */
 	private static int interactFailTicks = 0;
 	/** Consecutive ticks the open container's carried stack could not be returned; a
@@ -378,18 +386,18 @@ public final class RerollController {
 				config.sendAwayButtonPos);
 		s.movementGuard.start(player.position());
 		boolean carriedUnproven = false;
-		if (!pendingUnprovenMatches.isEmpty()) {
+		if (!config.pendingUnprovenMatches.isEmpty()) {
 			ResourceLocation currentDimension = McRegistry.keyId(mc.level.dimension());
 			String currentWorld = currentWorldKey();
-			boolean worldMatches = pendingUnprovenWorld == null || currentWorld == null
-					|| pendingUnprovenWorld.equals(currentWorld);
-			boolean appliesHere = worldMatches && (pendingUnprovenDimension == null
-					|| pendingUnprovenDimension.equals(currentDimension));
+			boolean worldMatches = config.pendingUnprovenWorld == null || currentWorld == null
+					|| config.pendingUnprovenWorld.equals(currentWorld);
+			boolean appliesHere = worldMatches && (config.pendingUnprovenDimension == null
+					|| config.pendingUnprovenDimension.equals(currentDimension));
 			if (appliesHere) {
-				s.lockedIds.addAll(pendingUnprovenMatches);
+				s.lockedIds.addAll(config.pendingUnprovenMatches);
 				carriedUnproven = true;
 				chat(McText.translatable("trademaster.message.unproven_skipped",
-								String.join(", ", pendingUnprovenMatches.stream()
+								String.join(", ", config.pendingUnprovenMatches.stream()
 										.map(Object::toString).sorted().toList()))
 						.withStyle(ChatFormatting.YELLOW));
 				// NOT cleared yet: a rejected start (missing axe/materials) must keep
@@ -425,9 +433,10 @@ public final class RerollController {
 			// when the carried skip was the only demand, consume it: the next start
 			// must retry those targets instead of reporting "all done" for ever
 			if (carriedUnproven) {
-				pendingUnprovenMatches.clear();
-				pendingUnprovenDimension = null;
-				pendingUnprovenWorld = null;
+				config.pendingUnprovenMatches.clear();
+				config.pendingUnprovenDimension = null;
+				config.pendingUnprovenWorld = null;
+				config.save();
 			}
 			chat(McText.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
@@ -462,9 +471,10 @@ public final class RerollController {
 		PositionPicker.cancel();
 		loggedOnce.clear();
 		if (carriedUnproven) {
-			pendingUnprovenMatches.clear();
-			pendingUnprovenDimension = null;
-			pendingUnprovenWorld = null;
+			config.pendingUnprovenMatches.clear();
+			config.pendingUnprovenDimension = null;
+			config.pendingUnprovenWorld = null;
+			config.save();
 		}
 		session = s;
 		sessionDimension = mc.level == null ? null : McRegistry.keyId(mc.level.dimension());
@@ -474,6 +484,7 @@ public final class RerollController {
 		deferredManualStop = false;
 		deferredStopTicks = 0;
 		professionHealCycles = 0;
+		professionStableTicks = 0;
 		cursorBlockTicks = 0;
 		strayChestTicks = 0;
 		sneakPaused = false;
@@ -481,6 +492,7 @@ public final class RerollController {
 		LecternRestock.resetRestock();
 		dev.trademaster.exec.DispenserCheck.resetLateOpenMemory();
 		dispenserCheck = null;
+		dispenserUnverified = false;
 		dispenserWaitTicks = 0;
 		dispenserUnsetWarned = false;
 		dispenserOutOfReachWarned = false;
@@ -780,6 +792,7 @@ public final class RerollController {
 	private static void enter(Phase next) {
 		// a new phase gets a fresh cursor-block grace (the condition may clear with it)
 		cursorBlockTicks = 0;
+		if (next == Phase.WAIT_PROFESSION) professionStableTicks = 0;
 		if (phase == Phase.AWAIT_VILLAGER && next != Phase.AWAIT_VILLAGER && session != null) {
 			// re-baseline after resting: the player may have moved while exempt
 			Minecraft client = Minecraft.getInstance();
@@ -973,6 +986,7 @@ public final class RerollController {
 		}
 		guardian = new LecternGuardian();
 		professionHealCycles = 0;
+		professionStableTicks = 0;
 		enter(Phase.ENSURE_LECTERN);
 	}
 
@@ -1035,14 +1049,30 @@ public final class RerollController {
 		dispenserWaitTicks = 0;
 	}
 
+	/** Turns the optional minecart gate into the direct-button fallback: the summon
+	 * button/dispenser mechanism still works without the client-side cart check. */
+	private static void unverifyDispenser(@Nullable BlockPos pos) {
+		releaseCheck();
+		if (dispenserUnverified) return;
+		dispenserUnverified = true;
+		chat(McText.translatable("trademaster.message.dispenser_fallback",
+						pos == null ? "?" : pos.toShortString())
+				.withStyle(ChatFormatting.YELLOW));
+	}
+
 	static boolean dispenserReady() {
 		// a real run uses the start-of-run snapshot (mid-run edits apply next run);
 		// direct calls outside a run (e.g. the gate's game test) use the live config
+		if (dispenserUnverified) {
+			releaseCheck();
+			return true;
+		}
 		var pos = session != null ? snapDispenserPos : TradeMasterConfig.INSTANCE.dispenserPos;
 		if (pos == null) {
 			// the gate is off: drop any in-flight check (its open container would swallow the
 			// button press) and the pending wait, so neither lingers into a later check
 			releaseCheck();
+			dispenserUnverified = true;
 			if (!dispenserUnsetWarned) {
 				dispenserUnsetWarned = true;
 				notice(McText.translatable("trademaster.message.dispenser_unset"));
@@ -1055,6 +1085,7 @@ public final class RerollController {
 		if (dispenserPlayer == null || !McPlayer.withinBlockInteractionRange(dispenserPlayer, pos, 1.0)) {
 			// as above: an unreachable position must not leave a wait (or an open menu) behind
 			releaseCheck();
+			dispenserUnverified = true;
 			if (!dispenserOutOfReachWarned) {
 				dispenserOutOfReachWarned = true;
 				chat(McText.translatable("trademaster.message.dispenser_out_of_reach")
@@ -1081,17 +1112,19 @@ public final class RerollController {
 				// itself worked, so the consecutive-failure counter starts over.
 				releaseCheck();
 				dispenserFailedAttempts = 0;
+				if (dispenserWaitTicks == 0) {
+					chat(McText.translatable("trademaster.message.dispenser_no_cart")
+							.withStyle(ChatFormatting.YELLOW));
+				}
 				dispenserWaitTicks = 20 * 60;
 				debug("summon: dispenser has no minecart yet, retrying in a minute");
 				return false;
 			}
 			case NO_DISPENSER -> {
-				// the position holds no dispenser (wrong coordinate, or the block was
-				// replaced): the open can never succeed, so say so and stop
-				releaseCheck();
-				stop(McText.translatable("trademaster.message.dispenser_not_a_dispenser"),
-						ChatFormatting.RED);
-				return false;
+				// the optional gate is unusable (wrong coordinate/replaced block):
+				// degrade to the direct summon button instead of blocking every start
+				unverifyDispenser(pos);
+				return true;
 			}
 			case CURSOR_BLOCKED -> {
 				// the check was blocked by a carried stack the inventory cannot take:
@@ -1107,14 +1140,13 @@ public final class RerollController {
 				return false;
 			}
 			case FAILED -> {
-				// the open was refused or timed out: a few times may be lag, for ever is a
-				// walled-off / broken dispenser. releaseCheck also closes a menu whose
-				// delayed open packet arrived after the wait timed out.
+				// the open was refused or timed out: a few times may be lag. After that,
+				// the optional gate degrades to the direct summon button; a real broken
+				// summon mechanism is reported by the arrival wait instead.
 				releaseCheck();
 				if (++dispenserFailedAttempts >= 3) {
-					stop(McText.translatable("trademaster.message.dispenser_open_failed"),
-							ChatFormatting.RED);
-					return false;
+					unverifyDispenser(pos);
+					return true;
 				}
 				dispenserWaitTicks = 20 * 5;
 				debug("summon: could not open the dispenser, retrying shortly (attempt "
@@ -1240,6 +1272,7 @@ public final class RerollController {
 			debug("await-villager: villager arrived at detection point (profession=" + professionName(profession) + ")");
 			s.villager = villager;
 			professionHealCycles = 0;
+		professionStableTicks = 0;
 			guardian = new LecternGuardian();
 			enter(Phase.ENSURE_LECTERN);
 			return;
@@ -1261,6 +1294,18 @@ public final class RerollController {
 				restSummonPending = true;
 				enter(Phase.SEND_AWAY);
 			}
+			return;
+		}
+		// Dispenser gate could not verify/open: the button press is the summon now.
+		// If no villager arrived, keep pressing at an interval while one waits in the
+		// staging area (a missing cart is supplied/replaced by the rig meanwhile).
+		if (!restSummonPending && dispenserUnverified && villagers.isEmpty()
+				&& phaseTicks >= FALLBACK_SUMMON_RETRY_TICKS
+				&& stagingVillagers(client, s).stream().anyMatch(v -> !v.isBaby())) {
+			debugOnce("fallback-summon-retry",
+					"await-villager: no arrival yet; pressing summon again");
+			summonPresser = null;
+			enter(Phase.SUMMON);
 		}
 	}
 
@@ -1307,6 +1352,7 @@ public final class RerollController {
 		checkLook.reset();
 		lockSlotPrepared = false;
 		professionHealCycles = 0;
+		professionStableTicks = 0;
 		interactFailTicks = 0;
 		nonLibrarianTicks = 0;
 		cursorBlockTicks = 0;
@@ -1395,16 +1441,20 @@ public final class RerollController {
 				awaitNextVillager(client, s);
 			} else {
 				professionHealCycles = 0;
+		professionStableTicks = 0;
 				urgentProfessionHeal = false;
 			}
 			return;
 		}
 		if (McVillager.profession(s.villager).is(RigTarget.professionKey())) {
+			if (++professionStableTicks < 2) return;
+			professionStableTicks = 0;
 			urgentProfessionHeal = false;
 			checkLook.reset();
 			enter(Phase.CHECK_TRADE);
 			return;
 		}
+		professionStableTicks = 0;
 		// Not a librarian yet. Under heavy lag the stored reference can point at a
 		// stale/recreated entity whose profession never updates: re-scan the arrival
 		// point for a librarian and switch to it if one is there. Throttled like the
@@ -1417,6 +1467,7 @@ public final class RerollController {
 			debug("wait-profession: stale reference, switched to librarian at arrival point");
 			s.villager = found;
 			professionHealCycles = 0;
+		professionStableTicks = 0;
 			return;
 		}
 		// Self-heal after 10s (or immediately when CHECK_TRADE falls back with
@@ -1534,6 +1585,7 @@ public final class RerollController {
 				closeMerchantMenuIfOpen(client);
 				s.villager = replacement;
 				professionHealCycles = 0;
+		professionStableTicks = 0;
 				interactFailTicks = 0;
 				checkLook.reset();
 			} else {
@@ -2088,14 +2140,6 @@ public final class RerollController {
 	 * The next run skips them once, then they are free to be hunted again. Captured at
 	 * VOUCH time, not only at stop: a deferred stop kicks the pending lock through
 	 * handleLockFailure, which nulls the executor and the match before stop() runs. */
-	private static final java.util.Set<ResourceLocation> pendingUnprovenMatches =
-			new java.util.HashSet<>();
-	/** Dimension the skip was captured in (null = unknown): never replay it in another
-	 * world/dimension. */
-	private static @Nullable ResourceLocation pendingUnprovenDimension = null;
-	/** Best-effort world identity of the capture (server address or singleplayer save
-	 * folder): a same-dimension save on another server/world must not reuse the skip. */
-	private static @Nullable String pendingUnprovenWorld = null;
 
 	private static @Nullable String currentWorldKey() {
 		Minecraft mc = Minecraft.getInstance();
@@ -2119,17 +2163,19 @@ public final class RerollController {
 		s.unprovenCarryOverCaptured = true;
 		TradeMatcher.MatchedTrade expected = lockExecutor == null ? null : lockExecutor.expected();
 		boolean emergency = expected != null && expected != s.matchedTrade;
-		int before = pendingUnprovenMatches.size();
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		int before = config.pendingUnprovenMatches.size();
 		if (emergency) {
 			// the matched (unaffordable) book was NOT bought: only the emergency book's
 			// own fulfilled targets may be skipped next run
-			pendingUnprovenMatches.addAll(fulfilledTargetIds(expected));
+			config.pendingUnprovenMatches.addAll(fulfilledTargetIds(expected));
 		} else if (s.matchedTrade != null) {
-			pendingUnprovenMatches.addAll(s.matchedTrade.matchedIds());
+			config.pendingUnprovenMatches.addAll(s.matchedTrade.matchedIds());
 		}
-		if (pendingUnprovenMatches.size() != before) {
-			pendingUnprovenDimension = sessionDimension;
-			pendingUnprovenWorld = currentWorldKey();
+		if (config.pendingUnprovenMatches.size() != before) {
+			config.pendingUnprovenDimension = sessionDimension;
+			config.pendingUnprovenWorld = currentWorldKey();
+			config.save();
 		}
 		debug("unproven purchase: carrying its targets into the next run");
 	}
@@ -2874,6 +2920,7 @@ public final class RerollController {
 		List<String> uncosted = new ArrayList<>();
 		List<String> blankPrice = new ArrayList<>();
 		List<String> goods = new ArrayList<>();
+		List<String> unknownGoodEnchants = new ArrayList<>();
 		List<String> shadowed = new ArrayList<>();
 		for (EnchantmentTarget target : TradeMasterConfig.INSTANCE.enabledTargets()) {
 			if (!TradeMatcher.registryTradeable(target.id())) {
@@ -2909,7 +2956,12 @@ public final class RerollController {
 				continue;
 			}
 			if (!TradeMatcher.goodMatchable(good)) {
-				goods.add(good.id().toString());
+				var unknown = TradeMatcher.unknownGoodEnchantIds(good);
+				if (unknown.isEmpty()) {
+					goods.add(good.id().toString());
+				} else {
+					unknownGoodEnchants.add(good.id() + " -> " + unknown);
+				}
 				continue;
 			}
 			if (blankPriceSlot(good.spec())) blankPrice.add(good.id().toString());
@@ -2924,6 +2976,11 @@ public final class RerollController {
 		}
 		if (!goods.isEmpty()) {
 			chat(McText.translatable("trademaster.message.unmatchable_goods", String.join(", ", goods))
+					.withStyle(ChatFormatting.YELLOW));
+		}
+		if (!unknownGoodEnchants.isEmpty()) {
+			chat(McText.translatable("trademaster.message.unknown_good_enchants",
+							String.join(", ", unknownGoodEnchants))
 					.withStyle(ChatFormatting.YELLOW));
 		}
 		if (!shadowed.isEmpty()) {
@@ -2961,6 +3018,36 @@ public final class RerollController {
 	 * name covers every matched enchantment, so each one is recorded. Called on success
 	 * and on a failure that happened AFTER the tag interact was sent (the villager may
 	 * already carry the name). */
+	/** A choice may only be recorded for a demand that actually owns the name
+	 * (its alias/display name or registry path), and is live/matchable. Otherwise a
+	 * stale or third-party id would be injected into the deduction index through
+	 * nameHistory. */
+	private static boolean ownsName(ResourceLocation id, String displayName) {
+		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+		GoodSpec good = config.goodFor(id);
+		if (good != null && good.enabled() && TradeMatcher.goodMatchable(good)) {
+			if (nameMatches(displayName, good.displayName())
+					|| nameMatches(displayName, good.path())) return true;
+		}
+		var target = config.enchantments.get(id);
+		if (target != null && target.enabled() && TradeMatcher.targetMatchable(target)) {
+			String translated = EnchantmentNamer.displayName(id,
+					"enchantment." + id.getNamespace() + "." + id.getPath());
+			if (nameMatches(displayName, translated)
+					|| nameMatches(displayName, id.getPath())) return true;
+		}
+		return false;
+	}
+
+	private static boolean nameMatches(String historyName, String candidate) {
+		String raw = EnchantmentNamer.canonical(historyName);
+		String rawAlias = EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(historyName));
+		String candidateRaw = EnchantmentNamer.canonical(candidate);
+		String candidateAlias = EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(candidate));
+		return raw.equals(candidateRaw) || raw.equals(candidateAlias)
+				|| rawAlias.equals(candidateRaw) || rawAlias.equals(candidateAlias);
+	}
+
 	private static void recordNameHistory(List<NamingExecutor.NameRecord> records) {
 		TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 		for (NamingExecutor.NameRecord record : records) {
@@ -2968,7 +3055,7 @@ public final class RerollController {
 			ResourceLocation id = record.id();
 			ResourceLocation previous = config.nameHistory.get(displayName);
 			ResourceLocation chosen = AliasChoices.resolve(displayName, config.aliasChoices);
-			if (chosen != null) {
+			if (chosen != null && ownsName(chosen, displayName)) {
 				// the player declared which variant owns this ambiguous name
 				config.nameHistory.remove(displayName);
 				config.nameHistory.put(displayName, chosen);
@@ -3452,6 +3539,7 @@ public final class RerollController {
 		lockSlotPrepared = false;
 		lockExhaustionDepositPending = false;
 		professionHealCycles = 0;
+		professionStableTicks = 0;
 		interactFailTicks = 0;
 		nonLibrarianTicks = 0;
 		cursorBlockTicks = 0;

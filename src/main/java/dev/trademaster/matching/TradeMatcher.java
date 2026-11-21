@@ -311,11 +311,37 @@ public class TradeMatcher {
 	 * (see {@link #specHasPayableSlot}); a good whose slots are all air / unknown / a
 	 * count of 0 declares "pays nothing" and can never match, so enqueuing it would
 	 * spin the run forever. */
+	/** Filter enchantment ids that do not exist in the current enchantment registry.
+	 * Empty when the client level/registry is unavailable (start/GUI always have one).
+	 * Existence is enough for a good result filter; it need not be librarian-tradeable. */
+	public static List<ResourceLocation> unknownGoodEnchantIds(GoodSpec good) {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc == null || mc.level == null || good == null) return List.of();
+		Registry<Enchantment> registry = McRegistry.enchantments(mc.level);
+		List<ResourceLocation> unknown = new ArrayList<>();
+		for (GoodSpec.GoodEnchant enchantment : good.filterEnchantments()) {
+			if (enchantment != null && enchantment.id() != null
+					&& McRegistry.value(registry, enchantment.id()) == null
+					&& !unknown.contains(enchantment.id())) {
+				unknown.add(enchantment.id());
+			}
+		}
+		for (GoodSpec.GoodEnchant enchantment : good.excludedEnchantments()) {
+			if (enchantment != null && enchantment.id() != null
+					&& McRegistry.value(registry, enchantment.id()) == null
+					&& !unknown.contains(enchantment.id())) {
+				unknown.add(enchantment.id());
+			}
+		}
+		return unknown;
+	}
+
 	public static boolean goodMatchable(GoodSpec good) {
 		if (good.maxPrice() < 1) return false;
 		if (TradeMasterConfig.INSTANCE.isAirItem(good.result())) return false;
 		if (good.resultItem() == null) return false;
 		if (!good.filterValid()) return false;
+		if (!unknownGoodEnchantIds(good).isEmpty()) return false;
 		// an id that is ALSO an enchantment TARGET shares one needs queue and the id-keyed
 		// vouchers/marks cannot distinguish the kinds. Target-first means the target wins:
 		// a same-id good is never matchable, whatever the target's enabled state. The

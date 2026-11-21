@@ -60,6 +60,19 @@ class GoodSpecTest {
 	}
 
 	@Test
+	void unknownEnchantIdsReportsIncludeAndExcludeIdsMissingFromTheRegistry() {
+		ResourceLocation sharpness = McIds.mc("sharpness");
+		ResourceLocation typo = McIds.mc("sharpness..");
+		ResourceLocation fire = McIds.mc("fire_aspect");
+		GoodSpec good = new GoodSpec(COMPOSTER, COMPOSTER, 1, true, 10,
+				TradeOfferSpec.defaultGoodCosts(), "",
+				List.of(GoodSpec.GoodEnchant.exact(sharpness, 5), GoodSpec.GoodEnchant.present(typo)),
+				"", List.of(GoodSpec.GoodEnchant.present(fire)), "");
+		assertEquals(List.of(typo, fire), good.unknownEnchantIds(java.util.Set.of(sharpness)));
+		assertTrue(good.unknownEnchantIds(java.util.Set.of(sharpness, typo, fire)).isEmpty());
+	}
+
+	@Test
 	void invalidFilterStaysUnusableUntilTheEnchantmentsAreEdited() {
 		GoodSpec good = new GoodSpec(COMPOSTER, 1, true, 10, TradeOfferSpec.defaultGoodCosts())
 				.withFilterInvalid(true);

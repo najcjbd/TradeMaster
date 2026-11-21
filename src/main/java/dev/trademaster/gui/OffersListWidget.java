@@ -1026,6 +1026,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					&& McNbt.valid(good.filterNbt()) && McNbt.valid(good.filterNbtExclude())) {
 				// the field shows only the tokens that parsed; the raw text stays on disk
 				this.errorKey = "trademaster.offer.invalid_enchant";
+			} else if (good != null && kind == Kind.ENCHANTMENTS
+					&& !dev.trademaster.matching.TradeMatcher.unknownGoodEnchantIds(good).isEmpty()) {
+				this.errorKey = "trademaster.offer.invalid_enchant_unknown";
 			}
 			if (good != null && kind == Kind.NBT && !McNbt.valid(good.filterNbt())) {
 				this.errorKey = "trademaster.offer.invalid_nbt";
@@ -1084,6 +1087,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					updated = existing.withFilter(existing.filterName(), enchants.include(),
 							existing.filterNbt(), enchants.exclude(), existing.filterNbtExclude())
 							.withFilterInvalid(false);
+					if (!dev.trademaster.matching.TradeMatcher.unknownGoodEnchantIds(updated).isEmpty()) {
+						this.errorKey = "trademaster.offer.invalid_enchant_unknown";
+						return;
+					}
 					// a good whose filter was invalid never entered the deduction index when
 					// it was enabled, so THIS is the transition that needs the collision check
 					if (existing.enabled()) {
