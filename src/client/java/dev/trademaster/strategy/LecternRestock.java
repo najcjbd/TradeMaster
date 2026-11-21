@@ -527,7 +527,7 @@ public final class LecternRestock {
 	/** Shared "restock reported failure" gate. The raw batch updates slots only when the
 	 * server broadcast arrives, so a first false reading right after a stop/start (or a
 	 * server hitch) is not proof the stock is gone — the same race the guardian already
-	 * waits out. After 100 ticks the batch state is reset once and the wait repeats; a
+	 * waits out. After 60 ticks the batch state is reset once and the wait repeats; a
 	 * player with no work item left still fails immediately. */
 	public static final class RestockWait {
 		private int ticks = 0;
@@ -542,7 +542,10 @@ public final class LecternRestock {
 		private static final int TICKS_PER_TRY = 60;
 
 		public Result tick(LocalPlayer player, boolean restocked) {
-			if (restocked) {
+			// only a LANDED batch is progress. restock() also returns true while it is
+			// merely waiting (dirty cursor / in-flight batch); resetting on that made
+			// the failure budget unreachable before the 200-tick phase timeout.
+			if (restocked && offhandHasWorkItem(player)) {
 				this.ticks = 0;
 				this.resetTried = false;
 				return Result.WAIT;

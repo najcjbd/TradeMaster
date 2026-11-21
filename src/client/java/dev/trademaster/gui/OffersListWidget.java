@@ -767,16 +767,27 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.rebuild = rebuild;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 			this.committed = good == null ? "" : currentValue(good, kind);
-			this.field = field(kind.labelKey, this.committed);
+			// set the CAP before the value: EditBox.setValue truncates to the CURRENT
+			// max, so seeding first and raising the cap later showed a cut-off filter
+			// and committed that cut text on the first keystroke
+			this.field = field(kind.labelKey, "");
 			this.field.setMaxLength(kind == Kind.NBT || kind == Kind.NBT_EXCLUDE ? 4096
 					: kind == Kind.ENCHANTMENTS ? 1024 : 128);
+			this.field.setValue(this.committed);
 			this.field.setResponder(text -> {
 				this.errorKey = null;
 				this.dirty = !text.trim().equals(this.committed.trim());
 			});
-			if (good != null && kind == Kind.ENCHANTMENTS && good.filterInvalid()) {
+			if (good != null && kind == Kind.ENCHANTMENTS && !good.filterValid()
+					&& McNbt.valid(good.filterNbt()) && McNbt.valid(good.filterNbtExclude())) {
 				// the field shows only the tokens that parsed; the raw text stays on disk
 				this.errorKey = "trademaster.offer.invalid_enchant";
+			}
+			if (good != null && kind == Kind.NBT && !McNbt.valid(good.filterNbt())) {
+				this.errorKey = "trademaster.offer.invalid_nbt";
+			}
+			if (good != null && kind == Kind.NBT_EXCLUDE && !McNbt.valid(good.filterNbtExclude())) {
+				this.errorKey = "trademaster.offer.invalid_nbt";
 			}
 		}
 
@@ -870,7 +881,21 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				}
 			}
 			this.errorKey = null;
-			if (updated.equals(existing)) return;
+			if (updated.equals(existing)) {
+				// an edit that normalises back to the stored value is committed
+				this.committed = this.field.getValue().trim();
+				this.dirty = false;
+				return;
+			}
+			// an edit that makes a previously unusable good matchable (NBT repair,
+			// cleared invalid token) must re-check the deduction-name collisions
+			if (existing.enabled() && !existing.filterValid() && updated.filterValid()) {
+				String conflict = AliasListWidget.enableConflict(updated);
+				if (conflict != null) {
+					this.errorKey = conflict;
+					return;
+				}
+			}
 			config.goods.set(config.goods.indexOf(existing), updated);
 			config.save();
 			this.committed = this.field.getValue().trim();

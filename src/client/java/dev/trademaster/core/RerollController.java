@@ -369,13 +369,24 @@ public final class RerollController {
 		RunSession s = new RunSession(config.lecternPos, config.summonButtonPos,
 				config.sendAwayButtonPos);
 		s.movementGuard.start(player.position());
+		boolean carriedUnproven = false;
 		if (!pendingUnprovenMatches.isEmpty()) {
-			s.lockedIds.addAll(pendingUnprovenMatches);
-			chat(Component.translatable("trademaster.message.unproven_skipped",
-							String.join(", ", pendingUnprovenMatches.stream()
-									.map(Object::toString).sorted().toList()))
-					.withStyle(ChatFormatting.YELLOW));
-			pendingUnprovenMatches.clear();
+			Identifier currentDimension = mc.level == null ? null
+					: mc.level.dimension().identifier();
+			if (pendingUnprovenDimension != null && !pendingUnprovenDimension.equals(currentDimension)) {
+				// captured in another world/dimension: never replay it here
+				pendingUnprovenMatches.clear();
+				pendingUnprovenDimension = null;
+			} else {
+				s.lockedIds.addAll(pendingUnprovenMatches);
+				carriedUnproven = true;
+				chat(Component.translatable("trademaster.message.unproven_skipped",
+								String.join(", ", pendingUnprovenMatches.stream()
+										.map(Object::toString).sorted().toList()))
+						.withStyle(ChatFormatting.YELLOW));
+				// NOT cleared yet: a rejected start (missing axe/materials) must keep
+				// the skip for the retry; it is consumed only when the run starts
+			}
 		}
 		// sand-wheel mode definition snapshot: a mid-run change to the enable flag
 		// or the grindstone position stops the run (see grindstoneConfigChanged)
@@ -400,6 +411,12 @@ public final class RerollController {
 		warnRigTarget();
 		warnUnmatchableDemands(mc);
 		if (s.matcher.isEmpty()) {
+			// when the carried skip was the only demand, consume it: the next start
+			// must retry those targets instead of reporting "all done" for ever
+			if (carriedUnproven) {
+				pendingUnprovenMatches.clear();
+				pendingUnprovenDimension = null;
+			}
 			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
 		}
@@ -432,6 +449,10 @@ public final class RerollController {
 		// keeps the user's in-progress pick alive
 		PositionPicker.cancel();
 		loggedOnce.clear();
+		if (carriedUnproven) {
+			pendingUnprovenMatches.clear();
+			pendingUnprovenDimension = null;
+		}
 		session = s;
 		sessionDimension = mc.level == null ? null : mc.level.dimension().identifier();
 		runTicks = 0;
@@ -2047,23 +2068,41 @@ public final class RerollController {
 				|| key.equals("trademaster.message.tool_cannot_harvest");
 	}
 
-	/** Targets from a purchase click whose outcome is unknown at stop time are carried
-	 * into the NEXT run: the item may have been delivered, and re-demanding it would buy
-	 * a second copy. The next run skips them once, then they are free to be hunted again. */
+	/** Targets from a purchase click whose outcome is unknown are carried into the NEXT
+	 * run: the item may have been delivered, and re-demanding it would buy a second copy.
+	 * The next run skips them once, then they are free to be hunted again. Captured at
+	 * VOUCH time, not only at stop: a deferred stop kicks the pending lock through
+	 * handleLockFailure, which nulls the executor and the match before stop() runs. */
 	private static final java.util.Set<Identifier> pendingUnprovenMatches =
 			new java.util.HashSet<>();
+	/** Dimension the skip was captured in (null = unknown): never replay it in another
+	 * world/dimension. */
+	private static @Nullable Identifier pendingUnprovenDimension = null;
+
+	private static void carryUnprovenTargets(RunSession s) {
+		if (s == null || s.unprovenCarryOverCaptured) return;
+		s.unprovenCarryOverCaptured = true;
+		TradeMatcher.MatchedTrade expected = lockExecutor == null ? null : lockExecutor.expected();
+		boolean emergency = expected != null && expected != s.matchedTrade;
+		int before = pendingUnprovenMatches.size();
+		if (emergency) {
+			// the matched (unaffordable) book was NOT bought: only the emergency book's
+			// own fulfilled targets may be skipped next run
+			pendingUnprovenMatches.addAll(fulfilledTargetIds(expected));
+		} else if (s.matchedTrade != null) {
+			pendingUnprovenMatches.addAll(s.matchedTrade.matchedIds());
+		}
+		if (pendingUnprovenMatches.size() != before) {
+			pendingUnprovenDimension = sessionDimension;
+		}
+		debug("unproven purchase: carrying its targets into the next run");
+	}
 
 	private static void captureUnprovenForNextRun() {
 		RunSession s = session;
-		if (s == null || s.unprovenCarryOverCaptured) return;
+		if (s == null) return;
 		if (lockExecutor == null || !lockExecutor.purchaseSent()) return;
-		s.unprovenCarryOverCaptured = true;
-		if (s.matchedTrade != null) pendingUnprovenMatches.addAll(s.matchedTrade.matchedIds());
-		TradeMatcher.MatchedTrade expected = lockExecutor.expected();
-		if (expected != null && expected != s.matchedTrade) {
-			pendingUnprovenMatches.addAll(fulfilledTargetIds(expected));
-		}
-		debug("stop with a purchase in flight: carrying the targets into the next run");
+		carryUnprovenTargets(s);
 	}
 
 	/** Vouchers an UNPROVEN purchase (a click was sent, the outcome is unknown) for the rest of
@@ -2072,6 +2111,7 @@ public final class RerollController {
 	 * expected result IS remembered so an actually-delivered item can still be disposed of. */
 	private static void voucherUnprovenPurchase(RunSession s) {
 		if (s.matchedTrade == null || s.unprovenPurchaseVouchered) return;
+		carryUnprovenTargets(s);
 		s.unprovenPurchaseVouchered = true;
 		s.lockedIds.addAll(s.matchedTrade.matchedIds());
 		// the executor may have attempted an EMERGENCY book instead of the matched one
@@ -2514,6 +2554,7 @@ public final class RerollController {
 		if (hit != null) {
 			s.matchedTrade = hit;
 			s.unprovenPurchaseVouchered = false;
+			s.unprovenCarryOverCaptured = false;
 			debug("offers: matched " + hit.id() + " " + hit.level()
 					+ " for " + hit.price() + " on roll " + (s.tries + 1));
 			chat(Component.translatable("trademaster.message.found",

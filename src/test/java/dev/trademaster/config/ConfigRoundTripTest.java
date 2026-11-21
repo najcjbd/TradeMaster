@@ -273,6 +273,20 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void wrongTypedNestedLevelFieldsMarkTheFilterInvalid() {
+		for (String entry : java.util.List.of(
+				"{\"id\":\"minecraft:mending\",\"level\":\"high\"}",
+				"{\"id\":\"minecraft:sharpness\",\"minLevel\":\"x\"}",
+				"{\"id\":\"minecraft:sharpness\",\"atLeast\":\"yes\"}",
+				"{\"id\":\"minecraft:sharpness\",\"level\":true}")) {
+			ConfigTest.read(c(), parse("{\"offers\":{\"goods\":[{\"result\":\"minecraft:diamond_sword\","
+					+ "\"enchantments\":[" + entry + "]}]}}"));
+			assertFalse(c().goods.get(0).filterValid(), entry);
+			assertTrue(c().goods.get(0).filterInvalid(), entry);
+		}
+	}
+
+	@Test
 	void wrongTypedEnchantmentFieldMarksTheGoodUnusable() {
 		JsonObject root = parse("""
 				{"offers":{"goods":[{"result":"minecraft:diamond_sword",
