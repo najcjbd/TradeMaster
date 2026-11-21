@@ -1144,6 +1144,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			config.save();
 			this.committed = this.field.getValue().trim();
 			this.dirty = false;
+			// repairing the NBT can leave the ENCHANT row as the only remaining error:
+			// rebuild so it re-evaluates its initial marker instead of the good staying
+			// silently unusable until the screen is reopened
+			if ((this.kind == Kind.NBT || this.kind == Kind.NBT_EXCLUDE)
+					&& updated.filterInvalid() && this.rebuild != null) {
+				this.rebuild.run();
+			}
 			// the good row's label may come from the result/name filter
 			if ((this.kind == Kind.NAME || this.kind == Kind.RESULT) && this.rebuild != null) {
 				this.rebuild.run();
