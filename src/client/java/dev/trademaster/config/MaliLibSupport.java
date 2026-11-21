@@ -2,6 +2,7 @@ package dev.trademaster.config;
 
 import com.google.gson.JsonObject;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.gui.screens.Screen;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -32,12 +33,22 @@ public final class MaliLibSupport {
 		if (available()) MaliLibAdapter.readHotkeys(hotkeys);
 	}
 
+	/** The maLiLib config screen, or null when the no-lib build must use the mod's
+	 * own six-tab screen. */
+	public static @Nullable Screen createConfigScreen() {
+		return available() ? MaliLibAdapter.INSTANCE.get() : null;
+	}
+
 	public static String startStopKeys() {
-		return available() ? MaliLibAdapter.HOTKEY_START_STOP.getKeybind().getKeysDisplayString() : "-";
+		if (available()) return MaliLibAdapter.HOTKEY_START_STOP.getKeybind().getKeysDisplayString();
+		var key = dev.trademaster.TradeMaster.getStartStopKey();
+		return key == null ? "-" : key.getTranslatedKeyMessage().getString();
 	}
 
 	public static String pickPositionKeys() {
-		return available() ? MaliLibAdapter.HOTKEY_PICK_POSITION.getKeybind().getKeysDisplayString() : "-";
+		if (available()) return MaliLibAdapter.HOTKEY_PICK_POSITION.getKeybind().getKeysDisplayString();
+		var key = dev.trademaster.TradeMaster.getPickPositionKey();
+		return key == null ? "-" : key.getTranslatedKeyMessage().getString();
 	}
 
 	private MaliLibSupport() {}

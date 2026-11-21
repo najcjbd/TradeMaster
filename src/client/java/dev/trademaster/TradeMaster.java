@@ -34,6 +34,8 @@ public class TradeMaster implements ClientModInitializer {
 			Identifier.fromNamespaceAndPath("trademaster", "main"));
 
 	private static KeyMapping openMenuKey;
+	private static KeyMapping startStopKey;
+	private static KeyMapping pickPositionKey;
 
 	@Override
 	public void onInitializeClient() {
@@ -42,6 +44,14 @@ public class TradeMaster implements ClientModInitializer {
 
 		openMenuKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
 				"key.trade-master.open_menu", GLFW.GLFW_KEY_V, CATEGORY));
+		// without maLiLib its ConfigHotkeys do not exist: register the same defaults
+		// natively so the no-lib jar keeps R/P instead of shipping dead keys
+		if (!MaliLibSupport.available()) {
+			startStopKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+					"trademaster.hotkey.startStop", GLFW.GLFW_KEY_R, CATEGORY));
+			pickPositionKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+					"trademaster.hotkey.pickPosition", GLFW.GLFW_KEY_P, CATEGORY));
+		}
 
 		TradeMasterCommand.register();
 
@@ -53,6 +63,12 @@ public class TradeMaster implements ClientModInitializer {
 				if (client.gui.screen() == null && client.player != null && client.level != null) {
 					client.gui.setScreen(new TradeMasterScreen(null));
 				}
+			}
+			while (startStopKey != null && startStopKey.consumeClick()) {
+				RerollController.toggle();
+			}
+			while (pickPositionKey != null && pickPositionKey.consumeClick()) {
+				if (client.player != null) dev.trademaster.gui.PositionPicker.onHotkey();
 			}
 		});
 
@@ -108,6 +124,14 @@ public class TradeMaster implements ClientModInitializer {
 		});
 
 		LOGGER.info("Trade Master initialized");
+	}
+
+	public static KeyMapping getStartStopKey() {
+		return startStopKey;
+	}
+
+	public static KeyMapping getPickPositionKey() {
+		return pickPositionKey;
 	}
 
 	public static KeyMapping getOpenMenuKey() {

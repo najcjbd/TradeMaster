@@ -31,7 +31,7 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 | 运行侧 | **纯客户端**（`"environment": "client"`，无需装到服务端） |
 | 必需前置 | Fabric API（0.154.2+26.2）；默认 jar 还需要 **maLiLib**（0.29.3），`-nomalilib` 变体不需要 |
 | 构建 | Gradle 9.6.1 + Fabric Loom **1.17.21** |
-| 可选前置 | Mod Menu（打开六页签模组菜单）、clientcommands（仅共存探测，**无 API 耦合**） |
+| 可选前置 | Mod Menu（有 maLiLib 时打开 maLiLib 配置界面，无 maLiLib 时打开自带六页签界面）、clientcommands（仅共存探测，**无 API 耦合**） |
 | 许可证 | **GPL-3.0** |
 
 ## 安装
@@ -305,7 +305,7 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 | 反作弊 | 见上表 | — | — |
 | 位置 | 见「装置与坐标」 | — | — |
 | 箱子 | 动态列表 | 空 | 可增删 |
-| 热键 | 开始/停止、拾取坐标 | — | **只能在 maLiLib 界面修改** |
+| 热键 | 开始/停止、拾取坐标 | — | 有 maLiLib 时**只能在 maLiLib 界面修改**；无 maLiLib 时为固定默认键 R/P |
 
 ## 命令与热键
 
@@ -322,7 +322,7 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 三处入口共享**同一份** `config/trade-master.json`：
 
 1. 游戏内主菜单（热键 `V`，触摸屏友好）——六个页签：**附魔书 / 配置 / 键位 / 别名 / 报价 / 村民**；
-2. **Mod Menu**（打开六页签的模组菜单）；
+2. **Mod Menu**（有 maLiLib 时打开 maLiLib 配置界面；无 maLiLib 时打开自带六页签界面）；
 3. **maLiLib** 配置界面（热键页只在这里）。
 
 > **「别名」页**：给每个附魔起自定义显示名（影响铁砧命名时用的名字）。留空 = 用默认名；**不能与其它「已启用」附魔的别名或名字重复**（重名会在该行红字提示且不保存；校验只覆盖已启用目标，与抵扣索引的口径一致）。它只改显示名，不改任何交易条件。
@@ -347,7 +347,7 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 # 产物（26.2 两种）：
 #   build/libs/trade-master-1.0.0.jar           需要 maLiLib，完整热键/maLiLib 配置界面
 #   build/libs/trade-master-1.0.0-nomalilib.jar 不依赖 maLiLib；装了 maLiLib 仍会自动启用集成
-# 无 maLiLib 时用界面 Start/Stop 与 [pick] 按钮；键盘 R/P 热键来自 maLiLib，缺失时不可用
+# 无 maLiLib 时 R/P 仍可用（固定默认键，不可在 maLiLib 界面改）；也可用界面 Start/Stop 与 [pick] 按钮
 ```
 
 ## 许可证与致谢

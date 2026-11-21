@@ -31,7 +31,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | Fabric API (0.154.2+26.2); the default jar also needs **maLiLib** (0.29.3), the `-nomalilib` variant does not |
 | Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
-| Optional | Mod Menu (opens the six-tab mod screen), clientcommands (coexistence probe only, **no API coupling**) |
+| Optional | Mod Menu (opens the maLiLib config screen when maLiLib is present, otherwise the built-in six-tab screen), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
 
 ## Installation
@@ -326,7 +326,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Anti-cheat | see the table above | — | — |
 | Positions | see "The rig and coordinates" | — | — |
 | Chests | dynamic list | empty | add/remove rows |
-| Hotkeys | start/stop, pick coordinate | — | **editable only inside maLiLib** |
+| Hotkeys | start/stop, pick coordinate | — | **editable only inside maLiLib**; without maLiLib they are fixed R/P |
 
 ## Commands and hotkeys
 
@@ -343,7 +343,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 All three share the **same** `config/trade-master.json`:
 
 1. the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**;
-2. **Mod Menu** (opens the six-tab Trade Master screen);
+2. **Mod Menu** (opens the maLiLib config screen when maLiLib is present, otherwise the built-in six-tab screen);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
@@ -368,7 +368,7 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 # outputs (two 26.2 jars):
 #   build/libs/trade-master-1.0.0.jar           requires maLiLib (full hotkeys / maLiLib config UI)
 #   build/libs/trade-master-1.0.0-nomalilib.jar no maLiLib dependency; still auto-integrates if installed
-# without maLiLib use the Start/Stop and [pick] buttons; R/P hotkeys come from maLiLib
+# without maLiLib R/P still work as fixed defaults (not editable in maLiLib); the Start/Stop and [pick] buttons also work
 ```
 
 ## License and credits
