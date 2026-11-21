@@ -105,6 +105,11 @@ stonecutter {
 dependencies {
     modstitch.loom {
         modstitchModImplementation("net.fabricmc.fabric-api:fabric-api:${property("deps.fabric_api")}")
+        // optional Mod Menu integration: compile against the per-node API version and
+        // provide it in the dev runtime, but never bundle it into the released jar
+        prop("deps.modmenu") {
+            modstitchModImplementation("maven.modrinth:modmenu:$it")
+        }
     }
 
     // Shared, version-gated tests run on EVERY target's `test` task: this is how a

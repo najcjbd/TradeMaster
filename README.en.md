@@ -31,7 +31,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | The matching **Fabric API** |
 | Build | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
-| Optional | clientcommands (coexistence probe only, **no API coupling**); maLiLib / Mod Menu are not wired yet |
+| Optional | clientcommands (coexistence probe only, **no API coupling**); **Mod Menu** (optional, opens the six-tab mod screen); maLiLib is not wired |
 | License | **GPL-3.0** |
 
 ## Installation
@@ -344,7 +344,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 
 ## Config entry points
 
-This branch has exactly **one** entry: the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**; it shares the **same** `config/trade-master.json` with the other branches. maLiLib / Mod Menu are not wired yet.
+There are two entries to the same six-tab screen: the in-game menu (hotkey `V`, touch-screen friendly) and the optional **Mod Menu config button**; the tabs are **enchantments / settings / keybinds / aliases / offers / villagers**. It shares the **same** `config/trade-master.json` with the other branches; maLiLib is not wired.
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
 
@@ -390,7 +390,7 @@ The derived parts have been rewritten/split up to fit this project's structure.
 | Fabric API | Apache-2.0 | Required |
 | clientcommands | LGPL-3.0-or-later | Optional (coexistence probe only) |
 
-maLiLib and Mod Menu are not wired yet and are **not** dependencies of this branch.
+Mod Menu is an optional prerequisite: without it use `V`; with it, Mod Menu opens the same six-tab screen. maLiLib is not wired and is **not** a dependency of this branch.
 
 Those licenses apply to those projects; this mod does not bundle their jars.
 
