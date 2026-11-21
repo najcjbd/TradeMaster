@@ -1,5 +1,6 @@
 package dev.trademaster.exec;
 
+import dev.trademaster.compat.VisibleTradersCompat;
 import dev.trademaster.matching.OfferCosts;
 import dev.trademaster.matching.TradeMatcher;
 import net.minecraft.client.Minecraft;
@@ -260,7 +261,7 @@ public class LockTradeExecutor {
 		// Defensive, unreachable today (audited 2026-09-19): LOCK always supplies a
 		// fingerprint (RerollController:1156), so expected is never null here.
 		if (this.expected == null) return true;
-		var offers = this.menu.getOffers();
+		var offers = VisibleTradersCompat.menuOffers(this.menu);
 		if (this.slot < 0 || this.slot >= offers.size()) return false;
 		var offer = offers.get(this.slot);
 		if (offer.isOutOfStock()) return false;

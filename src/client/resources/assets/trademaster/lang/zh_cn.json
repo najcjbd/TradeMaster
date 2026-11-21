@@ -24,6 +24,8 @@
   "trademaster.settings.minLockEmeralds": "锁定所需绿宝石下限",
   "trademaster.settings.discountedPriceAsSalePrice": "以折扣价作为售价",
   "trademaster.settings.discountedPriceAsSalePrice.comment": "开启：按实际收费（含折扣/需求调整）参与匹配；关闭（默认）：按原价参与匹配。运行中不可切换。",
+  "trademaster.settings.compatibleWithVisibleTraders": "兼容 VisibleTraders",
+  "trademaster.settings.compatibleWithVisibleTraders.comment": "VisibleTraders 是服务端模组，会在交易界面提前显示村民尚未解锁的未来交易，但这些条目不能提前购买。开启（默认）时，匹配与锁定只使用服务端确认的交易列表，绝不把仅在客户端显示的锁定条目当成可交易项；服务端的数据包用于确认对方确实安装了该模组。",
   "trademaster.settings.multiEnchantProtection": "单书多附魔保障",
   "trademaster.settings.villagerSphereRadius": "暂存区球形半径",
   "trademaster.settings.postDispatchBreakRetries": "送走后补破坏重试上限",

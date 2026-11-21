@@ -34,6 +34,12 @@ public final class TradeMasterConfig {
 	 * sale price for matching, budgets and messages. Off by default: the base price is
 	 * used, matching the historic behaviour. Cannot be switched while a run is active. */
 	public boolean discountedPriceAsSalePrice = false;
+	/** Coexist with the server-side VisibleTraders mod: its client appends the villager's
+	 * still-locked FUTURE trades to the open merchant menu. Those entries exist only on the
+	 * client and cannot be bought, so matching/locking must read the server-confirmed offer
+	 * list, never the menu's combined view. The server payload that proves the other side
+	 * actually has VisibleTraders is watched for in the connection mixin. On by default. */
+	public boolean compatibleWithVisibleTraders = true;
 	public boolean timeoutEnabled = false;
 	public int timeoutTicks = 20 * 60 * 60;
 	/** Per-phase safety timeouts (profession/detection/execution). Default on. */

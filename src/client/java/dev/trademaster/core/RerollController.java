@@ -2,6 +2,7 @@ package dev.trademaster.core;
 
 import dev.trademaster.anticheat.LookStep;
 import dev.trademaster.anticheat.SmoothRotation;
+import dev.trademaster.compat.VisibleTradersCompat;
 import dev.trademaster.config.ConfigPersistence;
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.EnchantmentTarget;
@@ -1772,7 +1773,7 @@ public final class RerollController {
 				finishLock(s);
 				return;
 			}
-			MerchantOffers offers = menu.getOffers();
+			MerchantOffers offers = VisibleTradersCompat.menuOffers(menu);
 			if (offers.isEmpty()) return; // offers packet not applied yet
 			if (s.matchedTrade != null && !matchedOfferUnchanged(offers, s.matchedTrade)) {
 				// the offer recorded at detection is gone or drifted (profession

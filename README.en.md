@@ -102,7 +102,7 @@ No grindstone/naming positions are configured; the full file is [`examples/26.2-
 **Full configuration** (the example file):
 
 - `configVersion: 1` (old layout, migrated on load); carries the obsolete `lockTarget: BOOK_TRADE` key (not read anymore)
-- mechanism: `reroll=AXE`, `detection=PACKET`, `reserveCheaperTraders=false`, `minLockEmeralds=1`, `timeoutEnabled=false`, `timeoutTicks=1h`, `phaseTimeoutsEnabled=true`, `villagerCheckInterval=1s`, `lecternHealGrace=6s`, `professionHealCapEnabled=false`, `professionHealCap=3`, `autoDisableAfterLock=true`, `displayRolls=true`, `debugLog=true`
+- mechanism: `reroll=AXE`, `detection=PACKET`, `reserveCheaperTraders=false`, `minLockEmeralds=1`, `compatibleWithVisibleTraders=true`, `timeoutEnabled=false`, `timeoutTicks=1h`, `phaseTimeoutsEnabled=true`, `villagerCheckInterval=1s`, `lecternHealGrace=6s`, `professionHealCapEnabled=false`, `professionHealCap=3`, `autoDisableAfterLock=true`, `displayRolls=true`, `debugLog=true`
 - naming: `enabled=false`, `forceNamePriceOne=true`, `customNames={}`
 - antiCheat: `legitMode=true`, `slowMode=false`, `tpToVillager=true`, `preventAxeBreaking=false`, `stopOnPlayerMove=true`, `placeDelay=3`, `interactDelay=2` (no `tpToItem` key, so the default applies)
 - hotkeys: `startStop=""`, `pickPosition=KP_3`
@@ -293,6 +293,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Mechanism | Keep looking for cheaper | off | Leaves a "cheaper only" reservation slot |
 | Mechanism | Min lock emeralds | 1 | 1–64 |
 | Mechanism | Multi-enchantment book safeguard | off | Forces the floor to ≥ 64 (for datapacks that change the librarian profession) |
+| Mechanism | VisibleTraders compatibility | on | With [VisibleTraders](https://github.com/Ramixin/VisibleTraders) on the server, matching/locking use only server-confirmed offers and never treat its pre-shown but still-locked entries as tradable |
 | Mechanism | Global timeout / duration | off / 1h | Accepts `1h`, `30min`, `1m`, `90s`; a bare number means ticks |
 | Mechanism | Phase timeouts | on | Per-phase watchdog |
 | Mechanism | Villager check interval | 1s | 1–72000 ticks |
@@ -340,6 +341,7 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 ## Compatibility and risks
 
 - **Do not** run this alongside LibrarianTradeFinder: both intercept the same merchant packets and will fight each other.
+- **[VisibleTraders](https://github.com/Ramixin/VisibleTraders)** (optional, a **server-side mod**): it pre-shows a villager's still-locked future trades inside the merchant screen, but those entries exist only on the client and **cannot be bought early**. This mod enables "VisibleTraders compatibility" by default: matching and locking read only the **server-confirmed offer list** and never treat the pre-shown locked entries as tradable; the server payload confirms it is actually installed. Without the server mod behavior is identical to a normal server; the client mod alone does nothing.
 - clientcommands: only a "is it loaded" probe and a coexistence log line; **its API is not used**.
 - `tpToVillager` / `tpToItem` can be detected on anti-cheat enabled servers; both default to **off**.
 - This is a **client** mod designed for your own rig / single-player setup.
