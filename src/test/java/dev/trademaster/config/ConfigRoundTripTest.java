@@ -61,7 +61,11 @@ class ConfigRoundTripTest {
 		ConfigTest.read(c(), root);
 		assertFalse(c().compatibleWithVisibleTraders);
 
-		// an absent key keeps the current value (the loader's fallback convention)
+		// an absent key keeps the CURRENT value (the loader's fallback convention)
+		c().compatibleWithVisibleTraders = true;
+		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
+		assertTrue(c().compatibleWithVisibleTraders);
+		c().compatibleWithVisibleTraders = false;
 		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
 		assertFalse(c().compatibleWithVisibleTraders);
 	}
