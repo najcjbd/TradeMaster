@@ -31,7 +31,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | Fabric API (0.154.2+26.2), **maLiLib** (0.29.3) |
 | Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
-| Optional | Mod Menu (config screen entry), clientcommands (coexistence probe only, **no API coupling**) |
+| Optional | Mod Menu (opens the six-tab mod screen), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
 
 ## Installation
@@ -165,8 +165,17 @@ The lower half of the Offers tab lets you **add goods**: the result does not hav
 an enchanted book — any item will do (useful when a datapack/modded server puts
 something else into a librarian's trade).
 
-- **One good = one result item** (the result item IS its identity, so two goods cannot
-  share one; to change the result, remove the row and add it again).
+- **One good = one stable key + one result item**: several NBT variants of the same
+  result item are allowed (a new variant gets `trademaster:good_N`; legacy goods without
+  an `id` keep using their result id as the key).
+- Three optional **filter rows** sit below each good (contains semantics; extra
+  fields/enchantments allowed):
+  - **Item name**: the result's custom name must equal this text exactly; blank = any.
+  - **Enchantments**: `id:level, id`, e.g. `minecraft:sharpness:5, minecraft:mending`;
+    level 0 (or an id alone) only requires presence.
+  - **Raw NBT**: an SNBT compound matched as a subset; this branch uses the component
+    map, e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`.
+  - If one offer matches several variants, the most constrained variant wins.
 - Each row edits: the **amount** (the trade must yield at least this many), the **price
   cap** (slot 1's amount, the same notion as an enchantment's price: pay more and it is
   not bought, and it is the scale hunt/reservation compare on), the three cost fields
@@ -175,7 +184,7 @@ something else into a librarian's trade).
   **remove ✕** on the right.
 - Goods follow **exactly the same rules** as enchantments: hunt cheaper, disable after
   lock, naming and named-villager deduction (the villager is named with the **item's
-  display name**, and the alias tab can alias it too).
+  display name**; additional variants default to `Item (good_N)` and the alias tab can give them unique names).
 - **Disposal**: a good is not an enchanted book, so the **grindstone cannot disenchant
   it**. A bought good is only ever stored in the bound chests; when every chest refuses
   it, the "custom good disposal" setting decides — **stop** (the default) or **drop it
@@ -331,7 +340,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 All three share the **same** `config/trade-master.json`:
 
 1. the in-game main menu (hotkey `V`, touch-screen friendly) — six tabs: **enchantments / settings / keybinds / aliases / offers / villagers**;
-2. **Mod Menu** (provides the config-screen entry);
+2. **Mod Menu** (opens the six-tab Trade Master screen);
 3. the **maLiLib** config GUI (the hotkey page lives only here).
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
