@@ -1,6 +1,6 @@
 package dev.trademaster;
 
-import dev.trademaster.config.MaliLibAdapter;
+import dev.trademaster.config.MaliLibSupport;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RerollController;
 import dev.trademaster.gui.PositionPicker;
@@ -37,7 +37,7 @@ public class TradeMaster implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
-		MaliLibAdapter.register();
+		MaliLibSupport.register();
 		dev.trademaster.compat.ClientCommandsIntegration.probe();
 
 		openMenuKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(

@@ -1,6 +1,6 @@
 package dev.trademaster.gui;
 
-import dev.trademaster.config.MaliLibAdapter;
+import dev.trademaster.config.MaliLibSupport;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -16,9 +16,9 @@ public class KeybindsListWidget extends AbstractSelectionList<KeybindsListWidget
 		addEntry(new KeyRow("key.trade-master.open_menu",
 				() -> dev.trademaster.TradeMaster.getOpenMenuKey().getTranslatedKeyMessage().getString()));
 		addEntry(new KeyRow("trademaster.hotkey.startStop",
-				() -> MaliLibAdapter.HOTKEY_START_STOP.getKeybind().getKeysDisplayString()));
+				MaliLibSupport::startStopKeys));
 		addEntry(new KeyRow("trademaster.hotkey.pickPosition",
-				() -> MaliLibAdapter.HOTKEY_PICK_POSITION.getKeybind().getKeysDisplayString()));
+				MaliLibSupport::pickPositionKeys));
 	}
 
 	@Override

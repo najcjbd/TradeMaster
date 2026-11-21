@@ -97,3 +97,45 @@ publishing {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Two 26.2 jars from one build:
+//  * default        : fabric.mod.json depends on maLiLib (full hotkey/config UI)
+//  * -nomalilib     : identical code, maLiLib moved to "suggests"; MaliLibSupport
+//                     never touches the adapter unless the mod is installed, so
+//                     Mod Menu/the six-tab screen work without maLiLib.
+// ---------------------------------------------------------------------------
+def noMalilibResources = layout.buildDirectory.dir("nomalilib-resources")
+
+tasks.register("noMalilibResources") {
+	inputs.file("src/client/resources/fabric.mod.json")
+	outputs.dir(noMalilibResources)
+	doLast {
+		def text = file("src/client/resources/fabric.mod.json").getText("UTF-8")
+		text = text.replace('${mod_version}', project.version.toString())
+		def json = new groovy.json.JsonSlurper().parseText(text)
+		def depends = json.depends
+		if (depends != null && depends.remove("malilib") != null) {
+			if (json.suggests == null) json.suggests = [:]
+			json.suggests.malilib = "*"
+		}
+		def out = noMalilibResources.get().file("fabric.mod.json").asFile
+		out.parentFile.mkdirs()
+		out.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json))
+	}
+}
+
+tasks.register("noMalilibJar", Jar) {
+	dependsOn tasks.named("jar")
+	dependsOn tasks.named("noMalilibResources")
+	archiveClassifier = "nomalilib"
+	from { zipTree(tasks.named("jar").get().archiveFile.get().asFile) } {
+		exclude "fabric.mod.json"
+		exclude "META-INF/MANIFEST.MF"
+	}
+	from(noMalilibResources)
+}
+
+tasks.named("build") {
+	dependsOn("noMalilibJar")
+}

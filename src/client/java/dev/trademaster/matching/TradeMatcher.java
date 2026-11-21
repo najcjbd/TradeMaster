@@ -4,6 +4,7 @@ import dev.trademaster.config.EnchantmentTarget;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeOfferSpec;
 import dev.trademaster.config.TradeMasterConfig;
+import dev.trademaster.exec.AliasChoices;
 import dev.trademaster.exec.EnchantmentNamer;
 import it.unimi.dsi.fastutil.ints.IntHeapPriorityQueue;
 import net.minecraft.client.Minecraft;
@@ -893,51 +894,82 @@ public class TradeMatcher {
 	}
 
 	private Map<String, Identifier> buildDisplayNameIndex() {
-		Map<String, Identifier> index = new HashMap<>();
-		Set<String> ambiguous = new HashSet<>();
+		return resolveIndex(nameCandidates(),
+				AliasChoices.canonical(TradeMasterConfig.INSTANCE.aliasChoices));
+	}
+
+	/** Every deduction key with its candidate demands, before ambiguity resolution.
+	 * Shared result paths are skipped: a path shared by several variants cannot name
+	 * one of them; the player can still give one variant that alias explicitly. */
+	private Map<String, Set<Identifier>> nameCandidates() {
+		Map<String, Set<Identifier>> candidates = new HashMap<>();
 		for (Identifier id : this.targets.keySet()) {
 			String translationKey = "enchantment." + id.getNamespace() + "." + id.getPath();
-			putIndex(index, ambiguous, EnchantmentNamer.canonical(EnchantmentNamer.displayName(id, translationKey)), id);
-			putIndex(index, ambiguous, EnchantmentNamer.canonical(id.getPath()), id);
+			addCandidate(candidates,
+					EnchantmentNamer.canonical(EnchantmentNamer.displayName(id, translationKey)), id);
+			addCandidate(candidates, EnchantmentNamer.canonical(id.getPath()), id);
 		}
-		// custom goods are identified by their result item, and a named villager
-		// carries that item's display name
 		Map<String, Integer> sharedPaths = new HashMap<>();
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
 			if (!goodMatchable(good)) continue;
 			sharedPaths.merge(EnchantmentNamer.canonical(good.path()), 1, Integer::sum);
 		}
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
-			// a good that can never be offered contributes nothing to trading, so its
-			// names must not drop a LIVE target's key (buildNeeds skips it too)
 			if (!goodMatchable(good)) continue;
-			// the same triple an enchantment gets: the (alias aware) display name and
-			// the registry path, so a villager named either way resolves back
-			putIndex(index, ambiguous,
+			addCandidate(candidates,
 					EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(good.displayName())), good.id());
-			// Several variants can share one result path: that path cannot identify
-			// which variant was captured, so it must not become an index key at all.
-			// Adding it twice and deleting it as "ambiguous" also deleted a variant's
-			// ALIAS when the alias text happened to equal the (shared) path.
 			if (sharedPaths.getOrDefault(EnchantmentNamer.canonical(good.path()), 0) == 1) {
-				putIndex(index, ambiguous, EnchantmentNamer.canonical(good.path()), good.id());
+				addCandidate(candidates, EnchantmentNamer.canonical(good.path()), good.id());
 			}
 		}
-		// names recorded when villagers were actually named: keeps deduction working
-		// when the game language changed since naming
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
-			// enchantment targets AND custom goods: an item's name is localized too, so
-			// a good named before a language switch needs its history entry as well
 			GoodSpec historyGood = TradeMasterConfig.INSTANCE.goodFor(entry.getValue());
 			if (this.targets.containsKey(entry.getValue())
 					|| (historyGood != null && historyGood.enabled() && goodMatchable(historyGood))) {
-				putIndex(index, ambiguous, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
+				addCandidate(candidates, EnchantmentNamer.canonical(entry.getKey()), entry.getValue());
 			}
 		}
-		// a name shared by two targets cannot be attributed: drop it rather than
-		// crediting the wrong enchantment (worst case the villager is not deducted)
-		ambiguous.forEach(index::remove);
+		return candidates;
+	}
+
+	private static void addCandidate(Map<String, Set<Identifier>> candidates,
+			String name, Identifier id) {
+		candidates.computeIfAbsent(name, k -> new HashSet<>()).add(id);
+	}
+
+	/** A key with one candidate maps to it; a key with several maps to the manually
+	 * chosen owner when that owner is one of the candidates, otherwise it is dropped. */
+	static Map<String, Identifier> resolveIndex(
+			Map<String, Set<Identifier>> candidates,
+			Map<String, Identifier> choices) {
+		Map<String, Identifier> index = new HashMap<>();
+		for (Map.Entry<String, Set<Identifier>> entry : candidates.entrySet()) {
+			Set<Identifier> ids = entry.getValue();
+			if (ids.size() == 1) {
+				index.put(entry.getKey(), ids.iterator().next());
+				continue;
+			}
+			Identifier chosen = choices.get(entry.getKey());
+			if (chosen != null && ids.contains(chosen)) index.put(entry.getKey(), chosen);
+		}
 		return index;
+	}
+
+	/** Ambiguous names that no valid aliasChoices entry resolves, formatted for the
+	 * start warning: {@code name -> [id, id]}. */
+	public List<String> unresolvedNameCollisions() {
+		Map<String, Identifier> choices =
+				AliasChoices.canonical(TradeMasterConfig.INSTANCE.aliasChoices);
+		List<String> out = new ArrayList<>();
+		for (Map.Entry<String, Set<Identifier>> entry : nameCandidates().entrySet()) {
+			Set<Identifier> ids = entry.getValue();
+			if (ids.size() < 2) continue;
+			Identifier chosen = choices.get(entry.getKey());
+			if (chosen != null && ids.contains(chosen)) continue;
+			out.add(entry.getKey() + " -> " + ids);
+		}
+		java.util.Collections.sort(out);
+		return out;
 	}
 
 	/** Order-insensitive cost check (the agreed rule): every slot the offer charges must be
@@ -980,11 +1012,6 @@ public class TradeMatcher {
 			if (entry.getValue() > allowed.getOrDefault(entry.getKey(), 0)) return false;
 		}
 		return true;
-	}
-
-	private static void putIndex(Map<String, Identifier> index, Set<String> ambiguous, String name, Identifier id) {
-		Identifier existing = index.put(name, id);
-		if (existing != null && !existing.equals(id)) ambiguous.add(name);
 	}
 
 	private static int romanToInt(String roman) {

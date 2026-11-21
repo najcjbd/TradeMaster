@@ -26,7 +26,7 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 		boolean enabled, int maxPrice, List<TradeOfferSpec.TradeCost> costs,
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 		List<GoodEnchant> excludedEnchantments, String filterNbtExclude,
-		boolean filterInvalid) {
+		boolean filterInvalid, String rawIncludeEnchants, String rawExcludeEnchants) {
 
 	public record GoodEnchant(Identifier id, int minLevel, int maxLevel) {
 		public GoodEnchant {
@@ -95,7 +95,19 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 			String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 			List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
 		this(key, result, resultCount, enabled, maxPrice, costs, filterName,
-				filterEnchantments, filterNbt, excludedEnchantments, filterNbtExclude, false);
+				filterEnchantments, filterNbt, excludedEnchantments, filterNbtExclude,
+				false, null, null);
+	}
+
+	/** The pre-{@code raw*} constructor shape, used by callers that carry no raw JSON. */
+	public GoodSpec(Identifier key, Identifier result, int resultCount,
+			boolean enabled, int maxPrice, List<TradeOfferSpec.TradeCost> costs,
+			String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
+			List<GoodEnchant> excludedEnchantments, String filterNbtExclude,
+			boolean filterInvalid) {
+		this(key, result, resultCount, enabled, maxPrice, costs, filterName,
+				filterEnchantments, filterNbt, excludedEnchantments, filterNbtExclude,
+				filterInvalid, null, null);
 	}
 
 	public Identifier id() {
@@ -205,32 +217,38 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 	public GoodSpec withEnabled(boolean value) {
 		return new GoodSpec(this.key, this.result, this.resultCount, value, this.maxPrice,
 				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid,
+				this.rawIncludeEnchants, this.rawExcludeEnchants);
 	}
 
 	public GoodSpec withTrade(int resultCount, int maxPrice, List<TradeOfferSpec.TradeCost> costs) {
 		return new GoodSpec(this.key, this.result, resultCount, this.enabled, maxPrice,
 				costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid,
+				this.rawIncludeEnchants, this.rawExcludeEnchants);
 	}
 
 	public GoodSpec withResult(Identifier newResult) {
 		return new GoodSpec(this.key, newResult, this.resultCount, this.enabled, this.maxPrice,
 				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid,
+				this.rawIncludeEnchants, this.rawExcludeEnchants);
 	}
 
 	public GoodSpec withFilter(String name, List<GoodEnchant> enchantments, String rawNbt,
 			List<GoodEnchant> excluded, String rawNbtExclude) {
 		return new GoodSpec(this.key, this.result, this.resultCount, this.enabled, this.maxPrice,
 				this.costs, name, enchantments, rawNbt, excluded, rawNbtExclude,
-				this.filterInvalid);
+				this.filterInvalid, this.rawIncludeEnchants, this.rawExcludeEnchants);
 	}
 
 	public GoodSpec withFilterInvalid(boolean value) {
+		// a successful enchantment edit replaces the raw text; keeping it true keeps it
 		return new GoodSpec(this.key, this.result, this.resultCount, this.enabled, this.maxPrice,
 				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude, value);
+				this.excludedEnchantments, this.filterNbtExclude, value,
+				value ? this.rawIncludeEnchants : null,
+				value ? this.rawExcludeEnchants : null);
 	}
 
 	public GoodSpec normalized() {
@@ -241,7 +259,8 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 				this.enabled, Math.max(0, Math.min(64, this.maxPrice)), clean,
 				this.filterName.trim(), cleanEnchants(this.filterEnchantments),
 				this.filterNbt.trim(), cleanEnchants(this.excludedEnchantments),
-				this.filterNbtExclude.trim(), this.filterInvalid);
+				this.filterNbtExclude.trim(), this.filterInvalid,
+				this.rawIncludeEnchants, this.rawExcludeEnchants);
 	}
 
 	private static List<GoodEnchant> cleanEnchants(List<GoodEnchant> enchantments) {

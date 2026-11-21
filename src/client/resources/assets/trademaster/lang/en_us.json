@@ -102,6 +102,7 @@
   "trademaster.message.player_moved": "Player moved, stopping",
   "trademaster.message.player_died": "Player died, stopping",
   "trademaster.message.timeout": "Timed out, stopping",
+  "trademaster.message.alias_collisions": "Ambiguous deduction names (a named villager cannot be attributed). Choose an owner in naming.aliasChoices, keyed by the name: %s",
   "trademaster.message.unproven_skipped": "The previous purchase outcome was unconfirmed; skipping these targets for this run (start again to retry): %s",
   "trademaster.message.cursor_full": "An item is on the cursor and the inventory is full — free a slot first",
   "trademaster.message.menu_blocked": "An open container is blocking the check — close it and restart",

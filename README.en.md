@@ -29,7 +29,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3) |
 | Java | **≥ 25** |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
-| Required | Fabric API (0.154.2+26.2), **maLiLib** (0.29.3) |
+| Required | Fabric API (0.154.2+26.2); the default jar also needs **maLiLib** (0.29.3), the `-nomalilib` variant does not |
 | Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
 | Optional | Mod Menu (opens the six-tab mod screen), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
@@ -216,7 +216,7 @@ something else into a librarian's trade).
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
   - nothing at all is affordable → stop with an out-of-materials message; if a combo book caused it, an extra hint suggests enabling the 64 floor.
-- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same dimension) skips those targets once** to avoid a duplicate purchase; start again to retry.
+- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same world and dimension) skips those targets once** to avoid a duplicate purchase; start again to retry.
 - **After a successful lock**: **all** matched targets of that villager count as obtained → (optional) auto-disable them in the config, (optional) record each price into its price slot, (optional) naming.
 
 ## Naming
@@ -348,6 +348,8 @@ All three share the **same** `config/trade-master.json`:
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
 
+> **Manual owner for a shared name**: if two demands (typically two variants of one result item) really must share a name, write it into `naming.customNames` by hand. The deduction index cannot tell which demand to decrement, so it drops the name and prints the candidate ids at start. To pick an owner, add the name to `naming.aliasChoices`, e.g. `"aliasChoices": {"diamond_sword": "trademaster:good_b"}`. The choice is persisted in the config; change it there.
+
 On first launch, when this mod's config does not exist yet, the **enchantment table** and **four of the anti-cheat flags** (`preventAxeBreaking`, `tpToVillager`, `legitMode`, `slowMode`) are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`; the remaining flags (`tpToItem`, `stopOnPlayerMove`, `placeDelay`, `interactDelay`) are not migrated and keep this mod's defaults.
 
 ## Compatibility and risks
@@ -363,7 +365,10 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 ```bash
 # requires JDK 25
 ./gradlew build
-# output: build/libs/trade-master-1.0.jar
+# outputs (two 26.2 jars):
+#   build/libs/trade-master-1.0.0.jar           requires maLiLib (full hotkeys / maLiLib config UI)
+#   build/libs/trade-master-1.0.0-nomalilib.jar no maLiLib dependency; still auto-integrates if installed
+# without maLiLib use the Start/Stop and [pick] buttons; R/P hotkeys come from maLiLib
 ```
 
 ## License and credits

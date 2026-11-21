@@ -15,6 +15,7 @@ import dev.trademaster.detection.OfferSnapshot;
 import dev.trademaster.exec.DispenserCheck;
 import dev.trademaster.exec.BookDisposal;
 import dev.trademaster.exec.ButtonPresser;
+import dev.trademaster.exec.AliasChoices;
 import dev.trademaster.exec.EnchantmentNamer;
 import dev.trademaster.exec.ChestDepositor;
 import dev.trademaster.exec.GrindstoneRecycler;
@@ -324,7 +325,7 @@ public final class RerollController {
 		if (regionConfigured()) regionFallbackConfirmed = false;
 		// maLiLib's own config screen only pushes its edits to the model on CLOSE:
 		// starting now would snapshot the pre-edit values, so refuse and say why
-		if (dev.trademaster.config.MaliLibAdapter.isConfigScreenOpen()) {
+		if (dev.trademaster.config.MaliLibSupport.isConfigScreenOpen()) {
 			chat(Component.translatable("trademaster.message.config_screen_open")
 					.withStyle(ChatFormatting.RED));
 			return false;
@@ -373,8 +374,11 @@ public final class RerollController {
 		if (!pendingUnprovenMatches.isEmpty()) {
 			Identifier currentDimension = mc.level == null ? null
 					: mc.level.dimension().identifier();
-			boolean appliesHere = pendingUnprovenDimension == null
-					|| pendingUnprovenDimension.equals(currentDimension);
+			String currentWorld = currentWorldKey();
+			boolean worldMatches = pendingUnprovenWorld == null || currentWorld == null
+					|| pendingUnprovenWorld.equals(currentWorld);
+			boolean appliesHere = worldMatches && (pendingUnprovenDimension == null
+					|| pendingUnprovenDimension.equals(currentDimension));
 			if (appliesHere) {
 				s.lockedIds.addAll(pendingUnprovenMatches);
 				carriedUnproven = true;
@@ -410,12 +414,14 @@ public final class RerollController {
 		// check — a config whose demands are all dead must still explain itself
 		warnRigTarget();
 		warnUnmatchableDemands(mc);
+		warnAliasCollisions(s);
 		if (s.matcher.isEmpty()) {
 			// when the carried skip was the only demand, consume it: the next start
 			// must retry those targets instead of reporting "all done" for ever
 			if (carriedUnproven) {
 				pendingUnprovenMatches.clear();
 				pendingUnprovenDimension = null;
+				pendingUnprovenWorld = null;
 			}
 			chat(Component.translatable("trademaster.message.all_done").withStyle(ChatFormatting.GREEN));
 			return false;
@@ -452,6 +458,7 @@ public final class RerollController {
 		if (carriedUnproven) {
 			pendingUnprovenMatches.clear();
 			pendingUnprovenDimension = null;
+			pendingUnprovenWorld = null;
 		}
 		session = s;
 		sessionDimension = mc.level == null ? null : mc.level.dimension().identifier();
@@ -2078,6 +2085,26 @@ public final class RerollController {
 	/** Dimension the skip was captured in (null = unknown): never replay it in another
 	 * world/dimension. */
 	private static @Nullable Identifier pendingUnprovenDimension = null;
+	/** Best-effort world identity of the capture (server address or singleplayer save
+	 * folder): a same-dimension save on another server/world must not reuse the skip. */
+	private static @Nullable String pendingUnprovenWorld = null;
+
+	private static @Nullable String currentWorldKey() {
+		Minecraft mc = Minecraft.getInstance();
+		if (mc == null) return null;
+		var server = mc.getCurrentServer();
+		if (server != null) return "server:" + server.ip;
+		var singleplayer = mc.getSingleplayerServer();
+		if (singleplayer != null) {
+			try {
+				return "sp:" + singleplayer.getWorldPath(
+						net.minecraft.world.level.storage.LevelResource.ROOT).getFileName();
+			} catch (RuntimeException ignored) {
+				return "sp:" + singleplayer.getWorldData().getLevelName();
+			}
+		}
+		return null;
+	}
 
 	private static void carryUnprovenTargets(RunSession s) {
 		if (s == null || s.unprovenCarryOverCaptured) return;
@@ -2094,6 +2121,7 @@ public final class RerollController {
 		}
 		if (pendingUnprovenMatches.size() != before) {
 			pendingUnprovenDimension = sessionDimension;
+			pendingUnprovenWorld = currentWorldKey();
 		}
 		debug("unproven purchase: carrying its targets into the next run");
 	}
@@ -2820,6 +2848,14 @@ public final class RerollController {
 	 * minimum price exceeds the configured max, targets no longer in the registry /
 	 * not tradeable, and goods that cannot be offered (result item gone or air, price
 	 * cap 0, or no payable price slot). */
+	private static void warnAliasCollisions(RunSession s) {
+		java.util.List<String> collisions = s.matcher.unresolvedNameCollisions();
+		if (collisions.isEmpty()) return;
+		chat(Component.translatable("trademaster.message.alias_collisions",
+						String.join("; ", collisions))
+				.withStyle(ChatFormatting.YELLOW));
+	}
+
 	private static void warnUnmatchableDemands(Minecraft mc) {
 		List<String> dead = new ArrayList<>();
 		List<String> unavailable = new ArrayList<>();
@@ -2918,7 +2954,12 @@ public final class RerollController {
 			String displayName = record.displayName();
 			Identifier id = record.id();
 			Identifier previous = config.nameHistory.get(displayName);
-			if (previous != null && !previous.equals(id)) {
+			Identifier chosen = AliasChoices.resolve(displayName, config.aliasChoices);
+			if (chosen != null) {
+				// the player declared which variant owns this ambiguous name
+				config.nameHistory.remove(displayName);
+				config.nameHistory.put(displayName, chosen);
+			} else if (previous != null && !previous.equals(id)) {
 				// same display name, different enchantment (custom-name collision):
 				// the entry is ambiguous — drop it instead of silently overwriting
 				config.nameHistory.remove(displayName);

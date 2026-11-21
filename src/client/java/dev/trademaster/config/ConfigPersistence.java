@@ -303,6 +303,12 @@ public final class ConfigPersistence {
 			customNames.addProperty(entry.getKey().toString(), entry.getValue());
 		}
 		naming.add("customNames", customNames);
+		JsonObject aliasChoices = new JsonObject();
+		for (Map.Entry<String, Identifier> entry : c.aliasChoices.entrySet()) {
+			if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) continue;
+			aliasChoices.addProperty(entry.getKey(), entry.getValue().toString());
+		}
+		naming.add("aliasChoices", aliasChoices);
 		JsonObject nameHistory = new JsonObject();
 		for (Map.Entry<String, Identifier> entry : c.nameHistory.entrySet()) {
 			nameHistory.addProperty(entry.getKey(), entry.getValue().toString());
@@ -405,7 +411,7 @@ public final class ConfigPersistence {
 		// merge the adapter's keys into the on-disk object: same reason as above
 		if (includeHotkeys) {
 			JsonObject hotkeys = sectionForWrite(root, "hotkeys");
-			for (Map.Entry<String, JsonElement> entry : MaliLibAdapter.writeHotkeys().entrySet()) {
+			for (Map.Entry<String, JsonElement> entry : MaliLibSupport.writeHotkeys().entrySet()) {
 				hotkeys.add(entry.getKey(), entry.getValue());
 			}
 			root.add("hotkeys", hotkeys);
@@ -482,6 +488,17 @@ public final class ConfigPersistence {
 						String name = entry.getValue().getAsString().trim();
 						if (!name.isEmpty()) c.customEnchantNames.put(id, name);
 					}
+				}
+			}
+			JsonObject aliasChoices = getSection(naming, "aliasChoices");
+			if (aliasChoices != null) {
+				c.aliasChoices.clear();
+				for (Map.Entry<String, JsonElement> entry : aliasChoices.entrySet()) {
+					Identifier id = entry.getValue().isJsonPrimitive()
+							? TradeMasterConfig.parseId(entry.getValue().getAsString())
+							: null;
+					String name = entry.getKey().trim();
+					if (id != null && !name.isEmpty()) c.aliasChoices.put(name, id);
 				}
 			}
 			JsonObject nameHistory = getSection(naming, "nameHistory");
@@ -675,7 +692,8 @@ public final class ConfigPersistence {
 							costs, readString(o, "name", ""),
 							enchants.list(), readString(o, "nbt", ""),
 							excluded.list(), readString(o, "excludeNbt", ""),
-							enchants.invalid() || excluded.invalid()).normalized());
+							enchants.invalid() || excluded.invalid(),
+							enchants.rawJson(), excluded.rawJson()).normalized());
 				}
 			}
 		}
@@ -746,7 +764,7 @@ public final class ConfigPersistence {
 		}
 		c.villagerSphereRadius = Math.max(1, Math.min(64, c.villagerSphereRadius));
 
-		if (includeHotkeys) MaliLibAdapter.readHotkeys(sectionOrRoot(root, "hotkeys"));
+		if (includeHotkeys) MaliLibSupport.readHotkeys(sectionOrRoot(root, "hotkeys"));
 	}
 
 	/** Tolerates hand-edited files where a section has the wrong JSON type
@@ -756,6 +774,41 @@ public final class ConfigPersistence {
 	private static String enchantmentToken(GoodSpec.GoodEnchant enchantment) {
 		return GoodEnchantFilter.token(enchantment, false);
 	}
+
+	/** Keeps an unparseable enchant filter usable for repair: write the ORIGINAL JSON
+	 * element when the reader preserved it (this survives a result/id edit, where the
+	 * on-disk seed lookup no longer matches), otherwise the parsed tokens. A good that
+	 * is invalid without any preserved text gets a marker token so it cannot silently
+	 * become "match everything" after a reload. */
+	private static void writeEnchantArray(JsonObject o, String key,
+			List<GoodSpec.GoodEnchant> parsed, @Nullable String rawJson,
+			boolean filterInvalid, boolean exclude) {
+		if (rawJson != null) {
+			try {
+				o.add(key, JsonParser.parseString(rawJson));
+				return;
+			} catch (RuntimeException ignored) {
+				// fall through to the parsed form
+			}
+		}
+		if (!parsed.isEmpty()) {
+			JsonArray array = new JsonArray();
+			for (GoodSpec.GoodEnchant enchantment : parsed) {
+				array.add(GoodEnchantFilter.token(enchantment, false));
+			}
+			o.add(key, array);
+			return;
+		}
+		if (filterInvalid) {
+			JsonArray array = new JsonArray();
+			array.add(INVALID_FILTER_MARKER);
+			o.add(key, array);
+		} else {
+			o.remove(key);
+		}
+	}
+
+	private static final String INVALID_FILTER_MARKER = "@@invalid-filter";
 
 	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
 	 * positions are preserved (slot 2 stays slot 2), so hand-added slots 3..N survive
@@ -812,29 +865,10 @@ public final class ConfigPersistence {
 			else o.remove("nbt");
 			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
 			else o.remove("excludeNbt");
-			if (!g.filterInvalid()) {
-				if (!g.filterEnchantments().isEmpty()) {
-					JsonArray enchants = new JsonArray();
-					for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
-						enchants.add(enchantmentToken(enchantment));
-					}
-					o.add("enchantments", enchants);
-				} else {
-					o.remove("enchantments");
-				}
-				if (!g.excludedEnchantments().isEmpty()) {
-					JsonArray excluded = new JsonArray();
-					for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
-						excluded.add(GoodEnchantFilter.token(enchantment, false));
-					}
-					o.add("excludeEnchantments", excluded);
-				} else {
-					o.remove("excludeEnchantments");
-				}
-			} else {
-				// the reader could not parse these arrays: keep the on-disk text so the
-				// user can fix it instead of silently erasing the filter on the next save
-			}
+			writeEnchantArray(o, "enchantments", g.filterEnchantments(),
+					g.rawIncludeEnchants(), g.filterInvalid(), false);
+			writeEnchantArray(o, "excludeEnchantments", g.excludedEnchantments(),
+					g.rawExcludeEnchants(), g.filterInvalid(), true);
 			goods.add(o);
 		}
 		offers.add("goods", goods);
@@ -1008,7 +1042,8 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonPrimitive() ? e.getAsString() : fallback;
 	}
 
-	private record ParsedEnchants(List<GoodSpec.GoodEnchant> list, boolean invalid) {}
+	private record ParsedEnchants(List<GoodSpec.GoodEnchant> list, boolean invalid,
+			@Nullable String rawJson) {}
 
 	/** Reads a good's structured enchantment filter from an object or token array.
 	 * Object entries are {@code {id: level}} (0 = absence), token-array entries use the
@@ -1110,7 +1145,8 @@ public final class ConfigPersistence {
 			invalid = true;
 			warnBadEnchant(key, element.toString(), "not an object or array");
 		}
-		return new ParsedEnchants(result, invalid);
+		return new ParsedEnchants(result, invalid,
+				invalid && element != null ? element.toString() : null);
 	}
 
 	private static boolean validRange(int min, int max) {

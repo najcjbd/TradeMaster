@@ -93,7 +93,10 @@ public final class McNbt {
 			var id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
 			if (id != null) enchantments.putInt(id.toString(), entry.getIntValue());
 		}
-		if (!enchantments.isEmpty()) view.put("minecraft:enchantments", enchantments);
+		if (!enchantments.isEmpty()) {
+			view.put(stack.is(net.minecraft.world.item.Items.ENCHANTED_BOOK)
+					? "minecraft:stored_enchantments" : "minecraft:enchantments", enchantments);
+		}
 		if (stack.isDamageableItem()) view.putInt("minecraft:damage", stack.getDamageValue());
 		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			view.put("minecraft:unbreakable", new CompoundTag());
@@ -145,7 +148,11 @@ public final class McNbt {
 			enchantment.putInt("lvl", entry.getIntValue());
 			enchantments.add(enchantment);
 		}
-		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
+		if (!enchantments.isEmpty()) {
+			// books keep their enchantments in StoredEnchantments in the legacy format
+			legacy.put(stack.is(net.minecraft.world.item.Items.ENCHANTED_BOOK)
+					? "StoredEnchantments" : "Enchantments", enchantments);
+		}
 		// include 0: {Damage:0} is the only way to require an UNDAMAGED item, and the
 		// native component map omits a zero value
 		if (stack.isDamageableItem()) legacy.putInt("Damage", stack.getDamageValue());
