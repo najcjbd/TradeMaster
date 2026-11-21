@@ -118,6 +118,7 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		}));
 		addEntry(new BoolRow("trademaster.settings.tpToVillager", () -> c.tpToVillager, v -> c.tpToVillager = v));
 		addEntry(new BoolRow("trademaster.settings.tpToItem", () -> c.tpToItem, v -> c.tpToItem = v));
+		addEntry(new BoolRow("trademaster.settings.safeTp", () -> c.safeTp, v -> c.safeTp = v));
 		addEntry(new BoolRow("trademaster.settings.preventAxeBreaking", () -> c.preventAxeBreaking, v -> c.preventAxeBreaking = v));
 		addEntry(new BoolRow("trademaster.settings.stopOnPlayerMove", () -> c.stopOnPlayerMove, v -> c.stopOnPlayerMove = v));
 		addEntry(new IntRow("trademaster.settings.placeDelay", () -> c.placeDelay, v -> c.placeDelay = v, 0, 20));

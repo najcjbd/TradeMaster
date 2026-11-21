@@ -1,6 +1,7 @@
 package dev.trademaster.strategy;
 
 import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.anticheat.SafeTeleport;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.core.RunSession;
@@ -142,7 +143,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		if (config.tpToVillager && mc.getConnection() != null && session.villager != null
 				&& session.villager.isAlive()
 				&& session.villager.position().distanceTo(Vec3.atCenterOf(lecternPos)) <= 2) {
-			this.tpReturnPos = player.position();
+			Vec3 returnPos = player.position();
 			Vec3 villagerPos = new Vec3(session.villager.getX(), session.villager.getY(), session.villager.getZ());
 			// never land INSIDE the villager: its collision push would move the player
 			// past the movement guard's tolerance right after the tp exemption ends.
@@ -152,19 +153,28 @@ public class AxeRerollStrategy implements RerollStrategy {
 			Vec3 tpTarget = villagerPos.add(away.lengthSqr() > 1.0E-4
 					? away.normalize().scale(0.8)
 					: new Vec3(0.8, 0.0, 0.0));
-			session.movementGuard.permitTp(tpTarget);
-			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					tpTarget.x, tpTarget.y, tpTarget.z, true, false));
+			if (config.safeTp) {
+				if (SafeTeleport.start(tpTarget, session.movementGuard,
+						() -> this.enterAfterVillagerTp(config))) {
+					this.tpReturnPos = returnPos;
+					return StepResult.RUNNING;
+				}
+			} else {
+				this.tpReturnPos = returnPos;
+				session.movementGuard.permitTp(tpTarget);
+				mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
+						tpTarget.x, tpTarget.y, tpTarget.z, true, false));
+			}
 		}
-		if (config.tpToItem) {
-			this.phase = Phase.PICKUP;
-		} else {
-			this.phase = Phase.PLACE;
-			this.look.reset();
-			this.delayCounter = config.placeDelay;
-		}
-		this.phaseTicks = 0;
+		this.enterAfterVillagerTp(config);
 		return StepResult.RUNNING;
+	}
+
+	private void enterAfterVillagerTp(TradeMasterConfig config) {
+		this.phase = config.tpToItem ? Phase.PICKUP : Phase.PLACE;
+		this.phaseTicks = 0;
+		this.look.reset();
+		if (!config.tpToItem) this.delayCounter = config.placeDelay;
 	}
 
 	/**
@@ -206,9 +216,16 @@ public class AxeRerollStrategy implements RerollStrategy {
 			}
 		}
 		if (mc.getConnection() != null && nearest != null && nearest != this.lastPickupTarget) {
-			if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 			this.lastPickupTarget = nearest;
 			Vec3 target = nearest.position();
+			if (config.safeTp) {
+				if (SafeTeleport.start(target, session.movementGuard, null)) {
+					if (this.tpReturnPos == null) this.tpReturnPos = player.position();
+					return StepResult.RUNNING;
+				}
+				return StepResult.RUNNING;
+			}
+			if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 			session.movementGuard.permitTp(target);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
 					target.x, target.y, target.z, true, false));
@@ -229,9 +246,15 @@ public class AxeRerollStrategy implements RerollStrategy {
 
 		// Teleport back immediately, like LTF does at the start of PLACE.
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
-			session.movementGuard.permitTp(this.tpReturnPos);
+			Vec3 returnPos = this.tpReturnPos;
+			if (config.safeTp) {
+				if (SafeTeleport.start(returnPos, session.movementGuard, () -> this.tpReturnPos = null)) {
+					return StepResult.RUNNING;
+				}
+			}
+			session.movementGuard.permitTp(returnPos);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+					returnPos.x, returnPos.y, returnPos.z, true, false));
 			this.tpReturnPos = null;
 		}
 
@@ -293,6 +316,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// interrupted mid-teleport (BREAK tp'd to the villager, PICKUP tp'd to a
 		// drop): bring the player back to the rig, otherwise they are stranded at
 		// the last teleport target — the normal path only tp's back in tickPlace
+		SafeTeleport.abort();
 		if (this.tpReturnPos != null) {
 			Minecraft mc = Minecraft.getInstance();
 			if (mc.getConnection() != null && this.session != null) {

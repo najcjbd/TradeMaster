@@ -765,6 +765,13 @@ public final class RerollController {
 			}
 		}
 
+		// Server-friendly tp: the strategy/guardian started a small-step move. Its
+		// phase must not tick until arrival; the continuation runs on completion.
+		if (dev.trademaster.anticheat.SafeTeleport.isActive()
+				&& !dev.trademaster.anticheat.SafeTeleport.tick()) {
+			return;
+		}
+
 		switch (phase) {
 			case PRECHECK -> tickPrecheck(client, player, s);
 			case SUMMON -> tickSummon(s);
@@ -3444,6 +3451,9 @@ public final class RerollController {
 	}
 
 	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
+		// a safe teleport in flight must not keep stepping after the run is dropped;
+		// the strategy/guardian abort below sends the raw return to the rig
+		dev.trademaster.anticheat.SafeTeleport.abort();
 		// a forced stop (death, dimension change, the deferred-stop backstop) can land
 		// while a purchase click is out: remember the targets so the NEXT run does not
 		// buy a second copy of an item that may already have been delivered

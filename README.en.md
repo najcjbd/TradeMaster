@@ -294,6 +294,7 @@ The **Villagers** tab turns the whole rig from "lectern + librarian" into any **
 | `placeDelay` / `interactDelay` | 3 / 2 | Delay between placement and interaction (ticks) — **only while `slowMode` is on** |
 | `tpToVillager` | off | Teleports to the villager before interacting (**can be detected by anti-cheat**) |
 | `tpToItem` | off | Teleports to the lectern drops after breaking (**same risk**) |
+| `safeTp` | on | Safe teleport: client and server step together (<=0.25 blocks/tick) to avoid single-packet `moved wrongly`; off uses the old fast raw teleport |
 
 ## Settings reference
 
@@ -362,7 +363,7 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 - **Do not** run this alongside LibrarianTradeFinder: both intercept the same merchant packets and will fight each other.
 - **[VisibleTraders](https://github.com/Ramixin/VisibleTraders)** (optional, a **server-side mod**): it pre-shows a villager's still-locked future trades inside the merchant screen, but those entries exist only on the client and **cannot be bought early**. This mod enables "VisibleTraders compatibility" by default: matching and locking read only the **server-confirmed offer list** and never treat the pre-shown locked entries as tradable; the server payload confirms it is actually installed. Without the server mod behavior is identical to a normal server; the client mod alone does nothing.
 - clientcommands: only a "is it loaded" probe and a coexistence log line; **its API is not used**.
-- `tpToVillager` / `tpToItem` can be detected on anti-cheat enabled servers; both default to **off**.
+- `tpToVillager` / `tpToItem` default to **off**; when enabled they use the `safeTp` small-step movement (server-friendly). Only turning `safeTp` off uses the raw single-packet teleport, which can be detected on anti-cheat enabled servers.
 - This is a **client** mod designed for your own rig / single-player setup.
 
 ## Building

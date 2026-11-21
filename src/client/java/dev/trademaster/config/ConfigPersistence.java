@@ -118,6 +118,7 @@ public final class ConfigPersistence {
 					|| root.has("enchantments");
 			c.preventAxeBreaking = readBool(root, "preventAxeBreaking", c.preventAxeBreaking);
 			c.tpToVillager = readBool(root, "tpToVillager", c.tpToVillager);
+			c.safeTp = readBool(root, "safeTp", c.safeTp);
 			c.legitMode = readBool(root, "legitMode", c.legitMode);
 			c.slowMode = readBool(root, "slowMode", c.slowMode);
 			// same coupling as the settings UIs: slow mode requires legit
@@ -380,6 +381,7 @@ public final class ConfigPersistence {
 		antiCheat.addProperty("legitMode", c.legitMode);
 		antiCheat.addProperty("slowMode", c.slowMode);
 		antiCheat.addProperty("tpToVillager", c.tpToVillager);
+		antiCheat.addProperty("safeTp", c.safeTp);
 		antiCheat.addProperty("tpToItem", c.tpToItem);
 		antiCheat.addProperty("preventAxeBreaking", c.preventAxeBreaking);
 		antiCheat.addProperty("stopOnPlayerMove", c.stopOnPlayerMove);
@@ -741,6 +743,7 @@ public final class ConfigPersistence {
 			// same coupling as the legacy flat path: slow mode without legit is meaningless
 			if (c.slowMode) c.legitMode = true;
 			c.tpToVillager = readBool(antiCheat, "tpToVillager", c.tpToVillager);
+			c.safeTp = readBool(antiCheat, "safeTp", c.safeTp);
 			c.tpToItem = readBool(antiCheat, "tpToItem", c.tpToItem);
 			c.preventAxeBreaking = readBool(antiCheat, "preventAxeBreaking", c.preventAxeBreaking);
 			c.stopOnPlayerMove = readBool(antiCheat, "stopOnPlayerMove", c.stopOnPlayerMove);

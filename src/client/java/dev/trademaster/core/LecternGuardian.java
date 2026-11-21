@@ -1,6 +1,7 @@
 package dev.trademaster.core;
 
 import dev.trademaster.anticheat.LookStep;
+import dev.trademaster.anticheat.SafeTeleport;
 import dev.trademaster.anticheat.SmoothRotation;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.strategy.LecternRestock;
@@ -176,9 +177,14 @@ public class LecternGuardian {
 
 		// Back from the pickup trip before any placement attempt.
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
-			session.movementGuard.permitTp(this.tpReturnPos);
+			Vec3 returnPos = this.tpReturnPos;
+			if (TradeMasterConfig.INSTANCE.safeTp
+					&& SafeTeleport.start(returnPos, session.movementGuard, () -> this.tpReturnPos = null)) {
+				return StepResult.RUNNING;
+			}
+			session.movementGuard.permitTp(returnPos);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+					returnPos.x, returnPos.y, returnPos.z, true, false));
 			this.tpReturnPos = null;
 		}
 
@@ -275,9 +281,16 @@ public class LecternGuardian {
 			}
 		}
 		if (mc.getConnection() != null && nearest != null && nearest != this.lastPickupTarget) {
-			if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 			this.lastPickupTarget = nearest;
 			Vec3 target = nearest.position();
+			if (TradeMasterConfig.INSTANCE.safeTp) {
+				if (SafeTeleport.start(target, session.movementGuard, null)) {
+					if (this.tpReturnPos == null) this.tpReturnPos = player.position();
+					return true;
+				}
+				return true;
+			}
+			if (this.tpReturnPos == null) this.tpReturnPos = player.position();
 			session.movementGuard.permitTp(target);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
 					target.x, target.y, target.z, true, false));
@@ -290,9 +303,14 @@ public class LecternGuardian {
 	 * displaced would make CHECK_TRADE read the villager as having walked off it. */
 	private StepResult finishWithReturn(Minecraft mc, RunSession session) {
 		if (this.tpReturnPos != null && mc.getConnection() != null) {
-			session.movementGuard.permitTp(this.tpReturnPos);
+			Vec3 returnPos = this.tpReturnPos;
+			if (TradeMasterConfig.INSTANCE.safeTp
+					&& SafeTeleport.start(returnPos, session.movementGuard, () -> this.tpReturnPos = null)) {
+				return StepResult.RUNNING;
+			}
+			session.movementGuard.permitTp(returnPos);
 			mc.getConnection().send(new ServerboundMovePlayerPacket.Pos(
-					this.tpReturnPos.x, this.tpReturnPos.y, this.tpReturnPos.z, true, false));
+					returnPos.x, returnPos.y, returnPos.z, true, false));
 			this.tpReturnPos = null;
 		}
 		return StepResult.DONE;
@@ -304,6 +322,7 @@ public class LecternGuardian {
 	}
 
 	public void abort() {
+		SafeTeleport.abort();
 		// interrupted mid pickup-trip: bring the player back to the rig, otherwise
 		// they are stranded at the last teleport target
 		if (this.tpReturnPos != null) {
