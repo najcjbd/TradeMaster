@@ -373,11 +373,9 @@ public final class RerollController {
 		if (!pendingUnprovenMatches.isEmpty()) {
 			Identifier currentDimension = mc.level == null ? null
 					: mc.level.dimension().identifier();
-			if (pendingUnprovenDimension != null && !pendingUnprovenDimension.equals(currentDimension)) {
-				// captured in another world/dimension: never replay it here
-				pendingUnprovenMatches.clear();
-				pendingUnprovenDimension = null;
-			} else {
+			boolean appliesHere = pendingUnprovenDimension == null
+					|| pendingUnprovenDimension.equals(currentDimension);
+			if (appliesHere) {
 				s.lockedIds.addAll(pendingUnprovenMatches);
 				carriedUnproven = true;
 				chat(Component.translatable("trademaster.message.unproven_skipped",
@@ -387,6 +385,8 @@ public final class RerollController {
 				// NOT cleared yet: a rejected start (missing axe/materials) must keep
 				// the skip for the retry; it is consumed only when the run starts
 			}
+			// captured in another dimension: keep it for when the player returns.
+			// Dropping it there would re-demand a possibly-delivered item (double buy).
 		}
 		// sand-wheel mode definition snapshot: a mid-run change to the enable flag
 		// or the grindstone position stops the run (see grindstoneConfigChanged)

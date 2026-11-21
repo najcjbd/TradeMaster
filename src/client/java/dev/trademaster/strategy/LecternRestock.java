@@ -542,17 +542,24 @@ public final class LecternRestock {
 		private static final int TICKS_PER_TRY = 60;
 
 		public Result tick(LocalPlayer player, boolean restocked) {
-			// only a LANDED batch is progress. restock() also returns true while it is
-			// merely waiting (dirty cursor / in-flight batch); resetting on that made
-			// the failure budget unreachable before the 200-tick phase timeout.
-			if (restocked && offhandHasWorkItem(player)) {
+			var work = RigTarget.workItem();
+			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
+			return tick(restocked, offhandHasWorkItem(player), carried);
+		}
+
+		/** Pure state machine, so the budgets can be tested without a client. */
+		Result tick(boolean restocked, boolean offhand, boolean carried) {
+			// only a FULLY SETTLED batch is progress: restock() also returns true while
+			// it is merely waiting (dirty cursor / in-flight batch); resetting on that
+			// made the failure budget unreachable before the 200-tick phase timeout
+			if (restocked && offhand) {
 				this.ticks = 0;
 				this.resetTried = false;
 				return Result.WAIT;
 			}
-			var work = RigTarget.workItem();
-			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
-			if (!carried) return Result.FAIL;
+			// a batch in flight may have the lectern on the CURSOR, which countItem does
+			// not see: never report "lost" while restock() still reports progress
+			if (!restocked && !carried) return Result.FAIL;
 			if (this.ticks++ < TICKS_PER_TRY) return Result.WAIT;
 			if (!this.resetTried) {
 				this.resetTried = true;
