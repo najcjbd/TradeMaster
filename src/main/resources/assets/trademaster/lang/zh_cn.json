@@ -97,6 +97,7 @@
   "trademaster.status.deposit": "存放附魔书到箱子中",
   "trademaster.message.started": "Trade Master 已启动",
   "trademaster.message.stopped": "Trade Master 已停止",
+  "trademaster.message.stop_deferred": "当前锁定/送走完成后停止",
   "trademaster.message.all_done": "所有附魔均已找到，停止运行",
   "trademaster.message.player_moved": "玩家移动，停止运行",
   "trademaster.message.player_died": "玩家死亡，停止运行",
