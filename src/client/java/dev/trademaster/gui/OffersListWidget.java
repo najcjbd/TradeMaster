@@ -871,7 +871,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		for (GoodSpec.GoodEnchant enchantment : enchantments) {
 			if (!text.isEmpty()) text.append(", ");
 			text.append(enchantment.id());
-			if (enchantment.level() > 0) text.append(':').append(enchantment.level());
+			if (enchantment.level() > 0) {
+				text.append(':').append(enchantment.level());
+				if (enchantment.atLeast()) text.append("..");
+			}
 		}
 		for (GoodSpec.GoodEnchant enchantment : excluded) {
 			if (!text.isEmpty()) text.append(", ");
@@ -883,34 +886,46 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	record EnchantFilter(List<GoodSpec.GoodEnchant> include, List<GoodSpec.GoodEnchant> exclude) {}
 
 	static @Nullable EnchantFilter parseGoodEnchants(String raw) {
-		LinkedHashMap<Identifier, Integer> include = new LinkedHashMap<>();
-		LinkedHashMap<Identifier, Integer> exclude = new LinkedHashMap<>();
+		LinkedHashMap<Identifier, GoodSpec.GoodEnchant> include = new LinkedHashMap<>();
+		LinkedHashMap<Identifier, GoodSpec.GoodEnchant> exclude = new LinkedHashMap<>();
 		if (raw != null) {
 			for (String token : raw.split("[,;\\s]+")) {
 				if (token.isBlank()) continue;
 				boolean negated = token.startsWith("!");
-				String idText = negated ? token.substring(1) : token;
+				String text = negated ? token.substring(1) : token;
+				String idText = text;
 				int level = 0;
+				boolean atLeast = false;
 				int split = idText.lastIndexOf(':');
 				if (split > 0) {
-					try {
-						level = Integer.parseInt(idText.substring(split + 1));
-						idText = idText.substring(0, split);
-					} catch (NumberFormatException ignored) {
-						// the last colon belongs to the id
+					String suffix = idText.substring(split + 1);
+					if (suffix.endsWith("..")) {
+						atLeast = true;
+						suffix = suffix.substring(0, suffix.length() - 2);
+					}
+					if (!suffix.isEmpty() && suffix.chars().allMatch(Character::isDigit)) {
+						try {
+							level = Integer.parseInt(suffix);
+							idText = idText.substring(0, split);
+						} catch (NumberFormatException ignored) {
+							return null;
+						}
+					} else if (atLeast) {
+						return null;
 					}
 				}
 				Identifier id = TradeMasterConfig.parseId(idText);
-				if (id == null) return null;
-				(negated ? exclude : include).merge(id,
-						negated ? 0 : Math.max(0, Math.min(99, level)), Math::max);
+				if (id == null || (negated && (level > 0 || atLeast))) return null;
+				GoodSpec.GoodEnchant enchantment = new GoodSpec.GoodEnchant(id,
+						negated ? 0 : Math.max(0, Math.min(99, level)), !negated && atLeast);
+				if (negated) {
+					if (include.containsKey(id) || exclude.putIfAbsent(id, enchantment) != null) return null;
+				} else {
+					if (exclude.containsKey(id) || include.putIfAbsent(id, enchantment) != null) return null;
+				}
 			}
 		}
-		List<GoodSpec.GoodEnchant> inc = new ArrayList<>();
-		for (var entry : include.entrySet()) inc.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
-		List<GoodSpec.GoodEnchant> exc = new ArrayList<>();
-		for (var entry : exclude.entrySet()) exc.add(new GoodSpec.GoodEnchant(entry.getKey(), 0));
-		return new EnchantFilter(List.copyOf(inc), List.copyOf(exc));
+		return new EnchantFilter(List.copyOf(include.values()), List.copyOf(exclude.values()));
 	}
 
 	/** Adds a good: type the result item id and click the plus. */

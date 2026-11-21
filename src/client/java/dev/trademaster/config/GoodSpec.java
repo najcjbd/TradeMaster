@@ -26,9 +26,19 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 		List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
 
-	public record GoodEnchant(Identifier id, int level) {
+	public record GoodEnchant(Identifier id, int level, boolean atLeast) {
 		public GoodEnchant {
 			level = Math.max(0, Math.min(99, level));
+			if (level == 0) atLeast = false;
+		}
+
+		public GoodEnchant(Identifier id, int level) {
+			this(id, level, false);
+		}
+
+		public boolean levelMatches(int liveLevel) {
+			if (this.level <= 0) return true;
+			return this.atLeast ? liveLevel >= this.level : liveLevel == this.level;
 		}
 	}
 
@@ -63,11 +73,17 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 
 	public boolean filterValid() {
 		if (!McNbt.valid(this.filterNbt) || !McNbt.valid(this.filterNbtExclude)) return false;
+		Set<String> include = new LinkedHashSet<>();
+		Set<String> exclude = new LinkedHashSet<>();
 		for (GoodEnchant enchantment : this.filterEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (exclude.contains(enchantment.id().toString())) return false;
+			if (!include.add(enchantment.id().toString())) return false;
 		}
 		for (GoodEnchant enchantment : this.excludedEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (include.contains(enchantment.id().toString())) return false;
+			if (!exclude.add(enchantment.id().toString())) return false;
 		}
 		return true;
 	}
@@ -92,8 +108,7 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 						break;
 					}
 				}
-				if (level < 0) return false;
-				if (wanted.level() > 0 && level < wanted.level()) return false;
+				if (level < 0 || !wanted.levelMatches(level)) return false;
 			}
 		}
 		if (!this.excludedEnchantments.isEmpty()) {
