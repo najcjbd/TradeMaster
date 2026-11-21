@@ -102,7 +102,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 **完整配置**（示例文件）：
 
 - `configVersion: 1`（旧版，加载时自动迁移）；含旧键 `lockTarget: BOOK_TRADE`（当前版本已不读取）
-- mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`
+- mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`compatibleWithVisibleTraders=true`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`
 - naming：`enabled=false`、`forceNamePriceOne=true`、`customNames={}`
 - antiCheat：`legitMode=true`、`slowMode=false`、`tpToVillager=true`、`preventAxeBreaking=false`、`stopOnPlayerMove=true`、`placeDelay=3`、`interactDelay=2`（配置中没有 `tpToItem` 键，使用默认值）
 - hotkeys：`startStop=""`、`pickPosition=KP_3`
@@ -276,6 +276,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 | 机制 | 继续找更便宜的 | 关 | 命中后保留「只接受更便宜」的预约槽 |
 | 机制 | 最低锁定绿宝石 | 1 | 1~64 |
 | 机制 | 单书多附魔保障 | 关 | 预检底线强制 ≥ 64（配合改过图书管理员职业的数据包） |
+| 机制 | 兼容 VisibleTraders | 开 | 服务端装了 [VisibleTraders](https://github.com/Ramixin/VisibleTraders) 时，匹配/锁定只使用服务端确认的交易，不把提前显示但尚未解锁的条目当成可交易项 |
 | 机制 | 全局超时 / 时长 | 关 / 1h | 支持 `1h`、`30min`、`1m`、`90s`；裸数字 = tick |
 | 机制 | 阶段超时 | 开 | 单阶段看门狗 |
 | 机制 | 村民检查间隔 | 1s | 1~72000 tick |
@@ -321,6 +322,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 ## 兼容性与风险
 
 - **不要**与 LibrarianTradeFinder 同时启用：两者拦截同一批商人封包，会互相干扰。
+- **[VisibleTraders](https://github.com/Ramixin/VisibleTraders)**（可选，**服务端模组**）：它会在交易界面提前显示村民尚未解锁的未来交易，但这些条目只在客户端存在、**不能提前购买**。本模组默认开启「兼容 VisibleTraders」：匹配与锁定只读取**服务端确认的交易列表**，绝不把提前显示的锁定条目当成可交易项；在 1.20.5+ 还会通过服务端的 `visibletraders:locked_trades` 数据包确认对方确实安装（更早的节点无条件使用安全的服务端列表，不依赖该数据包）。服务端没装时行为与普通服务器完全一致；只装客户端没有服务端也不会生效。
 - clientcommands：仅做「是否加载」探测与共存日志，**不使用其 API**。
 - `tpToVillager` / `tpToItem` 在带反作弊的服务器上有被检测风险，默认**关闭**。
 - 本模组为**客户端**模组，设计场景是玩家自己的装置 / 单人存档。

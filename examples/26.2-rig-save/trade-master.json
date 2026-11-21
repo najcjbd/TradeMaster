@@ -6,6 +6,7 @@
     "lockTarget": "BOOK_TRADE",
     "reserveCheaperTraders": false,
     "minLockEmeralds": 1,
+    "compatibleWithVisibleTraders": true,
     "timeoutEnabled": false,
     "timeoutTicks": "1h",
     "phaseTimeoutsEnabled": true,

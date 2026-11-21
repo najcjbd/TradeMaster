@@ -7,6 +7,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.protocol.game.ServerboundSelectTradePacket;
 import dev.trademaster.compat.McClicks;
 import dev.trademaster.compat.McItem;
+import dev.trademaster.compat.VisibleTradersCompat;
 import net.minecraft.world.inventory.MerchantMenu;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -260,7 +261,7 @@ public class LockTradeExecutor {
 		// Defensive, unreachable today (audited 2026-09-19): LOCK always supplies a
 		// fingerprint (RerollController:1156), so expected is never null here.
 		if (this.expected == null) return true;
-		var offers = this.menu.getOffers();
+		var offers = VisibleTradersCompat.menuOffers(this.menu);
 		if (this.slot < 0 || this.slot >= offers.size()) return false;
 		var offer = offers.get(this.slot);
 		if (offer.isOutOfStock()) return false;

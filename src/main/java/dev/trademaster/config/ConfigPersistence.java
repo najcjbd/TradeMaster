@@ -272,6 +272,7 @@ public final class ConfigPersistence {
 		mechanism.addProperty("discountedPriceAsSalePrice", c.discountedPriceAsSalePrice);
 		// downgrade compatibility: older builds read the inverse key (base as sale)
 		mechanism.addProperty("basePriceAsSalePrice", !c.discountedPriceAsSalePrice);
+		mechanism.addProperty("compatibleWithVisibleTraders", c.compatibleWithVisibleTraders);
 		mechanism.addProperty("timeoutEnabled", c.timeoutEnabled);
 		mechanism.addProperty("timeoutTicks", DurationParser.format(c.timeoutTicks));
 		mechanism.addProperty("phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);
@@ -426,6 +427,8 @@ public final class ConfigPersistence {
 				// migrate the old "base price as sale" option: true meant discounted OFF
 				c.discountedPriceAsSalePrice = !readBool(mechanism, "basePriceAsSalePrice", true);
 			}
+			c.compatibleWithVisibleTraders = readBool(mechanism, "compatibleWithVisibleTraders",
+					c.compatibleWithVisibleTraders);
 			c.timeoutEnabled = readBool(mechanism, "timeoutEnabled", c.timeoutEnabled);
 			c.timeoutTicks = readDuration(mechanism, "timeoutTicks", c.timeoutTicks);
 			c.phaseTimeoutsEnabled = readBool(mechanism, "phaseTimeoutsEnabled", c.phaseTimeoutsEnabled);

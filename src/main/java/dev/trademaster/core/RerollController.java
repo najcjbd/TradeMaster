@@ -10,6 +10,7 @@ import dev.trademaster.compat.McItem;
 import dev.trademaster.compat.McEnchantments;
 import dev.trademaster.compat.McBuiltIn;
 import dev.trademaster.compat.McText;
+import dev.trademaster.compat.VisibleTradersCompat;
 import dev.trademaster.config.ConfigPersistence;
 import dev.trademaster.config.DetectionMode;
 import dev.trademaster.config.EnchantmentTarget;
@@ -1781,7 +1782,7 @@ public final class RerollController {
 				finishLock(s);
 				return;
 			}
-			MerchantOffers offers = menu.getOffers();
+			MerchantOffers offers = VisibleTradersCompat.menuOffers(menu);
 			if (offers.isEmpty()) return; // offers packet not applied yet
 			if (s.matchedTrade != null && !matchedOfferUnchanged(offers, s.matchedTrade)) {
 				// the offer recorded at detection is gone or drifted (profession

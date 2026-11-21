@@ -1,11 +1,13 @@
 package dev.trademaster.mixin;
 
+import dev.trademaster.compat.VisibleTradersCompat;
 import dev.trademaster.detection.DetectionHub;
 import io.netty.channel.ChannelHandlerContext;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.network.Connection;
 import net.minecraft.network.protocol.Packet;
+import net.minecraft.network.protocol.game.ClientboundLoginPacket;
 import net.minecraft.network.protocol.game.ClientboundMerchantOffersPacket;
 import net.minecraft.network.protocol.game.ClientboundOpenScreenPacket;
 import net.minecraft.network.protocol.game.ServerboundContainerClosePacket;
@@ -45,6 +47,19 @@ public class ConnectionMixin {
 			}
 		} else if (packet instanceof ClientboundMerchantOffersPacket offersPacket) {
 			DetectionHub.onOffersPacket(offersPacket.getOffers(), offersPacket.getContainerId());
+		} else if (packet instanceof ClientboundLoginPacket) {
+			// a fresh connection may point at a different server: forget the last
+			// session's VisibleTraders discovery until its payload proves it again
+			VisibleTradersCompat.reset();
 		}
+		//? if >=1.20.5 {
+		else if (packet instanceof net.minecraft.network.protocol.common.ClientboundCustomPayloadPacket custom) {
+			VisibleTradersCompat.onServerCustomPayload(custom);
+		}
+		//?} else {
+		/*else if (packet instanceof net.minecraft.network.protocol.game.ClientboundCustomPayloadPacket custom) {
+			VisibleTradersCompat.onServerCustomPayload(custom);
+		}*/
+		//?}
 	}
 }

@@ -51,8 +51,24 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
-	void discountedPriceAsSalePriceRoundTripsAndDefaultsOff() {
-		assertFalse(TradeMasterConfig.defaults().discountedPriceAsSalePrice);
+	void compatibleWithVisibleTradersDefaultsOnAndRoundTrips() {
+		assertTrue(TradeMasterConfig.defaults().compatibleWithVisibleTraders);
+
+		c().compatibleWithVisibleTraders = false;
+		JsonObject root = ConfigTest.write(c());
+		assertFalse(root.getAsJsonObject("mechanism").get("compatibleWithVisibleTraders").getAsBoolean());
+
+		c().compatibleWithVisibleTraders = true;
+		ConfigTest.read(c(), root);
+		assertFalse(c().compatibleWithVisibleTraders);
+
+		// an absent key keeps the current value (the loader's fallback convention)
+		ConfigTest.read(c(), parse("{\"mechanism\":{}}"));
+		assertFalse(c().compatibleWithVisibleTraders);
+	}
+
+	@Test
+	void discountedPriceAsSalePriceRoundTripsAndDefaultsOff() {		assertFalse(TradeMasterConfig.defaults().discountedPriceAsSalePrice);
 
 		c().discountedPriceAsSalePrice = true;
 		JsonObject root = ConfigTest.write(c());

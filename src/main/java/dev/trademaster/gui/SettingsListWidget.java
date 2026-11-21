@@ -119,6 +119,8 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		addEntry(new CycleRow("trademaster.settings.detection",
 				() -> c.detectionMode.displayName(),
 				cycle -> c.detectionMode = dev.trademaster.config.DetectionMode.valueOf(nextEnum(c.detectionMode.name(), dev.trademaster.config.DetectionMode.values(), cycle))));
+		addEntry(new BoolRow("trademaster.settings.compatibleWithVisibleTraders",
+				() -> c.compatibleWithVisibleTraders, v -> c.compatibleWithVisibleTraders = v));
 
 		addEntry(new BoolRow("trademaster.settings.reserveCheaperTraders", () -> c.reserveCheaperTraders, v -> c.reserveCheaperTraders = v));
 		addEntry(new IntRow("trademaster.settings.minLockEmeralds", () -> c.minLockEmeralds, v -> c.minLockEmeralds = v, 1, 64));

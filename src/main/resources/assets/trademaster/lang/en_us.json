@@ -24,6 +24,8 @@
   "trademaster.settings.minLockEmeralds": "Min emeralds to lock",
   "trademaster.settings.discountedPriceAsSalePrice": "Discounted price as sale price",
   "trademaster.settings.discountedPriceAsSalePrice.comment": "When on: match against the actually charged price (discounts and demand included); when off (default): match against the offer's base price. Cannot be changed while a run is active.",
+  "trademaster.settings.compatibleWithVisibleTraders": "VisibleTraders compatibility",
+  "trademaster.settings.compatibleWithVisibleTraders.comment": "VisibleTraders is a server-side mod that pre-shows a villager's still-locked future trades inside the merchant screen; those entries cannot be bought yet. With this on (default), only the server-confirmed offers are used for matching and locking, never the client-only locked entries. The server payload proves the mod is actually installed on the other side.",
   "trademaster.settings.multiEnchantProtection": "Multi-enchantment book safeguard",
   "trademaster.settings.villagerSphereRadius": "Staging sphere radius",
   "trademaster.settings.postDispatchBreakRetries": "Post-dispatch break retry limit",

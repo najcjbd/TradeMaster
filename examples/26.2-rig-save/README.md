@@ -37,7 +37,7 @@
 ## 配置摘要
 
 - `configVersion: 1`（加载时迁移）；含旧键 `lockTarget: BOOK_TRADE`（当前版本不读取）。
-- mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`。
+- mechanism：`reroll=AXE`、`detection=PACKET`、`reserveCheaperTraders=false`、`minLockEmeralds=1`、`compatibleWithVisibleTraders=true`、`timeoutEnabled=false`、`timeoutTicks=1h`、`phaseTimeoutsEnabled=true`、`villagerCheckInterval=1s`、`lecternHealGrace=6s`、`professionHealCapEnabled=false`、`professionHealCap=3`、`autoDisableAfterLock=true`、`displayRolls=true`、`debugLog=true`。
 - naming：`enabled=false`、`forceNamePriceOne=true`、`customNames={}`。
 - antiCheat：`legitMode=true`、`slowMode=false`、`tpToVillager=true`、`preventAxeBreaking=false`、`stopOnPlayerMove=true`、`placeDelay=3`、`interactDelay=2`（没有 `tpToItem` 键，使用默认值）。
 - hotkeys：`startStop=""`、`pickPosition=KP_3`。
