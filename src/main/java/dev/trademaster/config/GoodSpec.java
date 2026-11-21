@@ -35,10 +35,22 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 		List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
 
-	/** One structured enchantment requirement. {@code level <= 0} means presence only. */
-	public record GoodEnchant(ResourceLocation id, int level) {
+	/** One structured enchantment requirement. {@code level <= 0} means presence only;
+	 * a positive level is exact unless {@code atLeast} is set. */
+	public record GoodEnchant(ResourceLocation id, int level, boolean atLeast) {
 		public GoodEnchant {
 			level = Math.max(0, Math.min(99, level));
+			if (level == 0) atLeast = false;
+		}
+
+		public GoodEnchant(ResourceLocation id, int level) {
+			this(id, level, false);
+		}
+
+		/** Whether a live enchantment level satisfies this requirement. */
+		public boolean levelMatches(int liveLevel) {
+			if (this.level <= 0) return true;
+			return this.atLeast ? liveLevel >= this.level : liveLevel == this.level;
 		}
 	}
 
@@ -77,11 +89,17 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 	/** Whether both raw NBT filters parse and every structured enchantment id is usable. */
 	public boolean filterValid() {
 		if (!McNbt.valid(this.filterNbt) || !McNbt.valid(this.filterNbtExclude)) return false;
+		Set<String> include = new LinkedHashSet<>();
+		Set<String> exclude = new LinkedHashSet<>();
 		for (GoodEnchant enchantment : this.filterEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (exclude.contains(enchantment.id().toString())) return false;
+			if (!include.add(enchantment.id().toString())) return false;
 		}
 		for (GoodEnchant enchantment : this.excludedEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (include.contains(enchantment.id().toString())) return false;
+			if (!exclude.add(enchantment.id().toString())) return false;
 		}
 		return true;
 	}
@@ -107,8 +125,7 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 						break;
 					}
 				}
-				if (level < 0) return false;
-				if (wanted.level() > 0 && level < wanted.level()) return false;
+				if (level < 0 || !wanted.levelMatches(level)) return false;
 			}
 		}
 		if (!this.excludedEnchantments.isEmpty()) {

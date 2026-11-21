@@ -177,10 +177,11 @@ something else into a librarian's trade).
 - Five editable rows sit below each good (filters are optional):
   - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id:level, id, !id`, e.g.
-    `minecraft:sharpness:5, minecraft:mending, !minecraft:fire_aspect`. A positive
-    level requires **at least** that level; level 0 (or an id alone) only requires
-    presence; `!id` means **must not have**; extra enchantments are allowed.
+  - **Enchantments**: `id` / `id:0` = presence only; `id:N` = **exact N**;
+    `id:N..` = **N or above**; `!id` = **must not have**. Examples:
+    `minecraft:sharpness:5` matches only level 5, `minecraft:sharpness:5..` matches
+    level 5 and above. A repeated id (e.g. `:5,:6`) is invalid and is not saved.
+    Extra enchantments are allowed.
   - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ the native form
     is the **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`);
     on 1.20.4- it is the **item tag** (e.g.

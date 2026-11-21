@@ -240,16 +240,18 @@ class ConfigRoundTripTest {
 		c().goods.add(new GoodSpec(key, result, 1, true, 30,
 				TradeOfferSpec.defaultGoodCosts(), "Excalibur",
 				List.of(new GoodSpec.GoodEnchant(McIds.mc("sharpness"), 3),
-						new GoodSpec.GoodEnchant(McIds.mc("mending"), 0)),
-				"{Damage:0}", List.of(new GoodSpec.GoodEnchant(McIds.mc("mending"), 0)), "{Damage:1}"));
+						new GoodSpec.GoodEnchant(McIds.mc("mending"), 0),
+						new GoodSpec.GoodEnchant(McIds.mc("efficiency"), 5, true)),
+				"{Damage:0}", List.of(new GoodSpec.GoodEnchant(McIds.mc("unbreaking"), 0)), "{Damage:1}"));
 
 		JsonObject root = ConfigTest.write(c());
 		JsonObject written = root.getAsJsonObject("offers")
 				.getAsJsonArray("goods").get(0).getAsJsonObject();
 		assertEquals(key.toString(), written.get("id").getAsString());
 		assertEquals("Excalibur", written.get("name").getAsString());
-		assertEquals(3, written.getAsJsonObject("enchantments")
-				.get(McIds.mc("sharpness").toString()).getAsInt());
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("sharpness:3"));
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("efficiency:5.."));
+		assertEquals("minecraft:unbreaking", written.getAsJsonArray("excludeEnchantments").get(0).getAsString());
 		assertEquals("{Damage:0}", written.get("nbt").getAsString());
 
 		c().goods.clear();
@@ -259,7 +261,11 @@ class ConfigRoundTripTest {
 		assertEquals(key, read.id());
 		assertEquals(result, read.result());
 		assertEquals("Excalibur", read.filterName());
-		assertEquals(2, read.filterEnchantments().size());
+		assertEquals(3, read.filterEnchantments().size());
+		assertFalse(read.filterEnchantments().get(0).atLeast());
+		assertEquals(3, read.filterEnchantments().get(0).level());
+		assertTrue(read.filterEnchantments().get(2).atLeast());
+		assertEquals(5, read.filterEnchantments().get(2).level());
 		assertEquals("{Damage:0}", read.filterNbt());
 		assertEquals(1, read.excludedEnchantments().size());
 		assertEquals("{Damage:1}", read.filterNbtExclude());

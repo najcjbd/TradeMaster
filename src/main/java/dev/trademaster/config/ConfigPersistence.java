@@ -655,8 +655,8 @@ public final class ConfigPersistence {
 					if (costs.isEmpty()) costs = TradeOfferSpec.defaultGoodCosts();
 					String filterName = readString(o, "name", "");
 					String filterNbt = readString(o, "nbt", "");
-					List<GoodSpec.GoodEnchant> enchants = readGoodEnchants(o.get("enchantments"));
-					List<GoodSpec.GoodEnchant> excluded = readGoodEnchants(o.get("excludeEnchantments"));
+					List<GoodSpec.GoodEnchant> enchants = readGoodEnchants(o.get("enchantments"), false);
+					List<GoodSpec.GoodEnchant> excluded = readGoodEnchants(o.get("excludeEnchantments"), true);
 					String excludeNbt = readString(o, "excludeNbt", "");
 					c.goods.add(new GoodSpec(key, result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
@@ -739,6 +739,12 @@ public final class ConfigPersistence {
 	/** Tolerates hand-edited files where a section has the wrong JSON type
 	 * (e.g. "mechanism": []): skip the section instead of throwing and
 	 * aborting every later section. */
+	/** The editable token for a good enchantment filter: presence, exact, or at-least. */
+	private static String enchantmentToken(GoodSpec.GoodEnchant enchantment) {
+		if (enchantment.level() <= 0) return enchantment.id().toString();
+		return enchantment.id() + ":" + enchantment.level() + (enchantment.atLeast() ? ".." : "");
+	}
+
 	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
 	 * positions are preserved (slot 2 stays slot 2), so hand-added slots 3..N survive
 	 * a save and are matched positionally. */
@@ -795,18 +801,18 @@ public final class ConfigPersistence {
 			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
 			else o.remove("excludeNbt");
 			if (!g.filterEnchantments().isEmpty()) {
-				JsonObject enchants = new JsonObject();
+				JsonArray enchants = new JsonArray();
 				for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
-					enchants.addProperty(enchantment.id().toString(), enchantment.level());
+					enchants.add(enchantmentToken(enchantment));
 				}
 				o.add("enchantments", enchants);
 			} else {
 				o.remove("enchantments");
 			}
 			if (!g.excludedEnchantments().isEmpty()) {
-				JsonObject excluded = new JsonObject();
+				JsonArray excluded = new JsonArray();
 				for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
-					excluded.addProperty(enchantment.id().toString(), 0);
+					excluded.add(enchantment.id().toString());
 				}
 				o.add("excludeEnchantments", excluded);
 			} else {
@@ -985,11 +991,12 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonPrimitive() ? e.getAsString() : fallback;
 	}
 
-	/** Reads a good's structured enchantment filter: an object {@code {id: level}} or
-	 * an array of {@code "id:level"} / {@code {id, level}} entries. A missing/zero
-	 * level means "presence at any level". */
-	private static List<GoodSpec.GoodEnchant> readGoodEnchants(@Nullable JsonElement element) {
-		Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
+	/** Reads a good's structured enchantment filter from an object or token array.
+	 * Object entries are exact levels (level 0 = presence); array tokens accept
+	 * {@code id}, {@code id:N} (exact) and {@code id:N..} (at least). */
+	private static List<GoodSpec.GoodEnchant> readGoodEnchants(@Nullable JsonElement element,
+			boolean excludeField) {
+		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
 		if (element != null && element.isJsonObject()) {
 			for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
 				ResourceLocation id = TradeMasterConfig.parseId(entry.getKey());
@@ -1004,44 +1011,64 @@ public final class ConfigPersistence {
 				} catch (RuntimeException ignored) {
 					level = 0;
 				}
-				levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
+				result.add(new GoodSpec.GoodEnchant(id, excludeField ? 0 : level));
 			}
 		} else if (element != null && element.isJsonArray()) {
 			for (JsonElement e : element.getAsJsonArray()) {
-				ResourceLocation id = null;
-				int level = 0;
 				if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
-					String text = e.getAsString().trim();
-					int split = text.lastIndexOf(':');
-					if (split > 0) {
-						try {
-							level = Integer.parseInt(text.substring(split + 1));
-							text = text.substring(0, split);
-						} catch (NumberFormatException ignored) {
-							// the last colon belongs to the id namespace/path: presence only
-						}
-					}
-					id = TradeMasterConfig.parseId(text);
+					GoodSpec.GoodEnchant parsed = parseEnchantToken(e.getAsString(), excludeField);
+					if (parsed != null) result.add(parsed);
 				} else if (e.isJsonObject()) {
 					JsonObject o = e.getAsJsonObject();
 					JsonElement idElement = o.get("id");
 					if (idElement != null && idElement.isJsonPrimitive()) {
-						id = TradeMasterConfig.parseId(idElement.getAsString());
-					}
-					try {
-						level = readInt(o, "level", 0);
-					} catch (RuntimeException ignored) {
-						level = 0;
+						ResourceLocation id = TradeMasterConfig.parseId(idElement.getAsString());
+						if (id != null) {
+							result.add(new GoodSpec.GoodEnchant(id,
+									excludeField ? 0 : readInt(o, "level", 0),
+									!excludeField && readBool(o, "atLeast", false)));
+						}
 					}
 				}
-				if (id != null) levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
 			}
 		}
-		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
-		for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
-			result.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
-		}
 		return result;
+	}
+
+	/** Parses one include/exclude token. Returns null on a malformed token. */
+	private static @Nullable GoodSpec.GoodEnchant parseEnchantToken(String raw, boolean excludeField) {
+		String text = raw == null ? "" : raw.trim();
+		if (text.isEmpty()) return null;
+		boolean negated = text.startsWith("!");
+		if (negated) {
+			if (!excludeField) return null;
+			text = text.substring(1);
+		}
+		String idText = text;
+		int level = 0;
+		boolean atLeast = false;
+		int split = idText.lastIndexOf(':');
+		if (split > 0) {
+			String suffix = idText.substring(split + 1);
+			if (suffix.endsWith("..")) {
+				atLeast = true;
+				suffix = suffix.substring(0, suffix.length() - 2);
+			}
+			if (!suffix.isEmpty() && suffix.chars().allMatch(Character::isDigit)) {
+				try {
+					level = Integer.parseInt(suffix);
+					idText = idText.substring(0, split);
+				} catch (NumberFormatException ignored) {
+					return null;
+				}
+			} else if (atLeast) {
+				return null;
+			}
+		}
+		ResourceLocation id = TradeMasterConfig.parseId(idText);
+		if (id == null) return null;
+		return new GoodSpec.GoodEnchant(id, excludeField ? 0 : level,
+				!excludeField && atLeast);
 	}
 
 	private static boolean readBool(JsonObject o, String key, boolean fallback) {
