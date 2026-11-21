@@ -43,6 +43,8 @@ public class RunSession {
 	 * voucher (e.g. a forced stop after a lock failure) would double the expected
 	 * produced count and make the depositor take the player's own copies. */
 	public boolean unprovenPurchaseVouchered = false;
+	/** Whether an in-flight unproven purchase was already carried into the next run. */
+	public boolean unprovenCarryOverCaptured = false;
 
 	public RunSession(BlockPos lecternPos, BlockPos summonButtonPos, BlockPos sendAwayButtonPos) {
 		this.lecternPos = lecternPos.immutable();

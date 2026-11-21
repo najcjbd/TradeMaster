@@ -70,6 +70,17 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		return refusal != null ? refusal : historyConflict(spec.id());
 	}
 
+	/** Whether more than one ENABLED, matchable good has this result path: the index
+	 * cannot attribute a shared path, so it is not a key and must not refuse aliases. */
+	private static boolean sharedGoodPath(String path) {
+		int count = 0;
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			if (!TradeMatcher.goodMatchable(good)) continue;
+			if (good.path().equals(path) && ++count > 1) return true;
+		}
+		return false;
+	}
+
 	/** The candidate's own recorded villager names become index keys once it is enabled. */
 	private static @Nullable String historyConflict(Identifier id) {
 		for (Map.Entry<String, Identifier> entry : TradeMasterConfig.INSTANCE.nameHistory.entrySet()) {
@@ -348,7 +359,13 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				if (good.id().equals(id)) continue;
 				// dead goods add no index key (see buildDisplayNameIndex)
 				if (!TradeMatcher.goodMatchable(good)) continue;
-				String otherPath = sameResult != null && good.result().equals(sameResult) ? null : good.path();
+				// a shared result path is not in the index at all
+				String otherPath = good.path();
+				if (sameResult != null && good.result().equals(sameResult)) {
+					otherPath = null;
+				} else if (sharedGoodPath(good.path())) {
+					otherPath = null;
+				}
 				String refusal = collision(probe, good.id(), good.displayName(), otherPath);
 				if (refusal != null) return refusal;
 			}

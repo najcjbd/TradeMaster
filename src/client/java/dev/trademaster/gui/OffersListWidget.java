@@ -755,16 +755,29 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		private final @Nullable Runnable rebuild;
 		private final EditBox field;
 		private @Nullable String errorKey = null;
+		/** Last value the config accepted: flushEdits commits every row on a tab
+		 * switch/ESC, so an UNEDITED row must not write its displayed subset back
+		 * (that used to erase an invalid raw filter and re-arm the good). */
+		private String committed;
+		private boolean dirty = false;
 
 		public GoodFilterRow(Identifier id, Kind kind, @Nullable Runnable rebuild) {
 			this.id = id;
 			this.kind = kind;
 			this.rebuild = rebuild;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
-			this.field = field(kind.labelKey, good == null ? "" : currentValue(good, kind));
+			this.committed = good == null ? "" : currentValue(good, kind);
+			this.field = field(kind.labelKey, this.committed);
 			this.field.setMaxLength(kind == Kind.NBT || kind == Kind.NBT_EXCLUDE ? 4096
 					: kind == Kind.ENCHANTMENTS ? 1024 : 128);
-			this.field.setResponder(text -> this.errorKey = null);
+			this.field.setResponder(text -> {
+				this.errorKey = null;
+				this.dirty = !text.trim().equals(this.committed.trim());
+			});
+			if (good != null && kind == Kind.ENCHANTMENTS && good.filterInvalid()) {
+				// the field shows only the tokens that parsed; the raw text stays on disk
+				this.errorKey = "trademaster.offer.invalid_enchant";
+			}
 		}
 
 		private static String currentValue(GoodSpec good, Kind kind) {
@@ -785,6 +798,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 		@Override
 		void commit() {
+			if (!this.dirty) return;
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			GoodSpec existing = config.goodFor(this.id);
 			if (existing == null) return;
@@ -814,6 +828,15 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					updated = existing.withFilter(existing.filterName(), enchants.include(),
 							existing.filterNbt(), enchants.exclude(), existing.filterNbtExclude())
 							.withFilterInvalid(false);
+					// a good whose filter was invalid never entered the deduction index when
+					// it was enabled, so THIS is the transition that needs the collision check
+					if (existing.enabled()) {
+						String conflict = AliasListWidget.enableConflict(updated);
+						if (conflict != null) {
+							this.errorKey = conflict;
+							return;
+						}
+					}
 				}
 				case NBT -> {
 					if (!McNbt.valid(value)) {
@@ -850,6 +873,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			if (updated.equals(existing)) return;
 			config.goods.set(config.goods.indexOf(existing), updated);
 			config.save();
+			this.committed = this.field.getValue().trim();
+			this.dirty = false;
 			if ((this.kind == Kind.NAME || this.kind == Kind.RESULT) && this.rebuild != null) {
 				this.rebuild.run();
 			}

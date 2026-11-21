@@ -1093,8 +1093,16 @@ public final class ConfigPersistence {
 									: GoodSpec.GoodEnchant.exact(id, level));
 						}
 					}
+				} else {
+					invalid = true;
+					warnBadEnchant(key, e.toString(), "not a string or object");
 				}
 			}
+		} else if (element != null) {
+			// a wrong-typed field (a bare string, a number) previously fell through with
+			// an EMPTY valid list, which silently turned the filter into "match all"
+			invalid = true;
+			warnBadEnchant(key, element.toString(), "not an object or array");
 		}
 		return new ParsedEnchants(result, invalid);
 	}

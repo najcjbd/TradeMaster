@@ -54,7 +54,7 @@ public final class McNbt {
 
 	public static CompoundTag itemData(ItemStack stack) {
 		Minecraft mc = Minecraft.getInstance();
-		if (mc.level == null) return new CompoundTag();
+		if (mc == null || mc.level == null) return new CompoundTag();
 		var ops = RegistryOps.create(NbtOps.INSTANCE, mc.level.registryAccess());
 		var encoded = DataComponentMap.CODEC.encodeStart(ops, stack.getComponents());
 		Tag tag = encoded.result().orElse(null);
@@ -71,7 +71,34 @@ public final class McNbt {
 		for (CompoundTag shape : enchantmentShapes(data)) {
 			if (contains(shape, filter)) return true;
 		}
-		return contains(legacyView(stack), filter);
+		if (contains(legacyView(stack), filter)) return true;
+		// the native component map omits a zero damage value; this view exposes it so
+		// {"minecraft:damage":0} can require an undamaged item
+		CompoundTag component = componentView(stack);
+		if (contains(component, filter)) return true;
+		// a filter written on 1.20.5-1.21.4 wraps the map in levels
+		for (CompoundTag shape : enchantmentShapes(component)) {
+			if (contains(shape, filter)) return true;
+		}
+		return false;
+	}
+
+	/** A synthesized component-map view: enchantments (flat), damage (including 0) and
+	 * unbreakable, matching what a filter written on a component-era item expects. */
+	private static CompoundTag componentView(ItemStack stack) {
+		CompoundTag view = new CompoundTag();
+		CompoundTag enchantments = new CompoundTag();
+		for (var entry : net.minecraft.world.item.enchantment.EnchantmentHelper
+				.getEnchantmentsForCrafting(stack).entrySet()) {
+			var id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+			if (id != null) enchantments.putInt(id.toString(), entry.getIntValue());
+		}
+		if (!enchantments.isEmpty()) view.put("minecraft:enchantments", enchantments);
+		if (stack.isDamageableItem()) view.putInt("minecraft:damage", stack.getDamageValue());
+		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
+			view.put("minecraft:unbreakable", new CompoundTag());
+		}
+		return view;
 	}
 
 	/** The component map with {@code minecraft:enchantments} /
@@ -119,9 +146,9 @@ public final class McNbt {
 			enchantments.add(enchantment);
 		}
 		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
-		if (stack.isDamageableItem() && stack.getDamageValue() > 0) {
-			legacy.putInt("Damage", stack.getDamageValue());
-		}
+		// include 0: {Damage:0} is the only way to require an UNDAMAGED item, and the
+		// native component map omits a zero value
+		if (stack.isDamageableItem()) legacy.putInt("Damage", stack.getDamageValue());
 		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			legacy.putByte("Unbreakable", (byte) 1);
 		}
