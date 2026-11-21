@@ -640,19 +640,27 @@ public final class ConfigPersistence {
 					// an air result can never be produced (an offer's air result has
 					// count 0): accept it and the good becomes an unsatisfiable need
 					if (c.isAirItem(result)) continue;
-					if (c.goodFor(result) != null) continue;   // one good per result item
-					// a good written with no costs would declare "pays nothing" and match
-					// nothing: fall back to the good's default shape (emerald price slot,
-					// no second cost), exactly like a good added from the offers tab
+					// several variants of one result item are allowed: the stable id below
+					// keys the needs/locked/hunt/name tables, the result is only the item
+					ResourceLocation key = result;
+					JsonElement idElement = o.get("id");
+					if (idElement != null && idElement.isJsonPrimitive()) {
+						ResourceLocation parsed = TradeMasterConfig.parseId(idElement.getAsString());
+						if (parsed != null) key = parsed;
+					}
+					if (c.goodFor(key) != null || c.enchantments.containsKey(key)) {
+						key = c.nextGoodKey();
+					}
 					List<TradeOfferSpec.TradeCost> costs = readCosts(o.get("costs"));
 					if (costs.isEmpty()) costs = TradeOfferSpec.defaultGoodCosts();
-					// normalised HERE, not only on write: a hand-written slot without an
-					// item must become air immediately, or the GUI would NPE on it
-					c.goods.add(new GoodSpec(result,
+					String filterName = readString(o, "name", "");
+					String filterNbt = readString(o, "nbt", "");
+					List<GoodSpec.GoodEnchant> enchants = readGoodEnchants(o.get("enchantments"));
+					c.goods.add(new GoodSpec(key, result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
-							costs).normalized());
+							costs, filterName, enchants, filterNbt).normalized());
 				}
 			}
 		}
@@ -771,12 +779,26 @@ public final class ConfigPersistence {
 		JsonArray goods = new JsonArray();
 		for (GoodSpec good : c.goods) {
 			GoodSpec g = good.normalized();
-			JsonObject o = goodEntryObject(oldGoods, g.result());
+			JsonObject o = goodEntryObject(oldGoods, g.id(), g.result());
+			o.addProperty("id", g.id().toString());
 			o.addProperty("result", g.result().toString());
 			o.addProperty("resultCount", g.resultCount());
 			o.addProperty("enabled", g.enabled());
 			o.addProperty("maxPrice", g.maxPrice());
 			o.add("costs", writeCosts(g.costs()));
+			if (!g.filterName().isBlank()) o.addProperty("name", g.filterName());
+			else o.remove("name");
+			if (!g.filterNbt().isBlank()) o.addProperty("nbt", g.filterNbt());
+			else o.remove("nbt");
+			if (!g.filterEnchantments().isEmpty()) {
+				JsonObject enchants = new JsonObject();
+				for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
+					enchants.addProperty(enchantment.id().toString(), enchantment.level());
+				}
+				o.add("enchantments", enchants);
+			} else {
+				o.remove("enchantments");
+			}
 			goods.add(o);
 		}
 		offers.add("goods", goods);
@@ -912,16 +934,25 @@ public final class ConfigPersistence {
 	/** The stored goods entry whose result is {@code result}: goods are identified by
 	 * their result item, so that is the key a hand-written extra key hangs off. Matched
 	 * by parsed id, for the same namespaceless reason as {@link #entryObject}. */
-	private static JsonObject goodEntryObject(@Nullable JsonArray goods, ResourceLocation result) {
+	private static JsonObject goodEntryObject(@Nullable JsonArray goods, ResourceLocation key,
+			ResourceLocation result) {
 		if (goods != null) {
+			JsonObject legacy = null;
 			for (JsonElement e : goods) {
 				if (!e.isJsonObject()) continue;
 				JsonObject o = e.getAsJsonObject();
+				JsonElement idElement = o.get("id");
+				if (idElement != null && idElement.isJsonPrimitive()) {
+					ResourceLocation parsed = TradeMasterConfig.parseId(idElement.getAsString());
+					if (parsed != null && parsed.equals(key)) return o;
+				}
 				JsonElement r = o.get("result");
-				if (r == null || !r.isJsonPrimitive()) continue;
-				ResourceLocation parsed = TradeMasterConfig.parseId(r.getAsString());
-				if (parsed != null && parsed.equals(result)) return o;
+				if (legacy == null && r != null && r.isJsonPrimitive()) {
+					ResourceLocation parsed = TradeMasterConfig.parseId(r.getAsString());
+					if (parsed != null && parsed.equals(result) && idElement == null) legacy = o;
+				}
 			}
+			if (legacy != null) return legacy;
 		}
 		return new JsonObject();
 	}
@@ -934,6 +965,70 @@ public final class ConfigPersistence {
 		} catch (IllegalArgumentException ex) {
 			return fallback;
 		}
+	}
+
+	private static String readString(JsonObject o, String key, String fallback) {
+		JsonElement e = o.get(key);
+		return e != null && e.isJsonPrimitive() ? e.getAsString() : fallback;
+	}
+
+	/** Reads a good's structured enchantment filter: an object {@code {id: level}} or
+	 * an array of {@code "id:level"} / {@code {id, level}} entries. A missing/zero
+	 * level means "presence at any level". */
+	private static List<GoodSpec.GoodEnchant> readGoodEnchants(@Nullable JsonElement element) {
+		Map<ResourceLocation, Integer> levels = new LinkedHashMap<>();
+		if (element != null && element.isJsonObject()) {
+			for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+				ResourceLocation id = TradeMasterConfig.parseId(entry.getKey());
+				if (id == null) continue;
+				int level = 0;
+				JsonElement value = entry.getValue();
+				try {
+					if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) level = value.getAsInt();
+					else if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isString()) {
+						level = Integer.parseInt(value.getAsString().trim());
+					}
+				} catch (RuntimeException ignored) {
+					level = 0;
+				}
+				levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
+			}
+		} else if (element != null && element.isJsonArray()) {
+			for (JsonElement e : element.getAsJsonArray()) {
+				ResourceLocation id = null;
+				int level = 0;
+				if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
+					String text = e.getAsString().trim();
+					int split = text.lastIndexOf(':');
+					if (split > 0) {
+						try {
+							level = Integer.parseInt(text.substring(split + 1));
+							text = text.substring(0, split);
+						} catch (NumberFormatException ignored) {
+							// the last colon belongs to the id namespace/path: presence only
+						}
+					}
+					id = TradeMasterConfig.parseId(text);
+				} else if (e.isJsonObject()) {
+					JsonObject o = e.getAsJsonObject();
+					JsonElement idElement = o.get("id");
+					if (idElement != null && idElement.isJsonPrimitive()) {
+						id = TradeMasterConfig.parseId(idElement.getAsString());
+					}
+					try {
+						level = readInt(o, "level", 0);
+					} catch (RuntimeException ignored) {
+						level = 0;
+					}
+				}
+				if (id != null) levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
+			}
+		}
+		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
+		for (Map.Entry<ResourceLocation, Integer> entry : levels.entrySet()) {
+			result.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
+		}
+		return result;
 	}
 
 	private static boolean readBool(JsonObject o, String key, boolean fallback) {

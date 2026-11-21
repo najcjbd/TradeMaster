@@ -121,7 +121,7 @@ public final class TradeMasterConfig {
 	}
 
 	/** Custom goods to reroll for: offers whose result is not an enchanted book.
-	 * Identified by their result item, so `goodFor` is a plain list scan. */
+	 * Identified by a stable key so several NBT variants of one result item can coexist. */
 	public final List<GoodSpec> goods = new ArrayList<>();
 
 	/** What happens to a bought good when every bound chest refuses it: stop with a
@@ -136,12 +136,32 @@ public final class TradeMasterConfig {
 		return result;
 	}
 
-	/** The good whose result item is {@code id}, or null. */
+	/** The good whose stable key is {@code id}, or null. */
 	public @Nullable GoodSpec goodFor(ResourceLocation id) {
 		for (GoodSpec good : this.goods) {
 			if (good.id().equals(id)) return good;
 		}
 		return null;
+	}
+
+	/** Every good whose result item is {@code result} (several NBT variants allowed). */
+	public List<GoodSpec> goodsForResult(ResourceLocation result) {
+		List<GoodSpec> found = new ArrayList<>();
+		for (GoodSpec good : this.goods) {
+			if (good.result().equals(result)) found.add(good);
+		}
+		return found;
+	}
+
+	/** A fresh stable key for a newly added good variant; never collides with a good
+	 * key or an enchantment id (all three share the needs table). */
+	public ResourceLocation nextGoodKey() {
+		for (int i = 1; ; i++) {
+			ResourceLocation candidate = McIds.mc("good_" + i);
+			if (candidate == null) continue;
+			if (goodFor(candidate) != null || this.enchantments.containsKey(candidate)) continue;
+			return candidate;
+		}
 	}
 
 	// positions (nullable until picked/configured)
