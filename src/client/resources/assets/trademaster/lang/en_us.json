@@ -97,6 +97,7 @@
   "trademaster.status.deposit": "Storing enchanted books into chests",
   "trademaster.message.started": "Trade Master started",
   "trademaster.message.stopped": "Trade Master stopped",
+  "trademaster.message.stop_deferred": "Stopping after the current lock / send-away finishes",
   "trademaster.message.all_done": "All enchantments found, stopping",
   "trademaster.message.player_moved": "Player moved, stopping",
   "trademaster.message.player_died": "Player died, stopping",

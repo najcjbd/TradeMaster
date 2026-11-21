@@ -209,6 +209,10 @@ public final class RerollController {
 	 * finish completes, instead of discarding the purchase/villager unproven. */
 	private static boolean deferredMoveStop = false;
 	private static boolean deferredTimeoutStop = false;
+	/** A MANUAL stop hit the same committed finish: finish the lock/naming/send-away
+	 * (and its post-dispatch break) before stopping, or the unlocked/unnamed villager
+	 * is stranded and the next start can buy the same book again. */
+	private static boolean deferredManualStop = false;
 	/** Ticks a latched deferred stop has waited; a finish that never completes
 	 * (a wedged name/send-away) must not defer the stop for ever. */
 	private static int deferredStopTicks = 0;
@@ -425,6 +429,7 @@ public final class RerollController {
 		runTicks = 0;
 		deferredMoveStop = false;
 		deferredTimeoutStop = false;
+		deferredManualStop = false;
 		deferredStopTicks = 0;
 		professionHealCycles = 0;
 		cursorBlockTicks = 0;
@@ -454,6 +459,15 @@ public final class RerollController {
 	public static void stopManual() {
 		if (!isRunning()) {
 			chat(Component.translatable("commands.trademaster.not_running").withStyle(ChatFormatting.RED));
+			return;
+		}
+		if (deferredManualStop) return;
+		if (finalizingRun()) {
+			// a lock click is out, or the locked villager is being named/sent away:
+			// stopping now would strand it (and the target) for the next start
+			deferredManualStop = true;
+			chat(Component.translatable("trademaster.message.stop_deferred")
+					.withStyle(ChatFormatting.YELLOW));
 			return;
 		}
 		stop(Component.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
@@ -641,17 +655,26 @@ public final class RerollController {
 			stop(Component.translatable("trademaster.message.timeout"), ChatFormatting.RED);
 			return;
 		}
+		if (deferredManualStop && !finalizingRun()) {
+			// the committed lock/name/send-away and its post-dispatch break are done
+			stop(Component.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
+			return;
+		}
 		// the finish normally ends within the naming/send-away budgets; a wedged one
 		// must not keep the requested stop deferred for ever
-		if (deferredMoveStop || deferredTimeoutStop) {
+		if (deferredMoveStop || deferredTimeoutStop || deferredManualStop) {
 			// an active deposit is self-bounded (its own 120s/180s clock) only while
 			// phase timeouts are on; with them off the deposit may never end, so the
 			// deferred stop keeps its own deadline instead of being pinned for ever
 			if (depositor != null && config.phaseTimeoutsEnabled) {
 				deferredStopTicks = 0;
 			} else if (++deferredStopTicks > DEFERRED_STOP_MAX_TICKS) {
-				stop(Component.translatable(deferredMoveStop
-						? "trademaster.message.player_moved" : "trademaster.message.timeout"), ChatFormatting.RED);
+				boolean movement = deferredMoveStop;
+				boolean timeout = !movement && deferredTimeoutStop;
+				stop(Component.translatable(movement
+						? "trademaster.message.player_moved"
+						: timeout ? "trademaster.message.timeout" : "trademaster.message.stopped"),
+						movement || timeout ? ChatFormatting.RED : ChatFormatting.YELLOW);
 				return;
 			}
 		} else {
@@ -2351,10 +2374,20 @@ public final class RerollController {
 			namingExecutor = null;
 			guardian = null;
 			if (restSummonPending) {
-				// villager-gone cleanup: rest now, summon once a villager reappears
-				debug("send-away: rig cleared with no lock, resting for next villager");
-				awaitingRigClear = true;
-				enter(Phase.AWAIT_VILLAGER);
+				// villager-gone cleanup: release the old claim before resting, or the
+				// next villager cannot take the lectern. The post-dispatch path then
+				// waits for the rig to clear and resumes the staging wait.
+				if (RigTarget.isWorkBlockAt(client.level, s.lecternPos)) {
+					debug("send-away: rig cleared with no lock, breaking the lectern to release its claim");
+					guardian = LecternGuardian.breakOnly();
+					postDispatchRefresh = true;
+					postDispatchBreakRetriesSpent = 0;
+					enter(Phase.ENSURE_LECTERN);
+				} else {
+					debug("send-away: rig cleared with no lock, resting for next villager");
+					awaitingRigClear = true;
+					enter(Phase.AWAIT_VILLAGER);
+				}
 				return;
 			}
 			// a locked villager was just dispatched: refresh the needs list the
@@ -2613,7 +2646,10 @@ public final class RerollController {
 	 * stops the run once the finish is actually complete. */
 	private static boolean finalizingRun() {
 		return phase == Phase.NAME || phase == Phase.SEND_AWAY
-				|| (phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent());
+				|| (phase == Phase.LOCK && lockExecutor != null && lockExecutor.purchaseSent())
+				// the post-dispatch break releases the sent-away villager's claim; an
+				// automatic/manual stop must not abort it halfway and leave the claim
+				|| (phase == Phase.ENSURE_LECTERN && postDispatchRefresh);
 	}
 
 	/** Warns (yellow, non-blocking) when the configured rig target cannot work: the work
@@ -3287,6 +3323,7 @@ public final class RerollController {
 		session = null;
 		deferredMoveStop = false;
 		deferredTimeoutStop = false;
+		deferredManualStop = false;
 		deferredStopTicks = 0;
 		phase = Phase.IDLE;
 		Minecraft mc = Minecraft.getInstance();
