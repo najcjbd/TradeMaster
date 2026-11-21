@@ -211,27 +211,24 @@ public class LecternGuardian {
 		// leave the displaced item on the cursor even though the lectern is already in
 		// the offhand, and the recovery lives inside restock()
 		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
-			if (!LecternRestock.restock(player)) {
-				var work = RigTarget.workItem();
-				boolean carried = work != null && Preconditions.countItem(player, work) > 0;
-				if (carried) {
-					// the batch may land after restock()'s last check, or its in-flight
-					// state went stale: give it time, then reset and try one fresh batch
-					if (this.restockRetryTicks++ < 100) return StepResult.RUNNING;
-					if (!this.restockResetTried) {
-						this.restockResetTried = true;
-						this.restockRetryTicks = 0;
-						LecternRestock.resetRestock();
-						RerollController.debug("lectern guardian: restock reported no lectern but one is carried; retrying");
-						return StepResult.RUNNING;
-					}
-				}
+			boolean restocked = LecternRestock.restock(player);
+			var work = RigTarget.workItem();
+			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
+			if (!restocked && !carried) {
 				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}
-			this.restockRetryTicks = 0;
-			this.restockResetTried = false;
-			// restock clicks only take effect on the server next tick
-			return StepResult.RUNNING;
+			// count BOTH waiting-true and failure-false ticks: the earlier version reset
+			// this counter on every true wait, so it could never reach the retry bound
+			if (this.restockRetryTicks++ < 100) return StepResult.RUNNING;
+			if (!this.restockResetTried) {
+				this.restockResetTried = true;
+				this.restockRetryTicks = 0;
+				// state-only reset: the tool lock/hotbar slot from this run must survive
+				LecternRestock.resetRestockState();
+				RerollController.debug("lectern guardian: restock still unsettled after 5s; retrying with fresh state");
+				return StepResult.RUNNING;
+			}
+			return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 		}
 		this.restockRetryTicks = 0;
 		this.restockResetTried = false;

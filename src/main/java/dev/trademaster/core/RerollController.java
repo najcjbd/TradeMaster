@@ -2630,8 +2630,20 @@ public final class RerollController {
 			h = h * 31 + (good.enabled() ? 1 : 0);
 			if (!good.enabled()) continue;
 			h = h * 31 + good.id().hashCode();
+			h = h * 31 + good.result().hashCode();
 			h = h * 31 + good.maxPrice();
 			h = h * 31 + good.resultCount();
+			h = h * 31 + good.filterName().hashCode();
+			h = h * 31 + good.filterNbt().hashCode();
+			h = h * 31 + good.filterNbtExclude().hashCode();
+			for (GoodSpec.GoodEnchant enchantment : good.filterEnchantments()) {
+				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
+				h = h * 31 + enchantment.level();
+				h = h * 31 + (enchantment.atLeast() ? 1 : 0);
+			}
+			for (GoodSpec.GoodEnchant enchantment : good.excludedEnchantments()) {
+				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
+			}
 			for (TradeOfferSpec.TradeCost cost : good.costs()) {
 				h = h * 31 + (cost == null || cost.item() == null ? 0 : cost.item().hashCode());
 				h = h * 31 + (cost == null ? 0 : cost.count());
@@ -2647,6 +2659,8 @@ public final class RerollController {
 			stop(McText.translatable("trademaster.message.player_moved"), ChatFormatting.RED);
 		} else if (deferredTimeoutStop) {
 			stop(McText.translatable("trademaster.message.timeout"), ChatFormatting.RED);
+		} else if (deferredManualStop) {
+			stop(McText.translatable("trademaster.message.stopped"), ChatFormatting.YELLOW);
 		} else {
 			stop(McText.translatable("trademaster.message.all_done"), ChatFormatting.GREEN);
 		}

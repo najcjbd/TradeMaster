@@ -117,18 +117,18 @@ public final class LecternRestock {
 		}
 	}
 
-	/** Call at session start so a stale gate from a previous run doesn't delay restocking. */
-	public static void resetRestock() {
+	/** Clears restock batch/wait state but keeps the tool lock/hotbar selection. Used
+	 * when a guardian retries a batch in the SAME run; resetting the tool lock there
+	 * would make the hotbar restorer lose the slot it captured at run start. */
+	public static void resetRestockState() {
 		Minecraft mc = Minecraft.getInstance();
 		LocalPlayer player = mc == null ? null : mc.player;
 		boolean resumable = player != null && restockInFlightTicks >= 0
 				&& player.containerMenu == player.inventoryMenu
 				&& !player.containerMenu.getCarried().isEmpty();
 		if (resumable) {
-			// a stopped run can leave a partially-applied batch's stack on the cursor:
-			// keep the source slot and displaced snapshot so the first restock of the
-			// next run can return it (fresh window; a changed inventory simply fails
-			// the old-slot checks and the state is dropped after the bound)
+			// a partially-applied batch may have left its stack on the cursor: keep the
+			// source slot and displaced snapshot so the retry can return it
 			restockInFlightTicks = 0;
 			restockRecoverTicks = 0;
 		} else {
@@ -138,6 +138,11 @@ public final class LecternRestock {
 		}
 		restockCarriedWaitTicks = 0;
 		equipCarriedWaitTicks = 0;
+	}
+
+	/** Call at session start so a stale gate from a previous run doesn't delay restocking. */
+	public static void resetRestock() {
+		resetRestockState();
 		// a stale tool lock from a previous run may point at an item that is gone, and
 		// the configured block may have changed
 		RigTarget.clearToolLock();
