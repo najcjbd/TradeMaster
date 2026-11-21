@@ -1,79 +1,152 @@
 package dev.trademaster.config;
 
+import dev.trademaster.compat.McNbt;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import org.jetbrains.annotations.Nullable;
 
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
- * A custom good to reroll for: an offer whose result is {@code result} — any item, not
- * just an enchanted book — and whose cost slots fit {@code costs}, exactly like an
- * enchantment target fits enchanted books.
+ * A custom good to reroll for: an offer whose result matches {@link #result} and the
+ * optional NAME / ENCHANTMENT / RAW-NBT filter, and whose cost slots fit {@code costs}.
  *
- * <p>The good is identified by its result item, so two goods cannot share one result.
- * That id is what the needs / locked / hunt / name-history tables key on, which is why
- * everything downstream (budget, hunt ratchet, auto-disable, named-villager deduction)
- * works for goods without a second code path.
+ * <p>{@link #key} is the stable identity used by the needs / locked / hunt / name
+ * history tables. It is separate from the result item so several variants of the same
+ * item can be configured. Legacy goods without a stored key use their result id as the
+ * key, preserving old aliases.
  *
- * <p>{@code costs} is the same ordered slot list an enchantment's spec uses: slot 1 is
- * the price slot, and its amount is this good's {@code maxPrice} (the "no more than"
- * price, exactly like an enchantment's max price). Slot 2 and beyond carry their own
- * amounts (see {@link TradeOfferSpec} for the count rules).
- *
- * <p>Goods cannot be disenchanted (they are not books): what happens to one after it is
- * bought is the disposal option's business.
+ * <p>The filter is a SUBSET filter: every configured field must match, while extra
+ * fields are allowed. An enchantment level of 0 means presence only; a positive level
+ * means at least that level. The raw NBT form is the item's component map.
  */
-public record GoodSpec(Identifier result, int resultCount, boolean enabled, int maxPrice,
-		List<TradeOfferSpec.TradeCost> costs) {
+public record GoodSpec(Identifier key, Identifier result, int resultCount,
+		boolean enabled, int maxPrice, List<TradeOfferSpec.TradeCost> costs,
+		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt) {
 
-	/** Identifies the good everywhere (needs, locked ids, hunt marks, name history). */
-	public Identifier id() {
-		return this.result;
+	public record GoodEnchant(Identifier id, int level) {
+		public GoodEnchant {
+			level = Math.max(0, Math.min(99, level));
+		}
 	}
 
-	/** The same costs plus this good's result, in the shape the matcher compares. */
+	public GoodSpec {
+		if (key == null) key = result;
+		filterName = filterName == null ? "" : filterName.trim();
+		filterNbt = filterNbt == null ? "" : filterNbt.trim();
+		filterEnchantments = filterEnchantments == null ? List.of() : List.copyOf(filterEnchantments);
+		costs = costs == null ? List.of() : List.copyOf(costs);
+	}
+
+	/** Legacy/simple constructor: one good per result item, no filter. */
+	public GoodSpec(Identifier result, int resultCount, boolean enabled, int maxPrice,
+			List<TradeOfferSpec.TradeCost> costs) {
+		this(result, result, resultCount, enabled, maxPrice, costs, "", List.of(), "");
+	}
+
+	public Identifier id() {
+		return this.key;
+	}
+
 	public TradeOfferSpec spec() {
 		return new TradeOfferSpec(this.costs, this.result);
 	}
 
-	/** The result item, or null when the id no longer exists in the registry. */
 	public @Nullable Item resultItem() {
 		return BuiltInRegistries.ITEM.get(this.result).map(holder -> holder.value()).orElse(null);
 	}
 
-	/** The name used for the villager and the deduction index: the custom alias when
-	 * one is set for this good (the alias tab edits the same map enchantments use),
-	 * otherwise the result item's own name, falling back to the registry path when the
-	 * item is unknown. Callers apply the shared sanitizer/canonicalizer. */
-	public String displayName() {
-		String custom = TradeMasterConfig.INSTANCE.customEnchantNames.get(this.result);
-		if (custom != null && !custom.isBlank()) return custom.trim();
-		Item item = this.resultItem();
-		return item == null ? this.result.getPath() : new ItemStack(item).getHoverName().getString();
+	public boolean filterValid() {
+		if (!McNbt.valid(this.filterNbt)) return false;
+		for (GoodEnchant enchantment : this.filterEnchantments) {
+			if (enchantment == null || enchantment.id() == null) return false;
+		}
+		return true;
 	}
 
-	/** The registry path of the result item: a villager named with the raw item id
-	 * (the naming fallback) must still resolve back to this good. */
+	public boolean matches(ItemStack stack) {
+		if (stack == null || stack.isEmpty()) return false;
+		Item item = this.resultItem();
+		if (item == null || !stack.is(item) || stack.getCount() < this.resultCount) return false;
+		if (!this.filterName.isBlank()) {
+			var name = stack.getCustomName();
+			if (name == null || !name.getString().equals(this.filterName)) return false;
+		}
+		if (!this.filterEnchantments.isEmpty()) {
+			var live = EnchantmentHelper.getEnchantmentsForCrafting(stack);
+			for (GoodEnchant wanted : this.filterEnchantments) {
+				int level = -1;
+				for (var entry : live.entrySet()) {
+					Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+					if (id != null && id.equals(wanted.id())) {
+						level = entry.getIntValue();
+						break;
+					}
+				}
+				if (level < 0) return false;
+				if (wanted.level() > 0 && level < wanted.level()) return false;
+			}
+		}
+		if (!this.filterNbt.isBlank()) {
+			var filter = McNbt.parse(this.filterNbt);
+			if (filter == null || !McNbt.contains(stack, filter)) return false;
+		}
+		return true;
+	}
+
+	public int filterSpecificity() {
+		return (this.filterName.isBlank() ? 0 : 1)
+				+ this.filterEnchantments.size()
+				+ (this.filterNbt.isBlank() ? 0 : 1);
+	}
+
+	public String displayName() {
+		String custom = TradeMasterConfig.INSTANCE.customEnchantNames.get(this.key);
+		if (custom != null && !custom.isBlank()) return custom.trim();
+		if (!this.filterName.isBlank()) return this.filterName;
+		Item item = this.resultItem();
+		String base = item == null ? this.result.getPath() : new ItemStack(item).getHoverName().getString();
+		return this.key.equals(this.result) ? base : base + " (" + this.key.getPath() + ")";
+	}
+
 	public String path() {
 		return this.result.getPath();
 	}
 
 	public GoodSpec withEnabled(boolean value) {
-		return new GoodSpec(this.result, this.resultCount, value, this.maxPrice, this.costs);
+		return new GoodSpec(this.key, this.result, this.resultCount, value, this.maxPrice,
+				this.costs, this.filterName, this.filterEnchantments, this.filterNbt);
 	}
 
-	/** Clamped copy for a clean write: the result count is at least one and the price
-	 * never negative. */
+	public GoodSpec withTrade(int resultCount, int maxPrice, List<TradeOfferSpec.TradeCost> costs) {
+		return new GoodSpec(this.key, this.result, resultCount, this.enabled, maxPrice,
+				costs, this.filterName, this.filterEnchantments, this.filterNbt);
+	}
+
+	public GoodSpec withFilter(String name, List<GoodEnchant> enchantments, String rawNbt) {
+		return new GoodSpec(this.key, this.result, this.resultCount, this.enabled, this.maxPrice,
+				this.costs, name, enchantments, rawNbt);
+	}
+
 	public GoodSpec normalized() {
-		// reuse the spec's sanitiser: a hand-written slot with no item becomes air and
-		// the counts are clamped, so a typo can never reach the writer as a null item
-		// (which would throw and make every later save fail)
 		List<TradeOfferSpec.TradeCost> clean =
 				new TradeOfferSpec(this.costs, this.result).normalized().costs();
-		return new GoodSpec(this.result, Math.max(1, Math.min(64, this.resultCount)),
-				this.enabled, Math.max(0, Math.min(64, this.maxPrice)), clean);
+		Set<String> seen = new LinkedHashSet<>();
+		List<GoodEnchant> enchants = new ArrayList<>();
+		for (GoodEnchant enchantment : this.filterEnchantments) {
+			if (enchantment == null || enchantment.id() == null) continue;
+			if (!seen.add(enchantment.id().toString())) continue;
+			enchants.add(enchantment);
+		}
+		return new GoodSpec(this.key == null ? this.result : this.key, this.result,
+				Math.max(1, Math.min(64, this.resultCount)),
+				this.enabled, Math.max(0, Math.min(64, this.maxPrice)), clean,
+				this.filterName.trim(), List.copyOf(enchants), this.filterNbt.trim());
 	}
 }

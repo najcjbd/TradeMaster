@@ -233,9 +233,9 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
-	void goodsWithAirOrBookOrDuplicateResultAreRejected() {
-		// air result, enchanted_book result, and two entries with the same result: only the
-		// first non-special good survives
+	void goodsRejectAirAndBookAndAllowSameItemVariants() {
+		// air and enchanted-book results are skipped; two entries with the same result
+		// are now two variants, each with its own stable key
 		ConfigTest.read(c(), parse("""
 				{"offers":{"goods":[
 				  {"result":"minecraft:air","costs":[]},
@@ -243,13 +243,49 @@ class ConfigRoundTripTest {
 				  {"result":"minecraft:composter","maxPrice":9,"costs":[]},
 				  {"result":"minecraft:composter","maxPrice":1,"costs":[]}
 				]}}"""));
-		assertEquals(1, c().goods.size());
+		assertEquals(2, c().goods.size());
 		GoodSpec good = c().goods.get(0);
 		assertEquals(Identifier.withDefaultNamespace("composter"), good.id());
 		assertEquals(9, good.maxPrice());
 		// a good written with no costs falls back to the "price slot only" default shape
 		assertEquals(TradeOfferSpec.EMERALD, good.costs().get(0).item());
 		assertEquals(TradeOfferSpec.AIR, good.costs().get(1).item());
+		GoodSpec variant = c().goods.get(1);
+		assertEquals(Identifier.withDefaultNamespace("composter"), variant.result());
+		assertFalse(variant.id().equals(good.id()));
+		assertEquals(1, variant.maxPrice());
+	}
+
+	@Test
+	void goodFilterAndVariantKeyRoundTrip() {
+		c().goods.clear();
+		Identifier key = Identifier.fromNamespaceAndPath("trademaster", "good_7");
+		Identifier result = Identifier.withDefaultNamespace("diamond_sword");
+		c().goods.add(new GoodSpec(key, result, 1, true, 30,
+				TradeOfferSpec.defaultGoodCosts(), "Excalibur",
+				List.of(new GoodSpec.GoodEnchant(Identifier.withDefaultNamespace("sharpness"), 3),
+						new GoodSpec.GoodEnchant(Identifier.withDefaultNamespace("mending"), 0)),
+				"{Damage:0}"));
+
+		JsonObject root = ConfigTest.write(c());
+		JsonObject written = root.getAsJsonObject("offers")
+				.getAsJsonArray("goods").get(0).getAsJsonObject();
+		assertEquals(key.toString(), written.get("id").getAsString());
+		assertEquals("Excalibur", written.get("name").getAsString());
+		assertEquals(3, written.getAsJsonObject("enchantments")
+				.get(Identifier.withDefaultNamespace("sharpness").toString()).getAsInt());
+		assertEquals("{Damage:0}", written.get("nbt").getAsString());
+
+		c().goods.clear();
+		ConfigTest.read(c(), root);
+		assertEquals(1, c().goods.size());
+		GoodSpec read = c().goods.get(0);
+		assertEquals(key, read.id());
+		assertEquals(result, read.result());
+		assertEquals("Excalibur", read.filterName());
+		assertEquals(2, read.filterEnchantments().size());
+		assertEquals("{Damage:0}", read.filterNbt());
+		assertTrue(read.filterValid());
 	}
 
 	@Test

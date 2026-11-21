@@ -67,7 +67,10 @@ public class TradeMatcher {
 		public boolean resultMatches(ItemStack stack) {
 			if (stack == null || stack.isEmpty()) return false;
 			if (!this.result.is(Items.ENCHANTED_BOOK)) {
-				return stack.is(this.result.getItem()) && stack.getCount() >= this.result.getCount();
+				if (!stack.is(this.result.getItem()) || stack.getCount() < this.result.getCount()) return false;
+				GoodSpec good = this.parts.isEmpty() ? null
+						: TradeMasterConfig.INSTANCE.goodFor(this.parts.get(0).id());
+				return good != null && good.matches(stack);
 			}
 			if (!stack.is(Items.ENCHANTED_BOOK)) return false;
 			ItemEnchantments enchantments = EnchantmentHelper.getEnchantmentsForCrafting(stack);
@@ -301,8 +304,9 @@ public class TradeMatcher {
 	 * spin the run forever. */
 	public static boolean goodMatchable(GoodSpec good) {
 		if (good.maxPrice() < 1) return false;
-		if (TradeMasterConfig.INSTANCE.isAirItem(good.id())) return false;
+		if (TradeMasterConfig.INSTANCE.isAirItem(good.result())) return false;
 		if (good.resultItem() == null) return false;
+		if (!good.filterValid()) return false;
 		// an id that is ALSO an enabled enchantment TARGET shares one needs queue: the good
 		// and the target would inflate each other's budget and the target's price slot would
 		// be read from the good. The Offers tab refuses such a good already; a hand-edited
@@ -366,24 +370,27 @@ public class TradeMatcher {
 			ItemStack result = offer.getResult();
 			Identifier resultItem = BuiltInRegistries.ITEM.getKey(result.getItem());
 			// a configured good: any non-book result the player asked to reroll for.
-			// (An enchanted book result is always the enchantment path, even if some
-			// good names enchanted_book as its result.)
-			GoodSpec good = resultItem == null || result.is(Items.ENCHANTED_BOOK)
-					? null
-					: TradeMasterConfig.INSTANCE.goodFor(resultItem);
+			// Several variants can share one result item; the most specific filter wins.
+			GoodSpec good = null;
+			if (resultItem != null && !result.is(Items.ENCHANTED_BOOK)) {
+				for (GoodSpec candidate : TradeMasterConfig.INSTANCE.goodsForResult(resultItem)) {
+					if (!goodMatchable(candidate)) continue;
+					if (result.getCount() < candidate.resultCount()) continue;
+					IntHeapPriorityQueue candidateQueue = this.needs.get(candidate.id());
+					if (candidateQueue == null) continue;
+					int candidatePrice = offerPrice(offer);
+					if (candidatePrice > Math.min(candidateQueue.firstInt(), 64)) continue;
+					List<MatchPart> candidateParts = List.of(new MatchPart(candidate.id(), 0));
+					if (!costsAllowed(offer, candidateParts)) continue;
+					if (!candidate.matches(result)) continue;
+					if (good == null || candidate.filterSpecificity() > good.filterSpecificity()) {
+						good = candidate;
+					}
+				}
+			}
 			if (good != null) {
-				// the SAME gate buildNeeds used to enqueue goods: goodFor still returns a good
-				// that the gate refuses (e.g. its id is ALSO an enabled target, which shares one
-				// needs queue) — matching it here would read the target's queue for a non-book
-				// offer. buildNeeds and tryMatch must agree on the demand set or they diverge.
-				if (!goodMatchable(good)) continue;
-				if (result.getCount() < good.resultCount()) continue;
-				IntHeapPriorityQueue goodQueue = this.needs.get(good.id());
-				if (goodQueue == null) continue;
 				int goodPrice = offerPrice(offer);
-				if (goodPrice > Math.min(goodQueue.firstInt(), 64)) continue;
 				List<MatchPart> itemParts = List.of(new MatchPart(good.id(), 0));
-				if (!costsAllowed(offer, itemParts)) continue;
 				qualifying.add(new MatchedBook(itemParts, List.of(), goodPrice, i,
 						MatchedBook.fingerprintCosts(OfferCosts.slots(offer)), result.copy()));
 				continue;

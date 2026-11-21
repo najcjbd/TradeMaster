@@ -1,5 +1,6 @@
 package dev.trademaster.gui;
 
+import dev.trademaster.compat.McNbt;
 import dev.trademaster.config.GoodSpec;
 import dev.trademaster.config.TradeMasterConfig;
 import dev.trademaster.config.TradeOfferSpec;
@@ -18,6 +19,7 @@ import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -80,6 +82,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		this.addEntry(new SectionHeaderRow("trademaster.offers.goods_header"));
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
 			this.addEntry(new GoodRow(good, this.rebuild));
+			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.NAME, this.rebuild));
+			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.ENCHANTMENTS, this.rebuild));
+			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.NBT, this.rebuild));
 		}
 		this.addEntry(new AddGoodRow(this.rebuild));
 	}
@@ -176,7 +181,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			// a RESULT id must not become "not charged": the same list also gates the
 			// target/good result checks and would silently disable them
 			if (id.equals(dev.trademaster.config.TradeOfferSpec.ENCHANTED_BOOK)
-					|| config.goodFor(id) != null) {
+					|| !config.goodsForResult(id).isEmpty()) {
 				rejected = true;
 				continue;
 			}
@@ -643,7 +648,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			for (int slot = 2; slot < declared.size(); slot++) {
 				costs.add(declared.get(slot));
 			}
-			GoodSpec updated = new GoodSpec(this.id, amount, existing.enabled(), price, List.copyOf(costs));
+			GoodSpec updated = existing.withTrade(amount, price, List.copyOf(costs));
 			if (updated.equals(existing)) return;
 			config.goods.set(config.goods.indexOf(existing), updated);
 			config.save();
@@ -729,6 +734,143 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 	}
 
+	/** One filter field of a custom good: item custom name, structured enchantments,
+	 * or raw component NBT. Edits keep the stable key and trade shape. */
+	public static class GoodFilterRow extends Row {
+		public enum Kind {
+			NAME("trademaster.offer.filter_name"),
+			ENCHANTMENTS("trademaster.offer.filter_enchant"),
+			NBT("trademaster.offer.filter_nbt");
+
+			final String labelKey;
+			Kind(String labelKey) { this.labelKey = labelKey; }
+		}
+
+		private final Identifier id;
+		private final Kind kind;
+		private final @Nullable Runnable rebuild;
+		private final EditBox field;
+		private @Nullable String errorKey = null;
+
+		public GoodFilterRow(Identifier id, Kind kind, @Nullable Runnable rebuild) {
+			this.id = id;
+			this.kind = kind;
+			this.rebuild = rebuild;
+			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
+			this.field = field(kind.labelKey, good == null ? "" : currentValue(good, kind));
+			this.field.setMaxLength(kind == Kind.NBT ? 4096 : 128);
+			this.field.setResponder(text -> this.errorKey = null);
+		}
+
+		private static String currentValue(GoodSpec good, Kind kind) {
+			return switch (kind) {
+				case NAME -> good.filterName();
+				case ENCHANTMENTS -> formatGoodEnchants(good.filterEnchantments());
+				case NBT -> good.filterNbt();
+			};
+		}
+
+		@Override
+		public EditBox[] fields() {
+			return new EditBox[]{this.field};
+		}
+
+		@Override
+		void commit() {
+			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
+			GoodSpec existing = config.goodFor(this.id);
+			if (existing == null) return;
+			String value = this.field.getValue().trim();
+			GoodSpec updated;
+			switch (this.kind) {
+				case NAME -> updated = existing.withFilter(value,
+						existing.filterEnchantments(), existing.filterNbt());
+				case ENCHANTMENTS -> {
+					List<GoodSpec.GoodEnchant> enchants = parseGoodEnchants(value);
+					if (enchants == null) {
+						this.errorKey = "trademaster.offer.invalid_enchant";
+						return;
+					}
+					updated = existing.withFilter(existing.filterName(), enchants, existing.filterNbt());
+				}
+				case NBT -> {
+					if (!McNbt.valid(value)) {
+						this.errorKey = "trademaster.offer.invalid_nbt";
+						return;
+					}
+					updated = existing.withFilter(existing.filterName(),
+							existing.filterEnchantments(), value);
+				}
+				default -> {
+					return;
+				}
+			}
+			this.errorKey = null;
+			if (updated.equals(existing)) return;
+			config.goods.set(config.goods.indexOf(existing), updated);
+			config.save();
+			if (this.kind == Kind.NAME && this.rebuild != null) this.rebuild.run();
+		}
+
+		@Override
+		public void extractContent(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			drawRow(context, mouseX, mouseY, hovered, deltaTicks);
+		}
+
+		public void drawRow(GuiGraphicsExtractor context, int mouseX, int mouseY, boolean hovered, float deltaTicks) {
+			prepare(context);
+			Font font = Minecraft.getInstance().font;
+			Component label = Component.translatable(this.kind.labelKey);
+			int labelWidth = Math.min(96, font.width(label));
+			int fieldX = this.x + 4 + labelWidth + 6;
+			int fieldWidth = Math.max(20, this.x + this.entryWidth - 6 - fieldX);
+			context.text(font, label, this.x + 4, this.y + 6, 0xFFE0E000);
+			place(context, this.field, fieldX, fieldWidth, mouseX, mouseY, deltaTicks);
+			if (this.errorKey != null) {
+				context.text(font, Component.translatable(this.errorKey),
+						this.x + 4, this.y + 16, 0xFFFF5555);
+			}
+		}
+	}
+
+	static String formatGoodEnchants(List<GoodSpec.GoodEnchant> enchantments) {
+		StringBuilder text = new StringBuilder();
+		for (GoodSpec.GoodEnchant enchantment : enchantments) {
+			if (!text.isEmpty()) text.append(", ");
+			text.append(enchantment.id());
+			if (enchantment.level() > 0) text.append(':').append(enchantment.level());
+		}
+		return text.toString();
+	}
+
+	static @Nullable List<GoodSpec.GoodEnchant> parseGoodEnchants(String raw) {
+		LinkedHashMap<Identifier, Integer> levels = new LinkedHashMap<>();
+		if (raw != null) {
+			for (String token : raw.split("[,;\\s]+")) {
+				if (token.isBlank()) continue;
+				String idText = token;
+				int level = 0;
+				int split = token.lastIndexOf(':');
+				if (split > 0) {
+					try {
+						level = Integer.parseInt(token.substring(split + 1));
+						idText = token.substring(0, split);
+					} catch (NumberFormatException ignored) {
+						// the last colon belongs to the id
+					}
+				}
+				Identifier id = TradeMasterConfig.parseId(idText);
+				if (id == null) return null;
+				levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
+			}
+		}
+		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
+		for (var entry : levels.entrySet()) {
+			result.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
+		}
+		return result;
+	}
+
 	/** Adds a good: type the result item id and click the plus. */
 	public static class AddGoodRow extends Row {
 		private final EditBox resultField;
@@ -773,17 +915,6 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				this.errorKey = "trademaster.offer.invalid_item";
 				return true;
 			}
-			if (namesEnchantment(result) || config.enchantments.containsKey(result)) {
-				// a good's id keys the spec / price / display name / budget slot, so a
-				// same-id enchantment would be shadowed by it. Stored targets absent from
-				// the registry still win (target-first rule).
-				this.errorKey = "trademaster.offer.good_is_enchantment";
-				return true;
-			}
-			if (config.goodFor(result) != null) {
-				this.errorKey = "trademaster.offer.good_exists";
-				return true;
-			}
 			if (config.goods.size() >= TradeMasterConfig.MAX_GOODS) {
 				// the loader caps this list too: adding more would be silently lost
 				this.errorKey = "trademaster.offer.goods_full";
@@ -793,9 +924,10 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				this.errorKey = "trademaster.offer.unknown_item";
 				return true;
 			}
-			// a good pays the price slot in emeralds by default and requires no second
-			// cost until one is entered; the result item IS its identity
-			GoodSpec spec = new GoodSpec(result, 1, true, 64, TradeOfferSpec.defaultGoodCosts());
+			// a stable key per variant; several NBT variants of one result item may be
+			// configured, and the result item itself is only the offer match
+			GoodSpec spec = new GoodSpec(config.nextGoodKey(), result, 1, true, 64,
+					TradeOfferSpec.defaultGoodCosts(), "", List.of(), "");
 			// it is added ENABLED, so the same enable-time collision gate applies as
 			// for the row's own toggle (a colliding name would break deduction for both)
 			String conflict = AliasListWidget.enableConflict(spec);
@@ -815,18 +947,6 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		/** Whether the id names no item at all (the registry is up once a screen is open). */
 		private static boolean resultItemMissing(Identifier id) {
 			return net.minecraft.core.registries.BuiltInRegistries.ITEM.get(id).isEmpty();
-		}
-
-		/** Whether the id also names an enchantment: a good with the same id would shadow
-		 * it (the spec, price, display name and budget slot are all keyed by the id). */
-		private static boolean namesEnchantment(Identifier id) {
-			Minecraft mc = Minecraft.getInstance();
-			if (mc.level == null) return false;
-			// enchantments are a data-driven registry: only the world's RegistryAccess has
-			// them (BuiltInRegistries does not)
-			return mc.level.registryAccess()
-					.lookupOrThrow(net.minecraft.core.registries.Registries.ENCHANTMENT)
-					.get(id).isPresent();
 		}
 
 		@Override

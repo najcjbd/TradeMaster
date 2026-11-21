@@ -135,12 +135,30 @@ public final class TradeMasterConfig {
 		return result;
 	}
 
-	/** The good whose result item is {@code id}, or null. */
+	/** The good whose stable key is {@code id}, or null. */
 	public @Nullable GoodSpec goodFor(Identifier id) {
 		for (GoodSpec good : this.goods) {
 			if (good.id().equals(id)) return good;
 		}
 		return null;
+	}
+
+	/** Every good whose result item is {@code result} (several NBT variants allowed). */
+	public List<GoodSpec> goodsForResult(Identifier result) {
+		List<GoodSpec> found = new ArrayList<>();
+		for (GoodSpec good : this.goods) {
+			if (good.result().equals(result)) found.add(good);
+		}
+		return found;
+	}
+
+	/** A fresh stable key for a newly added good variant. */
+	public Identifier nextGoodKey() {
+		for (int i = 1; ; i++) {
+			Identifier candidate = Identifier.fromNamespaceAndPath("trademaster", "good_" + i);
+			if (goodFor(candidate) != null || this.enchantments.containsKey(candidate)) continue;
+			return candidate;
+		}
 	}
 
 	// positions (nullable until picked/configured)
