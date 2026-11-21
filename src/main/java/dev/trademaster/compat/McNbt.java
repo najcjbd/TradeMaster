@@ -61,7 +61,7 @@ public final class McNbt {
 	public static CompoundTag itemData(ItemStack stack) {
 		//? if >=1.20.5 {
 		net.minecraft.client.Minecraft mc = net.minecraft.client.Minecraft.getInstance();
-		if (mc.level == null) return new CompoundTag();
+		if (mc == null || mc.level == null) return new CompoundTag();
 		var ops = net.minecraft.resources.RegistryOps.create(
 				net.minecraft.nbt.NbtOps.INSTANCE, mc.level.registryAccess());
 		var encoded = net.minecraft.core.component.DataComponentMap.CODEC
@@ -90,7 +90,14 @@ public final class McNbt {
 			if (contains(shape, filter)) return true;
 		}
 		if (contains(legacyView(stack), filter)) return true;
-		return contains(componentView(stack), filter);
+		CompoundTag component = componentView(stack);
+		if (contains(component, filter)) return true;
+		// a filter written on 1.20.5-1.21.4 wraps the map in levels; wrap this flat
+		// view too so that shape also matches on pre-component nodes
+		for (CompoundTag shape : enchantmentShapes(component)) {
+			if (contains(shape, filter)) return true;
+		}
+		return false;
 	}
 
 	/** The component map with {@code minecraft:enchantments} /
@@ -124,7 +131,6 @@ public final class McNbt {
 
 	/** A legacy-tag view of a 1.20.5+ item for cross-era filters. */
 	private static CompoundTag legacyView(ItemStack stack) {
-		//? if >=1.20.5 {
 		CompoundTag legacy = new CompoundTag();
 		ListTag enchantments = new ListTag();
 		for (var entry : McEnchantments.of(stack).entrySet()) {
@@ -136,39 +142,44 @@ public final class McNbt {
 			enchantments.add(enchantment);
 		}
 		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
-		if (stack.isDamageableItem() && stack.getDamageValue() > 0) {
-			legacy.putInt("Damage", stack.getDamageValue());
-		}
+		// include 0: {Damage:0} is the only way to require an UNDAMAGED item, and the
+		// native tag/component map omits a zero value on every era
+		if (stack.isDamageableItem()) legacy.putInt("Damage", stack.getDamageValue());
+		//? if >=1.20.5 {
 		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			legacy.putByte("Unbreakable", (byte) 1);
 		}
-		return legacy;
 		//?} else {
-		/*return new CompoundTag();*/
+		/*CompoundTag tag = stack.getTag();
+		if (tag != null && tag.contains("Unbreakable")) {
+			legacy.putByte("Unbreakable", (byte) 1);
+		}*/
 		//?}
+		return legacy;
 	}
 
-	/** A component-map view of a pre-1.20.5 item for cross-era filters. */
+	/** A component-map view for cross-era filters; also on 1.20.5+, where the native
+	 * map omits a zero damage value, so {@code {"minecraft:damage":0}} can match. */
 	private static CompoundTag componentView(ItemStack stack) {
-		//? if <1.20.5 {
-		/*CompoundTag view = new CompoundTag();
+		CompoundTag view = new CompoundTag();
 		CompoundTag enchantments = new CompoundTag();
 		for (var entry : McEnchantments.of(stack).entrySet()) {
 			ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
 			if (id != null) enchantments.putInt(id.toString(), entry.getValue());
 		}
 		if (!enchantments.isEmpty()) view.put("minecraft:enchantments", enchantments);
-		if (stack.isDamageableItem() && stack.getDamageValue() > 0) {
-			view.putInt("minecraft:damage", stack.getDamageValue());
-		}
-		CompoundTag tag = stack.getTag();
-		if (tag != null && tag.contains("Unbreakable")) {
+		if (stack.isDamageableItem()) view.putInt("minecraft:damage", stack.getDamageValue());
+		//? if >=1.20.5 {
+		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			view.put("minecraft:unbreakable", new CompoundTag());
 		}
-		return view;*/
 		//?} else {
-		return new CompoundTag();
+		/*CompoundTag tag = stack.getTag();
+		if (tag != null && tag.contains("Unbreakable")) {
+			view.put("minecraft:unbreakable", new CompoundTag());
+		}*/
 		//?}
+		return view;
 	}
 
 	/** Recursive subset match: compounds need each configured key; lists need each

@@ -376,6 +376,14 @@ public final class RerollController {
 		RunSession s = new RunSession(config.lecternPos, config.summonButtonPos,
 				config.sendAwayButtonPos);
 		s.movementGuard.start(player.position());
+		if (!pendingUnprovenMatches.isEmpty()) {
+			s.lockedIds.addAll(pendingUnprovenMatches);
+			chat(McText.translatable("trademaster.message.unproven_skipped",
+							String.join(", ", pendingUnprovenMatches.stream()
+									.map(Object::toString).sorted().toList()))
+					.withStyle(ChatFormatting.YELLOW));
+			pendingUnprovenMatches.clear();
+		}
 		// sand-wheel mode definition snapshot: a mid-run change to the enable flag
 		// or the grindstone position stops the run (see grindstoneConfigChanged)
 		snapRigTarget = rigTargetDefinition(config);
@@ -740,14 +748,6 @@ public final class RerollController {
 			case SEND_AWAY -> tickSendAway(client, s);
 			case DEPOSIT -> tickDeposit(player);
 		}
-	}
-
-	private static void voucherPendingPurchase() {
-		RunSession s = session;
-		if (s == null || s.unprovenPurchaseVouchered) return;
-		if (lockExecutor == null || !lockExecutor.purchaseSent()) return;
-		debug("stop with a purchase in flight: vouching the unproven purchase");
-		voucherUnprovenPurchase(s);
 	}
 
 	private static void enter(Phase next) {
@@ -2056,6 +2056,25 @@ public final class RerollController {
 				|| key.equals("trademaster.message.tool_cannot_harvest");
 	}
 
+	/** Targets from a purchase click whose outcome is unknown at stop time are carried
+	 * into the NEXT run: the item may have been delivered, and re-demanding it would buy
+	 * a second copy. The next run skips them once, then they are free to be hunted again. */
+	private static final java.util.Set<ResourceLocation> pendingUnprovenMatches =
+			new java.util.HashSet<>();
+
+	private static void captureUnprovenForNextRun() {
+		RunSession s = session;
+		if (s == null || s.unprovenCarryOverCaptured) return;
+		if (lockExecutor == null || !lockExecutor.purchaseSent()) return;
+		s.unprovenCarryOverCaptured = true;
+		if (s.matchedTrade != null) pendingUnprovenMatches.addAll(s.matchedTrade.matchedIds());
+		TradeMatcher.MatchedTrade expected = lockExecutor.expected();
+		if (expected != null && expected != s.matchedTrade) {
+			pendingUnprovenMatches.addAll(fulfilledTargetIds(expected));
+		}
+		debug("stop with a purchase in flight: carrying the targets into the next run");
+	}
+
 	/** Vouchers an UNPROVEN purchase (a click was sent, the outcome is unknown) for the rest of
 	 * this run: the attempted targets must not be re-demanded, or the next villager buys a
 	 * SECOND copy. No auto-disable and no hunt mark (the purchase is not proven), but the
@@ -3280,9 +3299,9 @@ public final class RerollController {
 
 	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
 		// a forced stop (death, dimension change, the deferred-stop backstop) can land
-		// while a purchase click is out: vouch it first, or the delivered item is
-		// neither disposed of nor kept out of the next run's demands
-		voucherPendingPurchase();
+		// while a purchase click is out: remember the targets so the NEXT run does not
+		// buy a second copy of an item that may already have been delivered
+		captureUnprovenForNextRun();
 		releaseCheck();
 		dev.trademaster.exec.DispenserCheck.resetLateOpenMemory();
 		dispenserUnsetWarned = false;

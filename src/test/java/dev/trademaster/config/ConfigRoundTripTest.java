@@ -319,6 +319,25 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void wrongTypedEnchantmentFieldMarksTheGoodUnusable() {
+		JsonObject root = parse("""
+				{"offers":{"goods":[{"result":"minecraft:diamond_sword",
+				  "enchantments":"minecraft:mending"}]}}
+				""");
+		ConfigTest.read(c(), root);
+		assertFalse(c().goods.get(0).filterValid());
+		assertTrue(c().goods.get(0).filterInvalid());
+
+		root = parse("""
+				{"offers":{"goods":[{"result":"minecraft:diamond_sword",
+				  "enchantments":["minecraft:mending",5]}]}}
+				""");
+		ConfigTest.read(c(), root);
+		assertFalse(c().goods.get(0).filterValid());
+		assertTrue(c().goods.get(0).filterInvalid());
+	}
+
+	@Test
 	void aReversedObjectRangeMarksTheFilterInvalid() {
 		JsonObject root = parse("""
 				{"offers":{"goods":[{"result":"minecraft:diamond_sword","enchantments":[

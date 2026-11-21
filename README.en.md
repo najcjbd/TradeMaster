@@ -221,7 +221,7 @@ something else into a librarian's trade).
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
   - nothing at all is affordable → stop with an out-of-materials message; if a combo book caused it, an extra hint suggests enabling the 64 floor.
-- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list.
+- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run skips those targets once** to avoid a duplicate purchase; start again to retry.
 - **After a successful lock**: **all** matched targets of that villager count as obtained → (optional) auto-disable them in the config, (optional) record each price into its price slot, (optional) naming.
 
 ## Naming

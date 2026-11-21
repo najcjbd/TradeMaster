@@ -527,6 +527,12 @@ public final class LecternRestock {
 
 		public enum Result { WAIT, WAIT_AFTER_RESET, FAIL }
 
+		/** Per-try budget, deliberately below the strategies' 200-tick phase timeout:
+		 * 60+60 (one reset) leaves room for the look/placement lead-in, so this gate
+		 * reports the failure instead of the timeout turning it into a
+		 * placementBlocked "send the villagers away" stop. */
+		private static final int TICKS_PER_TRY = 60;
+
 		public Result tick(LocalPlayer player, boolean restocked) {
 			if (restocked) {
 				this.ticks = 0;
@@ -536,7 +542,7 @@ public final class LecternRestock {
 			var work = RigTarget.workItem();
 			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
 			if (!carried) return Result.FAIL;
-			if (this.ticks++ < 100) return Result.WAIT;
+			if (this.ticks++ < TICKS_PER_TRY) return Result.WAIT;
 			if (!this.resetTried) {
 				this.resetTried = true;
 				this.ticks = 0;
