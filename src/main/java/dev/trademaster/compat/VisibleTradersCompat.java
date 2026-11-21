@@ -51,8 +51,7 @@ public final class VisibleTradersCompat {
 	 * {@code CustomPacketPayload} is exposed, so the server's VisibleTraders payload
 	 * can be recognised. VisibleTraders itself targets modern versions; on the older
 	 * nodes the safe server-confirmed-offer read is unconditional and this diagnostic
-	 * is skipped (its private field is remapped in production, so a literal
-	 * reflection lookup would silently never work there).
+	 * is skipped.
 	 */
 	public static void onServerCustomPayload(Object packet) {
 		//? if >=1.20.5 {
