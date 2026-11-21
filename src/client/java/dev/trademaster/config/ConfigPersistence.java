@@ -753,8 +753,7 @@ public final class ConfigPersistence {
 	 * aborting every later section. */
 	/** The editable token for a good enchantment filter: presence, exact, or at-least. */
 	private static String enchantmentToken(GoodSpec.GoodEnchant enchantment) {
-		if (enchantment.level() <= 0) return enchantment.id().toString();
-		return enchantment.id() + ":" + enchantment.level() + (enchantment.atLeast() ? ".." : "");
+		return GoodEnchantFilter.token(enchantment, false);
 	}
 
 	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
@@ -824,7 +823,7 @@ public final class ConfigPersistence {
 			if (!g.excludedEnchantments().isEmpty()) {
 				JsonArray excluded = new JsonArray();
 				for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
-					excluded.add(enchantment.id().toString());
+					excluded.add(GoodEnchantFilter.token(enchantment, false));
 				}
 				o.add("excludeEnchantments", excluded);
 			} else {
@@ -1013,7 +1012,7 @@ public final class ConfigPersistence {
 			for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
 				Identifier id = TradeMasterConfig.parseId(entry.getKey());
 				if (id == null) continue;
-				int level = 0;
+				Integer level = null;
 				JsonElement value = entry.getValue();
 				try {
 					if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isNumber()) level = value.getAsInt();
@@ -1021,65 +1020,41 @@ public final class ConfigPersistence {
 						level = Integer.parseInt(value.getAsString().trim());
 					}
 				} catch (RuntimeException ignored) {
-					level = 0;
+					level = null;
 				}
-				result.add(new GoodSpec.GoodEnchant(id, excludeField ? 0 : level));
+				if (level == null) {
+					if (TradeMaster.LOGGER != null) {
+						TradeMaster.LOGGER.warn("Ignoring invalid good enchantment level for {}", entry.getKey());
+					}
+					continue;
+				}
+				result.add(level <= 0 ? GoodSpec.GoodEnchant.absent(id)
+						: GoodSpec.GoodEnchant.exact(id, level));
 			}
 		} else if (element != null && element.isJsonArray()) {
 			for (JsonElement e : element.getAsJsonArray()) {
 				if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
-					GoodSpec.GoodEnchant parsed = parseEnchantToken(e.getAsString(), excludeField);
-					if (parsed != null) result.add(parsed);
+					GoodSpec.GoodEnchant parsed = GoodEnchantFilter.parseToken(e.getAsString(), excludeField);
+					if (parsed == null) {
+						TradeMaster.LOGGER.warn("Ignoring invalid good enchantment token: {}", e.getAsString());
+					} else {
+						result.add(parsed);
+					}
 				} else if (e.isJsonObject()) {
 					JsonObject o = e.getAsJsonObject();
 					JsonElement idElement = o.get("id");
 					if (idElement != null && idElement.isJsonPrimitive()) {
 						Identifier id = TradeMasterConfig.parseId(idElement.getAsString());
 						if (id != null) {
-							result.add(new GoodSpec.GoodEnchant(id,
-									excludeField ? 0 : readInt(o, "level", 0),
-									!excludeField && readBool(o, "atLeast", false)));
+							int level = readInt(o, "level", 0);
+							result.add(level <= 0 ? GoodSpec.GoodEnchant.absent(id)
+									: GoodSpec.GoodEnchant.exact(id, level));
 						}
 					}
 				}
 			}
 		}
 		return result;
-	}
-
-	private static @Nullable GoodSpec.GoodEnchant parseEnchantToken(String raw, boolean excludeField) {
-		String text = raw == null ? "" : raw.trim();
-		if (text.isEmpty()) return null;
-		boolean negated = text.startsWith("!");
-		if (negated) {
-			if (!excludeField) return null;
-			text = text.substring(1);
-		}
-		String idText = text;
-		int level = 0;
-		boolean atLeast = false;
-		int split = idText.lastIndexOf(':');
-		if (split > 0) {
-			String suffix = idText.substring(split + 1);
-			if (suffix.endsWith("..")) {
-				atLeast = true;
-				suffix = suffix.substring(0, suffix.length() - 2);
-			}
-			if (!suffix.isEmpty() && suffix.chars().allMatch(Character::isDigit)) {
-				try {
-					level = Integer.parseInt(suffix);
-					idText = idText.substring(0, split);
-				} catch (NumberFormatException ignored) {
-					return null;
-				}
-			} else if (atLeast) {
-				return null;
-			}
-		}
-		Identifier id = TradeMasterConfig.parseId(idText);
-		if (id == null) return null;
-		return new GoodSpec.GoodEnchant(id, excludeField ? 0 : level,
-				!excludeField && atLeast);
 	}
 
 	private static boolean readBool(JsonObject o, String key, boolean fallback) {

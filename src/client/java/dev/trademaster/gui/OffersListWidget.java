@@ -805,7 +805,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 						existing.filterEnchantments(), existing.filterNbt(),
 						existing.excludedEnchantments(), existing.filterNbtExclude());
 				case ENCHANTMENTS -> {
-					EnchantFilter enchants = parseGoodEnchants(value);
+					var enchants = parseGoodEnchants(value);
 					if (enchants == null) {
 						this.errorKey = "trademaster.offer.invalid_enchant";
 						return;
@@ -832,6 +832,13 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 							existing.excludedEnchantments(), value);
 				}
 				default -> {
+					return;
+				}
+			}
+			if (this.kind == Kind.NAME || this.kind == Kind.RESULT) {
+				String conflict = AliasListWidget.enableConflict(updated);
+				if (conflict != null) {
+					this.errorKey = conflict;
 					return;
 				}
 			}
@@ -867,65 +874,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 	static String formatGoodEnchants(List<GoodSpec.GoodEnchant> enchantments,
 			List<GoodSpec.GoodEnchant> excluded) {
-		StringBuilder text = new StringBuilder();
-		for (GoodSpec.GoodEnchant enchantment : enchantments) {
-			if (!text.isEmpty()) text.append(", ");
-			text.append(enchantment.id());
-			if (enchantment.level() > 0) {
-				text.append(':').append(enchantment.level());
-				if (enchantment.atLeast()) text.append("..");
-			}
-		}
-		for (GoodSpec.GoodEnchant enchantment : excluded) {
-			if (!text.isEmpty()) text.append(", ");
-			text.append('!').append(enchantment.id());
-		}
-		return text.toString();
+		return dev.trademaster.config.GoodEnchantFilter.format(enchantments, excluded);
 	}
 
-	record EnchantFilter(List<GoodSpec.GoodEnchant> include, List<GoodSpec.GoodEnchant> exclude) {}
-
-	static @Nullable EnchantFilter parseGoodEnchants(String raw) {
-		LinkedHashMap<Identifier, GoodSpec.GoodEnchant> include = new LinkedHashMap<>();
-		LinkedHashMap<Identifier, GoodSpec.GoodEnchant> exclude = new LinkedHashMap<>();
-		if (raw != null) {
-			for (String token : raw.split("[,;\\s]+")) {
-				if (token.isBlank()) continue;
-				boolean negated = token.startsWith("!");
-				String text = negated ? token.substring(1) : token;
-				String idText = text;
-				int level = 0;
-				boolean atLeast = false;
-				int split = idText.lastIndexOf(':');
-				if (split > 0) {
-					String suffix = idText.substring(split + 1);
-					if (suffix.endsWith("..")) {
-						atLeast = true;
-						suffix = suffix.substring(0, suffix.length() - 2);
-					}
-					if (!suffix.isEmpty() && suffix.chars().allMatch(Character::isDigit)) {
-						try {
-							level = Integer.parseInt(suffix);
-							idText = idText.substring(0, split);
-						} catch (NumberFormatException ignored) {
-							return null;
-						}
-					} else if (atLeast) {
-						return null;
-					}
-				}
-				Identifier id = TradeMasterConfig.parseId(idText);
-				if (id == null || (negated && (level > 0 || atLeast))) return null;
-				GoodSpec.GoodEnchant enchantment = new GoodSpec.GoodEnchant(id,
-						negated ? 0 : Math.max(0, Math.min(99, level)), !negated && atLeast);
-				if (negated) {
-					if (include.containsKey(id) || exclude.putIfAbsent(id, enchantment) != null) return null;
-				} else {
-					if (exclude.containsKey(id) || include.putIfAbsent(id, enchantment) != null) return null;
-				}
-			}
-		}
-		return new EnchantFilter(List.copyOf(include.values()), List.copyOf(exclude.values()));
+	static @Nullable dev.trademaster.config.GoodEnchantFilter.Parsed parseGoodEnchants(String raw) {
+		return dev.trademaster.config.GoodEnchantFilter.parse(raw);
 	}
 
 	/** Adds a good: type the result item id and click the plus. */

@@ -26,19 +26,47 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 		List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
 
-	public record GoodEnchant(Identifier id, int level, boolean atLeast) {
+	public record GoodEnchant(Identifier id, int minLevel, int maxLevel) {
 		public GoodEnchant {
-			level = Math.max(0, Math.min(99, level));
-			if (level == 0) atLeast = false;
+			minLevel = Math.max(0, Math.min(99, minLevel));
+			maxLevel = Math.max(0, Math.min(99, maxLevel));
+			if (minLevel == 0 && maxLevel == 0) {
+				// absence
+			} else if (minLevel == 0) {
+				minLevel = 1;
+			} else if (maxLevel > 0 && maxLevel < minLevel) {
+				maxLevel = minLevel;
+			}
 		}
 
 		public GoodEnchant(Identifier id, int level) {
-			this(id, level, false);
+			this(id, level <= 0 ? 0 : level, level <= 0 ? 0 : level);
+		}
+
+		public static GoodEnchant present(Identifier id) {
+			return new GoodEnchant(id, 1, 0);
+		}
+
+		public static GoodEnchant absent(Identifier id) {
+			return new GoodEnchant(id, 0, 0);
+		}
+
+		public static GoodEnchant exact(Identifier id, int level) {
+			return new GoodEnchant(id, level, level);
+		}
+
+		public static GoodEnchant range(Identifier id, int min, int max) {
+			return new GoodEnchant(id, min, max);
+		}
+
+		public boolean absent() {
+			return this.minLevel == 0 && this.maxLevel == 0;
 		}
 
 		public boolean levelMatches(int liveLevel) {
-			if (this.level <= 0) return true;
-			return this.atLeast ? liveLevel >= this.level : liveLevel == this.level;
+			if (absent()) return liveLevel == 0;
+			if (liveLevel <= 0 || liveLevel < this.minLevel) return false;
+			return this.maxLevel == 0 || liveLevel <= this.maxLevel;
 		}
 	}
 
@@ -100,23 +128,12 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 				? null : EnchantmentHelper.getEnchantmentsForCrafting(stack);
 		if (!this.filterEnchantments.isEmpty()) {
 			for (GoodEnchant wanted : this.filterEnchantments) {
-				int level = -1;
-				for (var entry : live.entrySet()) {
-					Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-					if (id != null && id.equals(wanted.id())) {
-						level = entry.getIntValue();
-						break;
-					}
-				}
-				if (level < 0 || !wanted.levelMatches(level)) return false;
+				if (!wanted.levelMatches(liveLevel(live, wanted.id()))) return false;
 			}
 		}
 		if (!this.excludedEnchantments.isEmpty()) {
 			for (GoodEnchant unwanted : this.excludedEnchantments) {
-				for (var entry : live.entrySet()) {
-					Identifier id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
-					if (id != null && id.equals(unwanted.id())) return false;
-				}
+				if (unwanted.levelMatches(liveLevel(live, unwanted.id()))) return false;
 			}
 		}
 		if (!this.filterNbt.isBlank()) {
@@ -125,9 +142,20 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 		}
 		if (!this.filterNbtExclude.isBlank()) {
 			var filter = McNbt.parse(this.filterNbtExclude);
-			if (filter == null || McNbt.contains(stack, filter)) return false;
+			if (filter == null) return false;
+			if (!filter.isEmpty() && McNbt.contains(stack, filter)) return false;
 		}
 		return true;
+	}
+
+	private static int liveLevel(
+			net.minecraft.world.item.enchantment.ItemEnchantments live, Identifier id) {
+		if (live == null) return 0;
+		for (var entry : live.entrySet()) {
+			Identifier found = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+			if (found != null && found.equals(id)) return entry.getIntValue();
+		}
+		return 0;
 	}
 
 	public int filterSpecificity() {
@@ -187,11 +215,9 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 	}
 
 	private static List<GoodEnchant> cleanEnchants(List<GoodEnchant> enchantments) {
-		Set<String> seen = new LinkedHashSet<>();
 		List<GoodEnchant> clean = new ArrayList<>();
 		for (GoodEnchant enchantment : enchantments) {
 			if (enchantment == null || enchantment.id() == null) continue;
-			if (!seen.add(enchantment.id().toString())) continue;
 			clean.add(enchantment);
 		}
 		return List.copyOf(clean);
