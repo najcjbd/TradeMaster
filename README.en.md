@@ -31,7 +31,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | The matching **Fabric API** |
 | Build | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
-| Optional | clientcommands (coexistence probe only, **no API coupling**); **Mod Menu** (optional, opens the six-tab mod screen); this multiversion tree does not depend on maLiLib. The full maLiLib 26.2 build lives on `main` and produces both the default and `-nomalilib` jars |
+| Optional | clientcommands (coexistence probe only, **no API coupling**); **Mod Menu** (optional, opens the six-tab mod screen); this multiversion tree does not depend on maLiLib. The optional-maLiLib 26.2 build lives on `main` as a single jar: maLiLib is used when installed, otherwise the built-in UI |
 | License | **GPL-3.0** |
 
 ## Installation

@@ -31,7 +31,7 @@ Minecraft **1.18.2–26.3**（Fabric 多版本、**纯客户端**）的图书管
 | 运行侧 | **纯客户端**（`"environment": "client"`，无需装到服务端） |
 | 必需前置 | 对应版本的 **Fabric API** |
 | 构建 | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
-| 可选前置 | clientcommands（仅共存探测，**无 API 耦合**）；**Mod Menu**（可选，打开六页签模组菜单）；本多版本树不依赖 maLiLib。26.2 的 maLiLib 完整集成版由 `main` 分支构建，并同时产出 `-nomalilib` 变体 |
+| 可选前置 | clientcommands（仅共存探测，**无 API 耦合**）；**Mod Menu**（可选，打开六页签模组菜单）；本多版本树不依赖 maLiLib。26.2 的 maLiLib 可选集成版由 `main` 分支构建为**单一 jar**：装了 maLiLib 自动启用集成，不装则走自带界面 |
 | 许可证 | **GPL-3.0** |
 
 ## 安装
