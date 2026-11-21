@@ -672,7 +672,9 @@ public final class ConfigPersistence {
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
 							costs, readString(o, "name", ""),
 							readGoodEnchants(o.get("enchantments")),
-							readString(o, "nbt", "")).normalized());
+							readString(o, "nbt", ""),
+							readGoodEnchants(o.get("excludeEnchantments")),
+							readString(o, "excludeNbt", "")).normalized());
 				}
 			}
 		}
@@ -802,6 +804,8 @@ public final class ConfigPersistence {
 			else o.remove("name");
 			if (!g.filterNbt().isBlank()) o.addProperty("nbt", g.filterNbt());
 			else o.remove("nbt");
+			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
+			else o.remove("excludeNbt");
 			if (!g.filterEnchantments().isEmpty()) {
 				JsonObject enchants = new JsonObject();
 				for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
@@ -810,6 +814,15 @@ public final class ConfigPersistence {
 				o.add("enchantments", enchants);
 			} else {
 				o.remove("enchantments");
+			}
+			if (!g.excludedEnchantments().isEmpty()) {
+				JsonObject excluded = new JsonObject();
+				for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
+					excluded.addProperty(enchantment.id().toString(), 0);
+				}
+				o.add("excludeEnchantments", excluded);
+			} else {
+				o.remove("excludeEnchantments");
 			}
 			goods.add(o);
 		}

@@ -168,13 +168,18 @@ something else into a librarian's trade).
 - **One good = one stable key + one result item**: several NBT variants of the same
   result item are allowed (a new variant gets `trademaster:good_N`; legacy goods without
   an `id` keep using their result id as the key).
-- Three optional **filter rows** sit below each good (contains semantics; extra
-  fields/enchantments allowed):
+- Five editable rows sit below each good (filters are optional):
+  - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id:level, id`, e.g. `minecraft:sharpness:5, minecraft:mending`;
-    level 0 (or an id alone) only requires presence.
-  - **Raw NBT**: an SNBT compound matched as a subset; this branch uses the component
-    map, e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`.
+  - **Enchantments**: `id:level, id, !id`, e.g.
+    `minecraft:sharpness:5, minecraft:mending, !minecraft:fire_aspect`; level 0 (or an
+    id alone) only requires presence; `!id` means **must not have**.
+  - **Raw NBT**: an SNBT compound matched as a subset; this branch natively uses the
+    component map, e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`. For
+    cross-version use, common legacy tag fields (enchantments/damage/unbreakable) are
+    also exposed in a legacy view; arbitrary mod-specific NBT stays native-only.
+    Blank = no filter; invalid text is red and not saved.
+  - **Exclude NBT**: the same subset match, but a hit makes the item **not** match.
   - If one offer matches several variants, the most constrained variant wins.
 - Each row edits: the **amount** (the trade must yield at least this many), the **price
   cap** (slot 1's amount, the same notion as an enchantment's price: pay more and it is

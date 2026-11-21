@@ -63,7 +63,31 @@ public final class McNbt {
 
 	public static boolean contains(ItemStack stack, CompoundTag filter) {
 		if (filter == null || filter.isEmpty()) return true;
-		return contains(itemData(stack), filter);
+		if (contains(itemData(stack), filter)) return true;
+		return contains(legacyView(stack), filter);
+	}
+
+	/** A legacy-tag view for filters written for pre-1.20.5 items. Common fields
+	 * (enchantments/damage/unbreakable) are exposed; arbitrary components stay native. */
+	private static CompoundTag legacyView(ItemStack stack) {
+		CompoundTag legacy = new CompoundTag();
+		ListTag enchantments = new ListTag();
+		var live = net.minecraft.world.item.enchantment.EnchantmentHelper
+				.getEnchantmentsForCrafting(stack);
+		for (var entry : live.entrySet()) {
+			var id = entry.getKey().unwrapKey().map(k -> k.identifier()).orElse(null);
+			if (id == null) continue;
+			CompoundTag enchantment = new CompoundTag();
+			enchantment.putString("id", id.toString());
+			enchantment.putInt("lvl", entry.getIntValue());
+			enchantments.add(enchantment);
+		}
+		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
+		legacy.putInt("Damage", stack.getDamageValue());
+		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
+			legacy.putByte("Unbreakable", (byte) 1);
+		}
+		return legacy;
 	}
 
 	public static boolean contains(Tag live, Tag filter) {
@@ -90,6 +114,14 @@ public final class McNbt {
 				if (!found) return false;
 			}
 			return true;
+		}
+		return sameValue(live, filter);
+	}
+
+	private static boolean sameValue(Tag live, Tag filter) {
+		if (live instanceof net.minecraft.nbt.NumericTag a
+				&& filter instanceof net.minecraft.nbt.NumericTag b) {
+			return Double.compare(a.doubleValue(), b.doubleValue()) == 0;
 		}
 		return filter.equals(live);
 	}

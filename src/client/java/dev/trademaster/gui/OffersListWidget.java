@@ -82,9 +82,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		this.addEntry(new SectionHeaderRow("trademaster.offers.goods_header"));
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
 			this.addEntry(new GoodRow(good, this.rebuild));
+			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.RESULT, this.rebuild));
 			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.NAME, this.rebuild));
 			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.ENCHANTMENTS, this.rebuild));
 			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.NBT, this.rebuild));
+			this.addEntry(new GoodFilterRow(good.id(), GoodFilterRow.Kind.NBT_EXCLUDE, this.rebuild));
 		}
 		this.addEntry(new AddGoodRow(this.rebuild));
 	}
@@ -738,9 +740,11 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 	 * or raw component NBT. Edits keep the stable key and trade shape. */
 	public static class GoodFilterRow extends Row {
 		public enum Kind {
+			RESULT("trademaster.offer.filter_result"),
 			NAME("trademaster.offer.filter_name"),
 			ENCHANTMENTS("trademaster.offer.filter_enchant"),
-			NBT("trademaster.offer.filter_nbt");
+			NBT("trademaster.offer.filter_nbt"),
+			NBT_EXCLUDE("trademaster.offer.filter_nbt_exclude");
 
 			final String labelKey;
 			Kind(String labelKey) { this.labelKey = labelKey; }
@@ -758,15 +762,18 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.rebuild = rebuild;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 			this.field = field(kind.labelKey, good == null ? "" : currentValue(good, kind));
-			this.field.setMaxLength(kind == Kind.NBT ? 4096 : 128);
+			this.field.setMaxLength(kind == Kind.NBT || kind == Kind.NBT_EXCLUDE ? 4096 : 128);
 			this.field.setResponder(text -> this.errorKey = null);
 		}
 
 		private static String currentValue(GoodSpec good, Kind kind) {
 			return switch (kind) {
+				case RESULT -> good.result().toString();
 				case NAME -> good.filterName();
-				case ENCHANTMENTS -> formatGoodEnchants(good.filterEnchantments());
+				case ENCHANTMENTS -> formatGoodEnchants(good.filterEnchantments(),
+						good.excludedEnchantments());
 				case NBT -> good.filterNbt();
+				case NBT_EXCLUDE -> good.filterNbtExclude();
 			};
 		}
 
@@ -783,15 +790,28 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			String value = this.field.getValue().trim();
 			GoodSpec updated;
 			switch (this.kind) {
+				case RESULT -> {
+					Identifier result = parseItem(value);
+					if (result == null || result.equals(TradeOfferSpec.AIR)
+							|| result.equals(TradeOfferSpec.ENCHANTED_BOOK)
+							|| config.isAirItem(result)
+							|| net.minecraft.core.registries.BuiltInRegistries.ITEM.get(result).isEmpty()) {
+						this.errorKey = "trademaster.offer.invalid_item";
+						return;
+					}
+					updated = existing.withResult(result);
+				}
 				case NAME -> updated = existing.withFilter(value,
-						existing.filterEnchantments(), existing.filterNbt());
+						existing.filterEnchantments(), existing.filterNbt(),
+						existing.excludedEnchantments(), existing.filterNbtExclude());
 				case ENCHANTMENTS -> {
-					List<GoodSpec.GoodEnchant> enchants = parseGoodEnchants(value);
+					EnchantFilter enchants = parseGoodEnchants(value);
 					if (enchants == null) {
 						this.errorKey = "trademaster.offer.invalid_enchant";
 						return;
 					}
-					updated = existing.withFilter(existing.filterName(), enchants, existing.filterNbt());
+					updated = existing.withFilter(existing.filterName(), enchants.include(),
+							existing.filterNbt(), enchants.exclude(), existing.filterNbtExclude());
 				}
 				case NBT -> {
 					if (!McNbt.valid(value)) {
@@ -799,7 +819,17 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 						return;
 					}
 					updated = existing.withFilter(existing.filterName(),
-							existing.filterEnchantments(), value);
+							existing.filterEnchantments(), value,
+							existing.excludedEnchantments(), existing.filterNbtExclude());
+				}
+				case NBT_EXCLUDE -> {
+					if (!McNbt.valid(value)) {
+						this.errorKey = "trademaster.offer.invalid_nbt";
+						return;
+					}
+					updated = existing.withFilter(existing.filterName(),
+							existing.filterEnchantments(), existing.filterNbt(),
+							existing.excludedEnchantments(), value);
 				}
 				default -> {
 					return;
@@ -809,7 +839,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			if (updated.equals(existing)) return;
 			config.goods.set(config.goods.indexOf(existing), updated);
 			config.save();
-			if (this.kind == Kind.NAME && this.rebuild != null) this.rebuild.run();
+			if ((this.kind == Kind.NAME || this.kind == Kind.RESULT) && this.rebuild != null) {
+				this.rebuild.run();
+			}
 		}
 
 		@Override
@@ -833,42 +865,52 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 		}
 	}
 
-	static String formatGoodEnchants(List<GoodSpec.GoodEnchant> enchantments) {
+	static String formatGoodEnchants(List<GoodSpec.GoodEnchant> enchantments,
+			List<GoodSpec.GoodEnchant> excluded) {
 		StringBuilder text = new StringBuilder();
 		for (GoodSpec.GoodEnchant enchantment : enchantments) {
 			if (!text.isEmpty()) text.append(", ");
 			text.append(enchantment.id());
 			if (enchantment.level() > 0) text.append(':').append(enchantment.level());
 		}
+		for (GoodSpec.GoodEnchant enchantment : excluded) {
+			if (!text.isEmpty()) text.append(", ");
+			text.append('!').append(enchantment.id());
+		}
 		return text.toString();
 	}
 
-	static @Nullable List<GoodSpec.GoodEnchant> parseGoodEnchants(String raw) {
-		LinkedHashMap<Identifier, Integer> levels = new LinkedHashMap<>();
+	record EnchantFilter(List<GoodSpec.GoodEnchant> include, List<GoodSpec.GoodEnchant> exclude) {}
+
+	static @Nullable EnchantFilter parseGoodEnchants(String raw) {
+		LinkedHashMap<Identifier, Integer> include = new LinkedHashMap<>();
+		LinkedHashMap<Identifier, Integer> exclude = new LinkedHashMap<>();
 		if (raw != null) {
 			for (String token : raw.split("[,;\\s]+")) {
 				if (token.isBlank()) continue;
-				String idText = token;
+				boolean negated = token.startsWith("!");
+				String idText = negated ? token.substring(1) : token;
 				int level = 0;
-				int split = token.lastIndexOf(':');
+				int split = idText.lastIndexOf(':');
 				if (split > 0) {
 					try {
-						level = Integer.parseInt(token.substring(split + 1));
-						idText = token.substring(0, split);
+						level = Integer.parseInt(idText.substring(split + 1));
+						idText = idText.substring(0, split);
 					} catch (NumberFormatException ignored) {
 						// the last colon belongs to the id
 					}
 				}
 				Identifier id = TradeMasterConfig.parseId(idText);
 				if (id == null) return null;
-				levels.merge(id, Math.max(0, Math.min(99, level)), Math::max);
+				(negated ? exclude : include).merge(id,
+						negated ? 0 : Math.max(0, Math.min(99, level)), Math::max);
 			}
 		}
-		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
-		for (var entry : levels.entrySet()) {
-			result.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
-		}
-		return result;
+		List<GoodSpec.GoodEnchant> inc = new ArrayList<>();
+		for (var entry : include.entrySet()) inc.add(new GoodSpec.GoodEnchant(entry.getKey(), entry.getValue()));
+		List<GoodSpec.GoodEnchant> exc = new ArrayList<>();
+		for (var entry : exclude.entrySet()) exc.add(new GoodSpec.GoodEnchant(entry.getKey(), 0));
+		return new EnchantFilter(List.copyOf(inc), List.copyOf(exc));
 	}
 
 	/** Adds a good: type the result item id and click the plus. */
@@ -927,7 +969,7 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			// a stable key per variant; several NBT variants of one result item may be
 			// configured, and the result item itself is only the offer match
 			GoodSpec spec = new GoodSpec(config.nextGoodKey(), result, 1, true, 64,
-					TradeOfferSpec.defaultGoodCosts(), "", List.of(), "");
+					TradeOfferSpec.defaultGoodCosts(), "", List.of(), "", List.of(), "");
 			// it is added ENABLED, so the same enable-time collision gate applies as
 			// for the row's own toggle (a colliding name would break deduction for both)
 			String conflict = AliasListWidget.enableConflict(spec);

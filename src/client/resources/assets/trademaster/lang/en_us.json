@@ -273,12 +273,14 @@
   "trademaster.settings.nonBookDisposal.stop": "Chest → stop when no chest takes it",
   "trademaster.settings.nonBookDisposal.drop": "Chest → drop when no chest takes it",
   "trademaster.settings.nonBookDisposal.comment": "Cannot be ground means: cursed books (the grindstone keeps curses) and your custom goods. When every bound chest refuses them: stop and let you handle it, or drop them facing the configured drop direction. An ordinary enchanted book is only ever stored, never dropped; in grindstone mode the cursed books are handled by that path (chest, then drop), so this option only covers goods.",
-  "trademaster.offers.goods_header": "Goods (each variant has a stable key; rows below: name filter · enchantments (id:level, level 0 = presence) · raw NBT subset)",
+  "trademaster.offers.goods_header": "Goods (each variant has a stable key; rows below: result item · name filter · enchantments (id:level, id, !id = must not have) · raw NBT subset · excluded NBT subset)",
   "trademaster.offers.add_good": "Add a good / variant (enter the result item id)",
   "trademaster.offer.filter_name": "Item name",
   "trademaster.offer.filter_enchant": "Enchantments",
   "trademaster.offer.filter_nbt": "Raw NBT",
-  "trademaster.offer.invalid_enchant": "Invalid enchantment list: use id:level, id (level 0 = presence)",
+  "trademaster.offer.invalid_enchant": "Invalid enchantment list: use id:level, id, or !id (exclude)",
   "trademaster.offer.invalid_nbt": "Invalid NBT: enter a SNBT compound (blank = no NBT filter)",
-  "trademaster.offer.unknown_item": "No such item id"
+  "trademaster.offer.unknown_item": "No such item id",
+  "trademaster.offer.filter_result": "Result item",
+  "trademaster.offer.filter_nbt_exclude": "Exclude NBT"
 }
