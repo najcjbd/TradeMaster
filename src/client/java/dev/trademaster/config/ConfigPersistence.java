@@ -666,15 +666,16 @@ public final class ConfigPersistence {
 					}
 					List<TradeOfferSpec.TradeCost> costs = readCosts(o.get("costs"));
 					if (costs.isEmpty()) costs = TradeOfferSpec.defaultGoodCosts();
+					ParsedEnchants enchants = readGoodEnchants(o.get("enchantments"), false, key);
+					ParsedEnchants excluded = readGoodEnchants(o.get("excludeEnchantments"), true, key);
 					c.goods.add(new GoodSpec(key, result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
 							costs, readString(o, "name", ""),
-							readGoodEnchants(o.get("enchantments"), false),
-							readString(o, "nbt", ""),
-							readGoodEnchants(o.get("excludeEnchantments"), true),
-							readString(o, "excludeNbt", "")).normalized());
+							enchants.list(), readString(o, "nbt", ""),
+							excluded.list(), readString(o, "excludeNbt", ""),
+							enchants.invalid() || excluded.invalid()).normalized());
 				}
 			}
 		}
@@ -811,23 +812,28 @@ public final class ConfigPersistence {
 			else o.remove("nbt");
 			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
 			else o.remove("excludeNbt");
-			if (!g.filterEnchantments().isEmpty()) {
-				JsonArray enchants = new JsonArray();
-				for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
-					enchants.add(enchantmentToken(enchantment));
+			if (!g.filterInvalid()) {
+				if (!g.filterEnchantments().isEmpty()) {
+					JsonArray enchants = new JsonArray();
+					for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
+						enchants.add(enchantmentToken(enchantment));
+					}
+					o.add("enchantments", enchants);
+				} else {
+					o.remove("enchantments");
 				}
-				o.add("enchantments", enchants);
-			} else {
-				o.remove("enchantments");
-			}
-			if (!g.excludedEnchantments().isEmpty()) {
-				JsonArray excluded = new JsonArray();
-				for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
-					excluded.add(GoodEnchantFilter.token(enchantment, false));
+				if (!g.excludedEnchantments().isEmpty()) {
+					JsonArray excluded = new JsonArray();
+					for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
+						excluded.add(GoodEnchantFilter.token(enchantment, false));
+					}
+					o.add("excludeEnchantments", excluded);
+				} else {
+					o.remove("excludeEnchantments");
 				}
-				o.add("excludeEnchantments", excluded);
 			} else {
-				o.remove("excludeEnchantments");
+				// the reader could not parse these arrays: keep the on-disk text so the
+				// user can fix it instead of silently erasing the filter on the next save
 			}
 			goods.add(o);
 		}
@@ -1002,16 +1008,26 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonPrimitive() ? e.getAsString() : fallback;
 	}
 
-	/** Reads a good's structured enchantment filter: an object {@code {id: level}} or
-	 * an array of {@code "id:level"} / {@code {id, level}} entries. A missing/zero
-	 * level means presence at any level. */
-	private static List<GoodSpec.GoodEnchant> readGoodEnchants(@Nullable JsonElement element,
-			boolean excludeField) {
+	private record ParsedEnchants(List<GoodSpec.GoodEnchant> list, boolean invalid) {}
+
+	/** Reads a good's structured enchantment filter from an object or token array.
+	 * Object entries are {@code {id: level}} (0 = absence), token-array entries use the
+	 * documented range syntax, and object-array entries honour {@code level}/{@code atLeast}
+	 * or {@code minLevel}/{@code maxLevel}. Any token that cannot be parsed marks the
+	 * WHOLE filter invalid: dropping it would silently turn the filter into "match any
+	 * offer of this result item". */
+	private static ParsedEnchants readGoodEnchants(@Nullable JsonElement element,
+			boolean excludeField, Identifier key) {
 		List<GoodSpec.GoodEnchant> result = new ArrayList<>();
+		boolean invalid = false;
 		if (element != null && element.isJsonObject()) {
 			for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
 				Identifier id = TradeMasterConfig.parseId(entry.getKey());
-				if (id == null) continue;
+				if (id == null) {
+					invalid = true;
+					warnBadEnchant(key, entry.getKey(), "unknown id");
+					continue;
+				}
 				Integer level = null;
 				JsonElement value = entry.getValue();
 				try {
@@ -1022,13 +1038,12 @@ public final class ConfigPersistence {
 				} catch (RuntimeException ignored) {
 					level = null;
 				}
-				if (level == null) {
-					if (TradeMaster.LOGGER != null) {
-						TradeMaster.LOGGER.warn("Ignoring invalid good enchantment level for {}", entry.getKey());
-					}
+				if (level == null || level < 0 || level > 99) {
+					invalid = true;
+					warnBadEnchant(key, entry.getKey(), "level out of range");
 					continue;
 				}
-				result.add(level <= 0 ? GoodSpec.GoodEnchant.absent(id)
+				result.add(level == 0 ? GoodSpec.GoodEnchant.absent(id)
 						: GoodSpec.GoodEnchant.exact(id, level));
 			}
 		} else if (element != null && element.isJsonArray()) {
@@ -1036,25 +1051,65 @@ public final class ConfigPersistence {
 				if (e.isJsonPrimitive() && e.getAsJsonPrimitive().isString()) {
 					GoodSpec.GoodEnchant parsed = GoodEnchantFilter.parseToken(e.getAsString(), excludeField);
 					if (parsed == null) {
-						TradeMaster.LOGGER.warn("Ignoring invalid good enchantment token: {}", e.getAsString());
+						invalid = true;
+						warnBadEnchant(key, e.getAsString(), "bad range/token");
 					} else {
 						result.add(parsed);
 					}
 				} else if (e.isJsonObject()) {
 					JsonObject o = e.getAsJsonObject();
 					JsonElement idElement = o.get("id");
-					if (idElement != null && idElement.isJsonPrimitive()) {
-						Identifier id = TradeMasterConfig.parseId(idElement.getAsString());
-						if (id != null) {
-							int level = readInt(o, "level", 0);
-							result.add(level <= 0 ? GoodSpec.GoodEnchant.absent(id)
+					if (idElement == null || !idElement.isJsonPrimitive()) {
+						invalid = true;
+						warnBadEnchant(key, e.toString(), "missing id");
+						continue;
+					}
+					Identifier id = TradeMasterConfig.parseId(idElement.getAsString());
+					if (id == null) {
+						invalid = true;
+						warnBadEnchant(key, e.toString(), "unknown id");
+						continue;
+					}
+					if (o.has("minLevel") || o.has("maxLevel")) {
+						int min = readInt(o, "minLevel", 0);
+						int max = readInt(o, "maxLevel", 0);
+						if (!validRange(min, max)) {
+							invalid = true;
+							warnBadEnchant(key, e.toString(), "bad min/max range");
+							continue;
+						}
+						result.add(GoodSpec.GoodEnchant.range(id, min, max));
+					} else {
+						int level = readInt(o, "level", 0);
+						if (level < 0 || level > 99) {
+							invalid = true;
+							warnBadEnchant(key, e.toString(), "level out of range");
+							continue;
+						}
+						if (readBool(o, "atLeast", false)) {
+							result.add(GoodSpec.GoodEnchant.range(id, level <= 0 ? 1 : level, 0));
+						} else {
+							result.add(level == 0 ? GoodSpec.GoodEnchant.absent(id)
 									: GoodSpec.GoodEnchant.exact(id, level));
 						}
 					}
 				}
 			}
 		}
-		return result;
+		return new ParsedEnchants(result, invalid);
+	}
+
+	private static boolean validRange(int min, int max) {
+		if (min < 0 || max < 0 || min > 99 || max > 99) return false;
+		return max == 0 || max >= min;
+	}
+
+	private static void warnBadEnchant(Identifier key, String token, String reason) {
+		if (TradeMaster.LOGGER != null) {
+			TradeMaster.LOGGER.warn(
+					"Invalid enchantment filter token for good {} ({}): {} - the good stays unusable until edited",
+					key, reason, token);
+		}
 	}
 
 	private static boolean readBool(JsonObject o, String key, boolean fallback) {

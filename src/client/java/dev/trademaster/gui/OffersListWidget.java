@@ -762,7 +762,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 			this.rebuild = rebuild;
 			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
 			this.field = field(kind.labelKey, good == null ? "" : currentValue(good, kind));
-			this.field.setMaxLength(kind == Kind.NBT || kind == Kind.NBT_EXCLUDE ? 4096 : 128);
+			this.field.setMaxLength(kind == Kind.NBT || kind == Kind.NBT_EXCLUDE ? 4096
+					: kind == Kind.ENCHANTMENTS ? 1024 : 128);
 			this.field.setResponder(text -> this.errorKey = null);
 		}
 
@@ -811,7 +812,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 						return;
 					}
 					updated = existing.withFilter(existing.filterName(), enchants.include(),
-							existing.filterNbt(), enchants.exclude(), existing.filterNbtExclude());
+							existing.filterNbt(), enchants.exclude(), existing.filterNbtExclude())
+							.withFilterInvalid(false);
 				}
 				case NBT -> {
 					if (!McNbt.valid(value)) {
@@ -835,7 +837,9 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 					return;
 				}
 			}
-			if (this.kind == Kind.NAME || this.kind == Kind.RESULT) {
+			// a disabled good adds no deduction-index key, so renaming/retargeting it
+			// cannot create a collision; the enable toggle re-checks before it goes live
+			if (existing.enabled() && (this.kind == Kind.NAME || this.kind == Kind.RESULT)) {
 				String conflict = AliasListWidget.enableConflict(updated);
 				if (conflict != null) {
 					this.errorKey = conflict;

@@ -171,7 +171,7 @@ something else into a librarian's trade).
 - Five editable rows sit below each good (filters are optional):
   - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id or an include/exclude conflict is invalid and is not saved. Extra enchantments are allowed.
+  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id, an include/exclude conflict, or an unparseable range is invalid: the good is marked unusable and its text is preserved for fixing (it never degrades into matching everything). Extra enchantments are allowed.
   - **Raw NBT**: an SNBT compound matched as a subset; this branch natively uses the
     component map, e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`. For
     cross-version use, common legacy tag fields (enchantments/damage/unbreakable) are

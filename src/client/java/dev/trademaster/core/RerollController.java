@@ -733,6 +733,14 @@ public final class RerollController {
 		}
 	}
 
+	private static void voucherPendingPurchase() {
+		RunSession s = session;
+		if (s == null || s.unprovenPurchaseVouchered) return;
+		if (lockExecutor == null || !lockExecutor.purchaseSent()) return;
+		debug("stop with a purchase in flight: vouching the unproven purchase");
+		voucherUnprovenPurchase(s);
+	}
+
 	private static void enter(Phase next) {
 		// a new phase gets a fresh cursor-block grace (the condition may clear with it)
 		cursorBlockTicks = 0;
@@ -822,14 +830,13 @@ public final class RerollController {
 		Map<Item, Integer> produced = new LinkedHashMap<>();
 		RunSession s = session;
 		if (player == null || s == null) return produced;
-		for (Identifier id : s.lockedIds) {
-			// a same-id enchantment target wins: a target lock voucher must never be
-			// mistaken for a produced good
-			if (TradeMasterConfig.INSTANCE.enchantments.containsKey(id)) continue;
-			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
-			if (good == null) continue;
-			Item item = good.resultItem();
-			if (item == null) continue;
+		// derive from the ACTUAL purchased stacks, not the live good config: editing a
+		// good's result (or removing it) right after a purchase must not orphan the item
+		// already in the inventory
+		for (Map.Entry<Item, java.util.List<net.minecraft.world.item.ItemStack>> entry
+				: s.lockedResults.entrySet()) {
+			Item item = entry.getKey();
+			if (item == net.minecraft.world.item.Items.ENCHANTED_BOOK) continue;
 			int now = Preconditions.countItem(player, item);
 			int baseline = s.goodBaseline.getOrDefault(item, 0);
 			int excess = now - baseline;
@@ -846,14 +853,8 @@ public final class RerollController {
 		Map<Item, Integer> baseline = new LinkedHashMap<>();
 		RunSession s = session;
 		if (player == null || s == null) return baseline;
-		for (Identifier id : s.lockedIds) {
-			// a same-id enchantment target wins: a target lock voucher must never be
-			// mistaken for a produced good
-			if (TradeMasterConfig.INSTANCE.enchantments.containsKey(id)) continue;
-			GoodSpec good = TradeMasterConfig.INSTANCE.goodFor(id);
-			if (good == null) continue;
-			Item item = good.resultItem();
-			if (item == null) continue;
+		for (Item item : s.lockedResults.keySet()) {
+			if (item == net.minecraft.world.item.Items.ENCHANTED_BOOK) continue;
 			baseline.putIfAbsent(item, s.goodBaseline.getOrDefault(item, 0));
 		}
 		return baseline;
@@ -2051,7 +2052,8 @@ public final class RerollController {
 	 * SECOND copy. No auto-disable and no hunt mark (the purchase is not proven), but the
 	 * expected result IS remembered so an actually-delivered item can still be disposed of. */
 	private static void voucherUnprovenPurchase(RunSession s) {
-		if (s.matchedTrade == null) return;
+		if (s.matchedTrade == null || s.unprovenPurchaseVouchered) return;
+		s.unprovenPurchaseVouchered = true;
 		s.lockedIds.addAll(s.matchedTrade.matchedIds());
 		// the executor may have attempted an EMERGENCY book instead of the matched one
 		TradeMatcher.MatchedTrade expected = lockExecutor == null ? null : lockExecutor.expected();
@@ -2492,6 +2494,7 @@ public final class RerollController {
 
 		if (hit != null) {
 			s.matchedTrade = hit;
+			s.unprovenPurchaseVouchered = false;
 			debug("offers: matched " + hit.id() + " " + hit.level()
 					+ " for " + hit.price() + " on roll " + (s.tries + 1));
 			chat(Component.translatable("trademaster.message.found",
@@ -2616,6 +2619,7 @@ public final class RerollController {
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.goods) {
 			h = h * 31 + (good.enabled() ? 1 : 0);
 			if (!good.enabled()) continue;
+			h = h * 31 + (good.filterInvalid() ? 1 : 0);
 			h = h * 31 + good.id().hashCode();
 			h = h * 31 + good.result().hashCode();
 			h = h * 31 + good.maxPrice();
@@ -2623,11 +2627,14 @@ public final class RerollController {
 			h = h * 31 + good.filterName().hashCode();
 			h = h * 31 + good.filterNbt().hashCode();
 			h = h * 31 + good.filterNbtExclude().hashCode();
+			// list markers: include [A] and exclude [A] must not hash alike
+			h = h * 31 + 1;
 			for (GoodSpec.GoodEnchant enchantment : good.filterEnchantments()) {
 				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
 				h = h * 31 + enchantment.minLevel();
 				h = h * 31 + enchantment.maxLevel();
 			}
+			h = h * 31 + 2;
 			for (GoodSpec.GoodEnchant enchantment : good.excludedEnchantments()) {
 				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
 				h = h * 31 + enchantment.minLevel();
@@ -2637,6 +2644,13 @@ public final class RerollController {
 				h = h * 31 + (cost == null || cost.item() == null ? 0 : cost.item().hashCode());
 				h = h * 31 + (cost == null ? 0 : cost.count());
 			}
+		}
+		// aliases are the deduction-index keys: renaming one mid-run must rebuild
+		// the needs/index instead of leaving the old name live
+		for (Map.Entry<Identifier, String> entry
+				: TradeMasterConfig.INSTANCE.customEnchantNames.entrySet()) {
+			h = h * 31 + (entry.getKey() == null ? 0 : entry.getKey().hashCode());
+			h = h * 31 + (entry.getValue() == null ? 0 : entry.getValue().hashCode());
 		}
 		return h;
 	}
@@ -3249,6 +3263,10 @@ public final class RerollController {
 	}
 
 	private static void stop(@Nullable Component message, @Nullable ChatFormatting color) {
+		// a forced stop (death, dimension change, the deferred-stop backstop) can land
+		// while a purchase click is out: vouch it first, or the delivered item is
+		// neither disposed of nor kept out of the next run's demands
+		voucherPendingPurchase();
 		releaseCheck();
 		dev.trademaster.exec.DispenserCheck.resetLateOpenMemory();
 		dispenserUnsetWarned = false;

@@ -19,12 +19,14 @@ import java.util.Set;
  *
  * <p>Include filters are subset filters (configured fields must match, extras allowed);
  * exclude filters invert that (the live item must not contain them). An enchantment
- * include level of 0 means presence; a positive level means at least that level.
+ * level of 0 means absence (no such enchantment); {@code 1..} means any present level,
+ * {@code N} exactly N and {@code N..M} the inclusive range.
  */
 public record GoodSpec(Identifier key, Identifier result, int resultCount,
 		boolean enabled, int maxPrice, List<TradeOfferSpec.TradeCost> costs,
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
-		List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
+		List<GoodEnchant> excludedEnchantments, String filterNbtExclude,
+		boolean filterInvalid) {
 
 	public record GoodEnchant(Identifier id, int minLevel, int maxLevel) {
 		public GoodEnchant {
@@ -84,7 +86,16 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 	public GoodSpec(Identifier result, int resultCount, boolean enabled, int maxPrice,
 			List<TradeOfferSpec.TradeCost> costs) {
 		this(result, result, resultCount, enabled, maxPrice, costs, "", List.of(), "",
-				List.of(), "");
+				List.of(), "", false);
+	}
+
+	/** The pre-{@code filterInvalid} constructor shape, used by all in-memory edits. */
+	public GoodSpec(Identifier key, Identifier result, int resultCount,
+			boolean enabled, int maxPrice, List<TradeOfferSpec.TradeCost> costs,
+			String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
+			List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
+		this(key, result, resultCount, enabled, maxPrice, costs, filterName,
+				filterEnchantments, filterNbt, excludedEnchantments, filterNbtExclude, false);
 	}
 
 	public Identifier id() {
@@ -100,20 +111,32 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 	}
 
 	public boolean filterValid() {
+		// a token the config reader could not parse must never degrade into "no filter":
+		// that would silently match every offer of the result item
+		if (this.filterInvalid) return false;
 		if (!McNbt.valid(this.filterNbt) || !McNbt.valid(this.filterNbtExclude)) return false;
 		Set<String> include = new LinkedHashSet<>();
 		Set<String> exclude = new LinkedHashSet<>();
 		for (GoodEnchant enchantment : this.filterEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (!validRange(enchantment)) return false;
 			if (exclude.contains(enchantment.id().toString())) return false;
 			if (!include.add(enchantment.id().toString())) return false;
 		}
 		for (GoodEnchant enchantment : this.excludedEnchantments) {
 			if (enchantment == null || enchantment.id() == null) return false;
+			if (!validRange(enchantment)) return false;
 			if (include.contains(enchantment.id().toString())) return false;
 			if (!exclude.add(enchantment.id().toString())) return false;
 		}
 		return true;
+	}
+
+	private static boolean validRange(GoodEnchant enchantment) {
+		int min = enchantment.minLevel();
+		int max = enchantment.maxLevel();
+		if (min < 0 || max < 0 || min > 99 || max > 99) return false;
+		return max == 0 || max >= min;
 	}
 
 	public boolean matches(ItemStack stack) {
@@ -182,25 +205,32 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 	public GoodSpec withEnabled(boolean value) {
 		return new GoodSpec(this.key, this.result, this.resultCount, value, this.maxPrice,
 				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
 	}
 
 	public GoodSpec withTrade(int resultCount, int maxPrice, List<TradeOfferSpec.TradeCost> costs) {
 		return new GoodSpec(this.key, this.result, resultCount, this.enabled, maxPrice,
 				costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
 	}
 
 	public GoodSpec withResult(Identifier newResult) {
 		return new GoodSpec(this.key, newResult, this.resultCount, this.enabled, this.maxPrice,
 				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
-				this.excludedEnchantments, this.filterNbtExclude);
+				this.excludedEnchantments, this.filterNbtExclude, this.filterInvalid);
 	}
 
 	public GoodSpec withFilter(String name, List<GoodEnchant> enchantments, String rawNbt,
 			List<GoodEnchant> excluded, String rawNbtExclude) {
 		return new GoodSpec(this.key, this.result, this.resultCount, this.enabled, this.maxPrice,
-				this.costs, name, enchantments, rawNbt, excluded, rawNbtExclude);
+				this.costs, name, enchantments, rawNbt, excluded, rawNbtExclude,
+				this.filterInvalid);
+	}
+
+	public GoodSpec withFilterInvalid(boolean value) {
+		return new GoodSpec(this.key, this.result, this.resultCount, this.enabled, this.maxPrice,
+				this.costs, this.filterName, this.filterEnchantments, this.filterNbt,
+				this.excludedEnchantments, this.filterNbtExclude, value);
 	}
 
 	public GoodSpec normalized() {
@@ -211,7 +241,7 @@ public record GoodSpec(Identifier key, Identifier result, int resultCount,
 				this.enabled, Math.max(0, Math.min(64, this.maxPrice)), clean,
 				this.filterName.trim(), cleanEnchants(this.filterEnchantments),
 				this.filterNbt.trim(), cleanEnchants(this.excludedEnchantments),
-				this.filterNbtExclude.trim());
+				this.filterNbtExclude.trim(), this.filterInvalid);
 	}
 
 	private static List<GoodEnchant> cleanEnchants(List<GoodEnchant> enchantments) {

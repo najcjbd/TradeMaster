@@ -63,9 +63,45 @@ public final class McNbt {
 
 	public static boolean contains(ItemStack stack, CompoundTag filter) {
 		if (filter == null || filter.isEmpty()) return true;
-		if (contains(itemData(stack), filter)) return true;
+		CompoundTag data = itemData(stack);
+		if (contains(data, filter)) return true;
+		// 1.20.5-1.21.4 wrap enchantments as {levels:{id:level}}; 1.21.5+ store the
+		// flat map. Expose both shapes so a raw filter written on one node still
+		// matches on the other.
+		for (CompoundTag shape : enchantmentShapes(data)) {
+			if (contains(shape, filter)) return true;
+		}
 		return contains(legacyView(stack), filter);
 	}
+
+	/** The component map with {@code minecraft:enchantments} /
+	 * {@code minecraft:stored_enchantments} rewritten into the other era's shape.
+	 * Empty when neither key is present. */
+	static java.util.List<CompoundTag> enchantmentShapes(CompoundTag data) {
+		CompoundTag flat = null;
+		CompoundTag wrapped = null;
+		for (String key : ENCHANTMENT_COMPONENTS) {
+			Tag value = data.get(key);
+			if (!(value instanceof CompoundTag compound)) continue;
+			Tag levels = compound.get("levels");
+			if (levels instanceof CompoundTag levelMap) {
+				if (flat == null) flat = data.copy();
+				flat.put(key, levelMap.copy());
+			} else {
+				if (wrapped == null) wrapped = data.copy();
+				CompoundTag holder = new CompoundTag();
+				holder.put("levels", compound.copy());
+				wrapped.put(key, holder);
+			}
+		}
+		java.util.List<CompoundTag> shapes = new java.util.ArrayList<>(2);
+		if (flat != null) shapes.add(flat);
+		if (wrapped != null) shapes.add(wrapped);
+		return shapes;
+	}
+
+	private static final String[] ENCHANTMENT_COMPONENTS = {
+			"minecraft:enchantments", "minecraft:stored_enchantments"};
 
 	/** A legacy-tag view for filters written for pre-1.20.5 items. Common fields
 	 * (enchantments/damage/unbreakable) are exposed; arbitrary components stay native. */
@@ -83,7 +119,9 @@ public final class McNbt {
 			enchantments.add(enchantment);
 		}
 		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
-		if (stack.isDamageableItem()) legacy.putInt("Damage", stack.getDamageValue());
+		if (stack.isDamageableItem() && stack.getDamageValue() > 0) {
+			legacy.putInt("Damage", stack.getDamageValue());
+		}
 		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			legacy.putByte("Unbreakable", (byte) 1);
 		}

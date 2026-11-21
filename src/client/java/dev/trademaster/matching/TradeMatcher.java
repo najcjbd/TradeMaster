@@ -902,6 +902,11 @@ public class TradeMatcher {
 		}
 		// custom goods are identified by their result item, and a named villager
 		// carries that item's display name
+		Map<String, Integer> sharedPaths = new HashMap<>();
+		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
+			if (!goodMatchable(good)) continue;
+			sharedPaths.merge(EnchantmentNamer.canonical(good.path()), 1, Integer::sum);
+		}
 		for (GoodSpec good : TradeMasterConfig.INSTANCE.enabledGoods()) {
 			// a good that can never be offered contributes nothing to trading, so its
 			// names must not drop a LIVE target's key (buildNeeds skips it too)
@@ -910,7 +915,13 @@ public class TradeMatcher {
 			// the registry path, so a villager named either way resolves back
 			putIndex(index, ambiguous,
 					EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(good.displayName())), good.id());
-			putIndex(index, ambiguous, EnchantmentNamer.canonical(good.path()), good.id());
+			// Several variants can share one result path: that path cannot identify
+			// which variant was captured, so it must not become an index key at all.
+			// Adding it twice and deleting it as "ambiguous" also deleted a variant's
+			// ALIAS when the alias text happened to equal the (shared) path.
+			if (sharedPaths.getOrDefault(EnchantmentNamer.canonical(good.path()), 0) == 1) {
+				putIndex(index, ambiguous, EnchantmentNamer.canonical(good.path()), good.id());
+			}
 		}
 		// names recorded when villagers were actually named: keeps deduction working
 		// when the game language changed since naming
