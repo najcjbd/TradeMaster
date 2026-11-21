@@ -67,8 +67,9 @@ public final class GoodEnchantFilter {
 			String suffix = idText.substring(split + 1);
 			// a suffix starting with a digit or dots is a level/range; a word suffix is
 			// part of the id (e.g. "minecraft:sharpness")
-			if (!suffix.isEmpty() && (Character.isDigit(suffix.charAt(0))
-					|| suffix.startsWith("..") || suffix.startsWith("-") || suffix.startsWith("+"))) {
+			boolean specLike = suffix.startsWith("..") || suffix.startsWith("-")
+					|| suffix.startsWith("+") || suffix.chars().allMatch(c -> c == '.' || Character.isDigit(c));
+			if (!suffix.isEmpty() && specLike) {
 				spec = suffix;
 				idText = idText.substring(0, split);
 			}
