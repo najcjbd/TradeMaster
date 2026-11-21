@@ -174,17 +174,22 @@ something else into a librarian's trade).
   (**cost A / cost B / B amount**; identical rules to the enchantment rows, including
   `-1 no limit / 0 not required` and the air-item list), plus **enable ▣** and
   **remove ✕** on the right.
-- Three optional **filter rows** sit below each good (all "contains" semantics; extra
-  fields/enchantments are allowed):
+- Five editable rows sit below each good (filters are optional):
+  - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id:level, id`, e.g. `minecraft:sharpness:5, minecraft:mending`.
-    A positive level requires **at least** that level; level 0 (or an id alone) only
-    requires presence; extra enchantments are allowed.
-  - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ it is the
-    **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`); on
-    1.20.4- it is the **item tag** (e.g.
-    `{Enchantments:[{id:"minecraft:sharpness",lvl:5}]}`). Blank = no NBT filter; invalid
+  - **Enchantments**: `id:level, id, !id`, e.g.
+    `minecraft:sharpness:5, minecraft:mending, !minecraft:fire_aspect`. A positive
+    level requires **at least** that level; level 0 (or an id alone) only requires
+    presence; `!id` means **must not have**; extra enchantments are allowed.
+  - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ the native form
+    is the **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`);
+    on 1.20.4- it is the **item tag** (e.g.
+    `{Enchantments:[{id:"minecraft:sharpness",lvl:5}]}`). For cross-version use, common
+    fields (enchantments/damage/unbreakable) are also exposed in the other era's view;
+    arbitrary mod-specific NBT remains native-only. Blank = no NBT filter; invalid
     text is shown in red and not saved.
+  - **Exclude NBT**: the same subset match, but a hit makes the item **not** match.
+    Prefer the structured name/enchantment fields for name cross-version.
   - If one offer matches several variants, the **most constrained** variant wins (more
     name/enchantment/NBT fields), so a generic variant cannot steal a specific one.
 - Goods follow **exactly the same rules** as enchantments: hunt cheaper, disable after

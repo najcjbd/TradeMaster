@@ -31,6 +31,16 @@ class McNbtContainsTest {
 	}
 
 	@Test
+	void numericWidthsCompareByValue() {
+		var live = McNbt.parse("{Damage:5s,Other:1b}");
+		var filter = McNbt.parse("{Damage:5}");
+		assertNotNull(live);
+		assertNotNull(filter);
+		assertTrue(McNbt.contains(live, filter));
+		assertFalse(McNbt.contains(live, McNbt.parse("{Damage:6}")));
+	}
+
+	@Test
 	void blankAndInvalidTextBehaviour() {
 		assertTrue(McNbt.valid(""));
 		assertTrue(McNbt.valid("{Custom:1}"));

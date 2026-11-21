@@ -656,11 +656,13 @@ public final class ConfigPersistence {
 					String filterName = readString(o, "name", "");
 					String filterNbt = readString(o, "nbt", "");
 					List<GoodSpec.GoodEnchant> enchants = readGoodEnchants(o.get("enchantments"));
+					List<GoodSpec.GoodEnchant> excluded = readGoodEnchants(o.get("excludeEnchantments"));
+					String excludeNbt = readString(o, "excludeNbt", "");
 					c.goods.add(new GoodSpec(key, result,
 							Math.max(1, Math.min(64, readInt(o, "resultCount", 1))),
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
-							costs, filterName, enchants, filterNbt).normalized());
+							costs, filterName, enchants, filterNbt, excluded, excludeNbt).normalized());
 				}
 			}
 		}
@@ -790,6 +792,8 @@ public final class ConfigPersistence {
 			else o.remove("name");
 			if (!g.filterNbt().isBlank()) o.addProperty("nbt", g.filterNbt());
 			else o.remove("nbt");
+			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
+			else o.remove("excludeNbt");
 			if (!g.filterEnchantments().isEmpty()) {
 				JsonObject enchants = new JsonObject();
 				for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
@@ -798,6 +802,15 @@ public final class ConfigPersistence {
 				o.add("enchantments", enchants);
 			} else {
 				o.remove("enchantments");
+			}
+			if (!g.excludedEnchantments().isEmpty()) {
+				JsonObject excluded = new JsonObject();
+				for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
+					excluded.addProperty(enchantment.id().toString(), 0);
+				}
+				o.add("excludeEnchantments", excluded);
+			} else {
+				o.remove("excludeEnchantments");
 			}
 			goods.add(o);
 		}

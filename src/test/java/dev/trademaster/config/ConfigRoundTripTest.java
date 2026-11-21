@@ -241,7 +241,7 @@ class ConfigRoundTripTest {
 				TradeOfferSpec.defaultGoodCosts(), "Excalibur",
 				List.of(new GoodSpec.GoodEnchant(McIds.mc("sharpness"), 3),
 						new GoodSpec.GoodEnchant(McIds.mc("mending"), 0)),
-				"{Damage:0}"));
+				"{Damage:0}", List.of(new GoodSpec.GoodEnchant(McIds.mc("mending"), 0)), "{Damage:1}"));
 
 		JsonObject root = ConfigTest.write(c());
 		JsonObject written = root.getAsJsonObject("offers")
@@ -261,6 +261,8 @@ class ConfigRoundTripTest {
 		assertEquals("Excalibur", read.filterName());
 		assertEquals(2, read.filterEnchantments().size());
 		assertEquals("{Damage:0}", read.filterNbt());
+		assertEquals(1, read.excludedEnchantments().size());
+		assertEquals("{Damage:1}", read.filterNbtExclude());
 		assertTrue(read.filterValid());
 	}
 

@@ -3,6 +3,7 @@ package dev.trademaster.compat;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.Tag;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
@@ -73,15 +74,66 @@ public final class McNbt {
 		//?}
 	}
 
-	/** Subset match of a parsed filter against the live item's data. */
+	/** Subset match of a parsed filter against the live item's data. The native form is
+	 * checked first; a legacy-style filter is also matched against a synthesized
+	 * legacy view on 1.20.5+, and a component-style filter against a component view on
+	 * older nodes. Known common fields (enchantments, damage, unbreakable) therefore
+	 * work across versions; arbitrary mod-specific data remains native-only. */
 	public static boolean contains(ItemStack stack, CompoundTag filter) {
 		if (filter == null || filter.isEmpty()) return true;
-		return contains(itemData(stack), filter);
+		if (contains(itemData(stack), filter)) return true;
+		if (contains(legacyView(stack), filter)) return true;
+		return contains(componentView(stack), filter);
+	}
+
+	/** A legacy-tag view of a 1.20.5+ item for cross-era filters. */
+	private static CompoundTag legacyView(ItemStack stack) {
+		//? if >=1.20.5 {
+		CompoundTag legacy = new CompoundTag();
+		ListTag enchantments = new ListTag();
+		for (var entry : McEnchantments.of(stack).entrySet()) {
+			ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+			if (id == null) continue;
+			CompoundTag enchantment = new CompoundTag();
+			enchantment.putString("id", id.toString());
+			enchantment.putInt("lvl", entry.getValue());
+			enchantments.add(enchantment);
+		}
+		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
+		legacy.putInt("Damage", stack.getDamageValue());
+		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
+			legacy.putByte("Unbreakable", (byte) 1);
+		}
+		return legacy;
+		//?} else {
+		/*return new CompoundTag();*/
+		//?}
+	}
+
+	/** A component-map view of a pre-1.20.5 item for cross-era filters. */
+	private static CompoundTag componentView(ItemStack stack) {
+		//? if <1.20.5 {
+		/*CompoundTag view = new CompoundTag();
+		CompoundTag enchantments = new CompoundTag();
+		for (var entry : McEnchantments.of(stack).entrySet()) {
+			ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+			if (id != null) enchantments.putInt(id.toString(), entry.getValue());
+		}
+		if (!enchantments.isEmpty()) view.put("minecraft:enchantments", enchantments);
+		view.putInt("minecraft:damage", stack.getDamageValue());
+		CompoundTag tag = stack.getTag();
+		if (tag != null && tag.contains("Unbreakable")) {
+			view.put("minecraft:unbreakable", new CompoundTag());
+		}
+		return view;*/
+		//?} else {
+		return new CompoundTag();
+		//?}
 	}
 
 	/** Recursive subset match: compounds need each configured key; lists need each
 	 * configured element to have a matching element (extra elements allowed); other
-	 * tags compare by value. */
+	 * tags compare by value (numeric widths are equivalent). */
 	public static boolean contains(Tag live, Tag filter) {
 		if (filter == null) return true;
 		if (filter instanceof CompoundTag filterCompound) {
@@ -110,6 +162,18 @@ public final class McNbt {
 				if (!found) return false;
 			}
 			return true;
+		}
+		return sameValue(live, filter);
+	}
+
+	private static boolean sameValue(Tag live, Tag filter) {
+		if (live instanceof net.minecraft.nbt.NumericTag a
+				&& filter instanceof net.minecraft.nbt.NumericTag b) {
+			//? if >=1.21.5 {
+			/*return Double.compare(a.doubleValue(), b.doubleValue()) == 0;*/
+			//?} else {
+			return Double.compare(a.getAsDouble(), b.getAsDouble()) == 0;
+			//?}
 		}
 		return filter.equals(live);
 	}

@@ -273,12 +273,14 @@
   "trademaster.settings.nonBookDisposal.stop": "存箱→无箱则停机",
   "trademaster.settings.nonBookDisposal.drop": "存箱→无箱则丢弃",
   "trademaster.settings.nonBookDisposal.comment": "这里的\"磨不掉\"指：诅咒书（砂轮也去不了它的魔）与你自选的货品。绑定的箱子都存不下时：停机等你处理，或者朝丢弃朝向丢在地上。普通附魔书只会入箱、永不丢弃；砂轮模式下诅咒书由砂轮那条链路处置（它也是存箱→丢弃），本项只管货品。",
-  "trademaster.offers.goods_header": "货品（每个变体有稳定 key；下方为：名字过滤 · 附魔（id:level，level 0 = 只要存在）· 原始 NBT 子集）",
+  "trademaster.offers.goods_header": "货品（每个变体有稳定 key；下方为：结果物品 · 名字过滤 · 附魔（id:level、id、!id = 必须没有）· 原始 NBT 子集 · 排除 NBT 子集）",
   "trademaster.offers.add_good": "新增货品/变体（填结果物品 id）",
   "trademaster.offer.filter_name": "物品名字",
   "trademaster.offer.filter_enchant": "附魔",
   "trademaster.offer.filter_nbt": "原始 NBT",
-  "trademaster.offer.invalid_enchant": "附魔列表格式错误：用 id:level 或 id（level 0 = 只要存在）",
+  "trademaster.offer.invalid_enchant": "附魔列表格式错误：用 id:level、id，或 !id（排除）",
   "trademaster.offer.invalid_nbt": "NBT 无效：请输入 SNBT 复合标签（留空 = 不按 NBT 过滤）",
-  "trademaster.offer.unknown_item": "没有这个物品 id"
+  "trademaster.offer.unknown_item": "没有这个物品 id",
+  "trademaster.offer.filter_result": "结果物品",
+  "trademaster.offer.filter_nbt_exclude": "排除 NBT"
 }
