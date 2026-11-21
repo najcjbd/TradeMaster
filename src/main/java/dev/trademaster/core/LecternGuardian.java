@@ -56,6 +56,11 @@ public class LecternGuardian {
 	private int placeCooldown = 0;
 	private int placeAttempts = 0;
 	private boolean placementBlocked = false;
+	/** A restock reported failure while the player still carries the work block: the
+	 * raw batch may still land (or its state was stale). Wait, then reset and retry
+	 * once instead of stopping the run on the first false reading. */
+	private int restockRetryTicks = 0;
+	private boolean restockResetTried = false;
 	private Vec3 tpReturnPos = null;
 	private ItemEntity lastPickupTarget = null;
 	private int pickupTicks = 0;
@@ -207,11 +212,29 @@ public class LecternGuardian {
 		// the offhand, and the recovery lives inside restock()
 		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
 			if (!LecternRestock.restock(player)) {
+				var work = RigTarget.workItem();
+				boolean carried = work != null && Preconditions.countItem(player, work) > 0;
+				if (carried) {
+					// the batch may land after restock()'s last check, or its in-flight
+					// state went stale: give it time, then reset and try one fresh batch
+					if (this.restockRetryTicks++ < 100) return StepResult.RUNNING;
+					if (!this.restockResetTried) {
+						this.restockResetTried = true;
+						this.restockRetryTicks = 0;
+						LecternRestock.resetRestock();
+						RerollController.debug("lectern guardian: restock reported no lectern but one is carried; retrying");
+						return StepResult.RUNNING;
+					}
+				}
 				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}
+			this.restockRetryTicks = 0;
+			this.restockResetTried = false;
 			// restock clicks only take effect on the server next tick
 			return StepResult.RUNNING;
 		}
+		this.restockRetryTicks = 0;
+		this.restockResetTried = false;
 
 		if (this.placeAttempts >= LecternRestock.MAX_PLACE_ATTEMPTS) {
 			this.placementBlocked = true;
