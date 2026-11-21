@@ -298,6 +298,12 @@ public final class ConfigPersistence {
 			customNames.addProperty(entry.getKey().toString(), entry.getValue());
 		}
 		naming.add("customNames", customNames);
+		JsonObject aliasChoices = new JsonObject();
+		for (Map.Entry<String, ResourceLocation> entry : c.aliasChoices.entrySet()) {
+			if (entry.getKey() == null || entry.getKey().isBlank() || entry.getValue() == null) continue;
+			aliasChoices.addProperty(entry.getKey(), entry.getValue().toString());
+		}
+		naming.add("aliasChoices", aliasChoices);
 		JsonObject nameHistory = new JsonObject();
 		for (Map.Entry<String, ResourceLocation> entry : c.nameHistory.entrySet()) {
 			nameHistory.addProperty(entry.getKey(), entry.getValue().toString());
@@ -469,6 +475,17 @@ public final class ConfigPersistence {
 						String name = entry.getValue().getAsString().trim();
 						if (!name.isEmpty()) c.customEnchantNames.put(id, name);
 					}
+				}
+			}
+			JsonObject aliasChoices = getSection(naming, "aliasChoices");
+			if (aliasChoices != null) {
+				c.aliasChoices.clear();
+				for (Map.Entry<String, JsonElement> entry : aliasChoices.entrySet()) {
+					ResourceLocation id = entry.getValue().isJsonPrimitive()
+							? TradeMasterConfig.parseId(entry.getValue().getAsString())
+							: null;
+					String name = entry.getKey().trim();
+					if (id != null && !name.isEmpty()) c.aliasChoices.put(name, id);
 				}
 			}
 			JsonObject nameHistory = getSection(naming, "nameHistory");
@@ -663,7 +680,8 @@ public final class ConfigPersistence {
 							readBool(o, "enabled", true),
 							Math.max(0, Math.min(64, readInt(o, "maxPrice", 64))),
 							costs, filterName, enchants.list(), filterNbt, excluded.list(), excludeNbt,
-							enchants.invalid() || excluded.invalid()).normalized());
+							enchants.invalid() || excluded.invalid(),
+							enchants.rawJson(), excluded.rawJson()).normalized());
 				}
 			}
 		}
@@ -745,6 +763,41 @@ public final class ConfigPersistence {
 		return GoodEnchantFilter.token(enchantment, false);
 	}
 
+	/** Keeps an unparseable enchant filter usable for repair: write the ORIGINAL JSON
+	 * element when the reader preserved it (this survives a result/id edit, where the
+	 * on-disk seed lookup no longer matches), otherwise the parsed tokens. A good that
+	 * is invalid without any preserved text gets a marker token so it cannot silently
+	 * become "match everything" after a reload. */
+	private static void writeEnchantArray(JsonObject o, String key,
+			List<GoodSpec.GoodEnchant> parsed, @Nullable String rawJson,
+			boolean filterInvalid, boolean exclude) {
+		if (rawJson != null) {
+			try {
+				o.add(key, JsonParser.parseString(rawJson));
+				return;
+			} catch (RuntimeException ignored) {
+				// fall through to the parsed form
+			}
+		}
+		if (!parsed.isEmpty()) {
+			JsonArray array = new JsonArray();
+			for (GoodSpec.GoodEnchant enchantment : parsed) {
+				array.add(GoodEnchantFilter.token(enchantment, false));
+			}
+			o.add(key, array);
+			return;
+		}
+		if (filterInvalid) {
+			JsonArray array = new JsonArray();
+			array.add(INVALID_FILTER_MARKER);
+			o.add(key, array);
+		} else {
+			o.remove(key);
+		}
+	}
+
+	private static final String INVALID_FILTER_MARKER = "@@invalid-filter";
+
 	/** Serialises the per-target trade shapes plus the shared "air item" list. Slot
 	 * positions are preserved (slot 2 stays slot 2), so hand-added slots 3..N survive
 	 * a save and are matched positionally. */
@@ -800,29 +853,10 @@ public final class ConfigPersistence {
 			else o.remove("nbt");
 			if (!g.filterNbtExclude().isBlank()) o.addProperty("excludeNbt", g.filterNbtExclude());
 			else o.remove("excludeNbt");
-			if (!g.filterInvalid()) {
-				if (!g.filterEnchantments().isEmpty()) {
-					JsonArray enchants = new JsonArray();
-					for (GoodSpec.GoodEnchant enchantment : g.filterEnchantments()) {
-						enchants.add(enchantmentToken(enchantment));
-					}
-					o.add("enchantments", enchants);
-				} else {
-					o.remove("enchantments");
-				}
-				if (!g.excludedEnchantments().isEmpty()) {
-					JsonArray excluded = new JsonArray();
-					for (GoodSpec.GoodEnchant enchantment : g.excludedEnchantments()) {
-						excluded.add(GoodEnchantFilter.token(enchantment, false));
-					}
-					o.add("excludeEnchantments", excluded);
-				} else {
-					o.remove("excludeEnchantments");
-				}
-			} else {
-				// the reader could not parse these arrays: keep the on-disk text so the
-				// user can fix it instead of silently erasing the filter on the next save
-			}
+			writeEnchantArray(o, "enchantments", g.filterEnchantments(),
+					g.rawIncludeEnchants(), g.filterInvalid(), false);
+			writeEnchantArray(o, "excludeEnchantments", g.excludedEnchantments(),
+					g.rawExcludeEnchants(), g.filterInvalid(), true);
 			goods.add(o);
 		}
 		offers.add("goods", goods);
@@ -996,7 +1030,8 @@ public final class ConfigPersistence {
 		return e != null && e.isJsonPrimitive() ? e.getAsString() : fallback;
 	}
 
-	private record ParsedEnchants(List<GoodSpec.GoodEnchant> list, boolean invalid) {}
+	private record ParsedEnchants(List<GoodSpec.GoodEnchant> list, boolean invalid,
+			@Nullable String rawJson) {}
 
 	/** Reads a good's structured enchantment filter from an object or token array.
 	 * Object entries are {@code {id: level}} (0 = absence), token-array entries use the
@@ -1098,7 +1133,8 @@ public final class ConfigPersistence {
 			invalid = true;
 			warnBadEnchant(key, element.toString(), "not an object or array");
 		}
-		return new ParsedEnchants(result, invalid);
+		return new ParsedEnchants(result, invalid,
+				invalid && element != null ? element.toString() : null);
 	}
 
 	private static boolean validRange(int min, int max) {

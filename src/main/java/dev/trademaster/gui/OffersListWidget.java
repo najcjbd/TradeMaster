@@ -1040,7 +1040,8 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 				case RESULT -> good.result().toString();
 				case NAME -> good.filterName();
 				case ENCHANTMENTS -> formatGoodEnchants(good.filterEnchantments(),
-						good.excludedEnchantments());
+						good.excludedEnchantments(), good.rawIncludeEnchants(),
+						good.rawExcludeEnchants());
 				case NBT -> good.filterNbt();
 				case NBT_EXCLUDE -> good.filterNbtExclude();
 			};
@@ -1174,8 +1175,51 @@ public class OffersListWidget extends AbstractSelectionList<OffersListWidget.Row
 
 	/** Formats a good's include and exclude enchantment filters as editable text. */
 	static String formatGoodEnchants(List<GoodSpec.GoodEnchant> enchantments,
-			List<GoodSpec.GoodEnchant> excluded) {
-		return dev.trademaster.config.GoodEnchantFilter.format(enchantments, excluded);
+			List<GoodSpec.GoodEnchant> excluded,
+			@Nullable String rawInclude, @Nullable String rawExclude) {
+		if (rawInclude == null && rawExclude == null) {
+			return dev.trademaster.config.GoodEnchantFilter.format(enchantments, excluded);
+		}
+		// the reader could not parse these fields: show the original text so the
+		// player can repair it here (a valid rewrite clears the raw form on commit)
+		List<String> chunks = new ArrayList<>();
+		if (rawInclude != null) {
+			chunks.add(rawEnchantText(rawInclude, false));
+		} else if (!enchantments.isEmpty()) {
+			chunks.add(dev.trademaster.config.GoodEnchantFilter.format(enchantments, List.of()));
+		}
+		if (rawExclude != null) {
+			chunks.add(rawEnchantText(rawExclude, true));
+		} else if (!excluded.isEmpty()) {
+			chunks.add(dev.trademaster.config.GoodEnchantFilter.format(List.of(), excluded));
+		}
+		return String.join(", ", chunks);
+	}
+
+	private static String rawEnchantText(String rawJson, boolean exclude) {
+		com.google.gson.JsonElement element;
+		try {
+			element = com.google.gson.JsonParser.parseString(rawJson);
+		} catch (RuntimeException ex) {
+			return rawJson;
+		}
+		List<String> parts = new ArrayList<>();
+		if (element.isJsonArray()) {
+			for (com.google.gson.JsonElement part : element.getAsJsonArray()) {
+				parts.add(enchantPart(part, exclude));
+			}
+		} else if (element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()) {
+			parts.add(enchantPart(element, exclude));
+		} else {
+			parts.add(exclude ? "!" + rawJson : rawJson);
+		}
+		return String.join(", ", parts);
+	}
+
+	private static String enchantPart(com.google.gson.JsonElement element, boolean exclude) {
+		String text = element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+				? element.getAsString() : element.toString();
+		return exclude && !text.startsWith("!") ? "!" + text : text;
 	}
 
 	static @Nullable dev.trademaster.config.GoodEnchantFilter.Parsed parseGoodEnchants(String raw) {

@@ -536,7 +536,10 @@ public final class LecternRestock {
 		public Result tick(LocalPlayer player, boolean restocked) {
 			var work = RigTarget.workItem();
 			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
-			return tick(restocked, offhandHasWorkItem(player), carried);
+			// a pending batch can still have to return the displaced item from the
+			// cursor: only a fully settled offhand resets the failure budget
+			return tick(restocked,
+					offhandHasWorkItem(player) && !hasPendingBatch(), carried);
 		}
 
 		/** Pure state machine, so the budgets can be tested without a client. */

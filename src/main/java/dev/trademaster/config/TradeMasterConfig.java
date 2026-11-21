@@ -85,6 +85,10 @@ public final class TradeMasterConfig {
 	public boolean namingEnabled = false;
 	public boolean forceNamePriceOne = false;
 	public final LinkedHashMap<ResourceLocation, String> customEnchantNames = new LinkedHashMap<>();
+	/** Manual owner for an ambiguous deduction name (alias / display name / registry
+	 * path), keyed by the name text and mapped to one demand id. Persisted so the choice
+	 * survives restarts; unresolved collisions drop the name from the deduction index. */
+	public final LinkedHashMap<String, ResourceLocation> aliasChoices = new LinkedHashMap<>();
 	/** Display names actually used at naming time, mapped back to their enchantment.
 	 * Keeps named-villager deduction working across game-language switches. */
 	public final LinkedHashMap<String, ResourceLocation> nameHistory = new LinkedHashMap<>();

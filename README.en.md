@@ -31,7 +31,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | The matching **Fabric API** |
 | Build | Gradle 9.6.1 + Stonecutter 0.9.8 + Modstitch 0.8.5 |
-| Optional | clientcommands (coexistence probe only, **no API coupling**); **Mod Menu** (optional, opens the six-tab mod screen); maLiLib is not wired |
+| Optional | clientcommands (coexistence probe only, **no API coupling**); **Mod Menu** (optional, opens the six-tab mod screen); this multiversion tree does not depend on maLiLib. The full maLiLib 26.2 build lives on `main` and produces both the default and `-nomalilib` jars |
 | License | **GPL-3.0** |
 
 ## Installation
@@ -177,7 +177,7 @@ something else into a librarian's trade).
 - Five editable rows sit below each good (filters are optional):
   - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id, an include/exclude conflict, or an unparseable range is invalid: the good is marked unusable and its text is preserved for fixing (it never degrades into matching everything). Extra enchantments are allowed.
+  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id, an include/exclude conflict, or an unparseable range is invalid: the good is marked unusable and the Offers tab shows the original text for repair; changing the result item does not lose it, and it never degrades into matching everything. Extra enchantments are allowed.
   - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ the native form
     is the **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`);
     on 1.20.4- it is the **item tag** (e.g.
@@ -221,7 +221,7 @@ something else into a librarian's trade).
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
   - nothing at all is affordable → stop with an out-of-materials message; if a combo book caused it, an extra hint suggests enabling the 64 floor.
-- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same dimension) skips those targets once** to avoid a duplicate purchase; start again to retry.
+- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same world and dimension) skips those targets once** to avoid a duplicate purchase; start again to retry.
 - **After a successful lock**: **all** matched targets of that villager count as obtained → (optional) auto-disable them in the config, (optional) record each price into its price slot, (optional) naming.
 
 ## Naming
@@ -349,6 +349,8 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 There are two entries to the same six-tab screen: the in-game menu (hotkey `V`, touch-screen friendly) and the optional **Mod Menu config button**; the tabs are **enchantments / settings / keybinds / aliases / offers / villagers**. It shares the **same** `config/trade-master.json` with the other branches; maLiLib is not wired.
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
+
+> **Manual owner for a shared name**: if two demands (typically two variants of one result item) really must share a name, write it into `naming.customNames` by hand. The deduction index cannot tell which demand to decrement, so it drops the name and prints the candidate ids at start. To pick an owner, add the name to `naming.aliasChoices`, e.g. `"aliasChoices": {"diamond_sword": "trademaster:good_b"}`. The choice is persisted in the config; change it there.
 
 On first launch, when this mod's config does not exist yet, the **enchantment table** and **four of the anti-cheat flags** (`preventAxeBreaking`, `tpToVillager`, `legitMode`, `slowMode`) are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`; the remaining flags (`tpToItem`, `stopOnPlayerMove`, `placeDelay`, `interactDelay`) are not migrated and keep this mod's defaults.
 

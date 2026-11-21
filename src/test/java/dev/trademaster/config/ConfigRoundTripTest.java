@@ -275,6 +275,42 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void aliasChoicesRoundTrip() {
+		c().aliasChoices.clear();
+		c().aliasChoices.put("diamond sword", McIds.mc("trade_good"));
+		JsonObject root = ConfigTest.write(c());
+		assertEquals("minecraft:trade_good", root.getAsJsonObject("naming")
+				.getAsJsonObject("aliasChoices").get("diamond sword").getAsString());
+		c().aliasChoices.clear();
+		ConfigTest.read(c(), root);
+		assertEquals(McIds.mc("trade_good"), c().aliasChoices.get("diamond sword"));
+	}
+
+	@Test
+	void rawInvalidEnchantFilterSurvivesALegacyResultEdit() {
+		// a pre-id entry, an unparseable filter, then the result is changed: the
+		// writer must not depend on finding the old entry to keep the raw text
+		JsonObject root = parse("""
+				{"offers":{"goods":[{"result":"minecraft:diamond_sword",
+				  "enchantments":["minecraft:sharpness:3..1"]}]}}
+				""");
+		ConfigTest.read(c(), root);
+		GoodSpec edited = c().goods.get(0).withResult(McIds.mc("barrel"));
+		c().goods.set(0, edited);
+		ConfigTest.writeInto(c(), root);
+		JsonObject written = root.getAsJsonObject("offers")
+				.getAsJsonArray("goods").get(0).getAsJsonObject();
+		assertEquals("minecraft:barrel", written.get("result").getAsString());
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("sharpness:3..1"));
+
+		c().goods.clear();
+		ConfigTest.read(c(), root);
+		assertEquals(McIds.mc("barrel"), c().goods.get(0).result());
+		assertTrue(c().goods.get(0).filterInvalid());
+		assertFalse(c().goods.get(0).filterValid());
+	}
+
+	@Test
 	void invalidGoodEnchantmentTokenMarksTheWholeFilterUnusableAndIsPreserved() {
 		JsonObject root = parse("""
 				{"offers":{"goods":[{"id":"trademaster:bad","result":"minecraft:diamond_sword",
@@ -341,6 +377,11 @@ class ConfigRoundTripTest {
 		ConfigTest.read(c(), root);
 		assertFalse(c().goods.get(0).filterValid());
 		assertTrue(c().goods.get(0).filterInvalid());
+		ConfigTest.writeInto(c(), root);
+		c().goods.clear();
+		ConfigTest.read(c(), root);
+		assertFalse(c().goods.get(0).filterValid());
+		assertTrue(c().goods.get(0).filterInvalid());
 
 		root = parse("""
 				{"offers":{"goods":[{"result":"minecraft:diamond_sword",
@@ -349,6 +390,10 @@ class ConfigRoundTripTest {
 		ConfigTest.read(c(), root);
 		assertFalse(c().goods.get(0).filterValid());
 		assertTrue(c().goods.get(0).filterInvalid());
+		ConfigTest.writeInto(c(), root);
+		c().goods.clear();
+		ConfigTest.read(c(), root);
+		assertFalse(c().goods.get(0).filterValid());
 	}
 
 	@Test
