@@ -14,7 +14,15 @@ import org.jetbrains.annotations.Nullable;
 public final class MaliLibSupport {
 
 	public static boolean available() {
-		return FabricLoader.getInstance().isModLoaded("malilib");
+		if (!FabricLoader.getInstance().isModLoaded("malilib")) return false;
+		var container = FabricLoader.getInstance().getModContainer("malilib");
+		if (container.isEmpty()) return false;
+		try {
+			return container.get().getMetadata().getVersion()
+					.compareTo(net.fabricmc.loader.api.Version.parse("0.29.3")) >= 0;
+		} catch (net.fabricmc.loader.api.VersionParsingException e) {
+			return false;
+		}
 	}
 
 	public static void register() {

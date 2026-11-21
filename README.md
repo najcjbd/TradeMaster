@@ -29,15 +29,15 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 | 加载器 | Fabric Loader **≥ 0.19.0**（构建用 0.19.3） |
 | Java | **≥ 25** |
 | 运行侧 | **纯客户端**（`"environment": "client"`，无需装到服务端） |
-| 必需前置 | Fabric API（0.154.2+26.2）；默认 jar 还需要 **maLiLib**（0.29.3），`-nomalilib` 变体不需要 |
+| 必需前置 | Fabric API（0.154.2+26.2）；**maLiLib**（≥0.29.3）为可选推荐：装了就用 maLiLib 的界面/热键，不装则用自带界面 |
 | 构建 | Gradle 9.6.1 + Fabric Loom **1.17.21** |
 | 可选前置 | Mod Menu（有 maLiLib 时打开 maLiLib 配置界面，无 maLiLib 时打开自带六页签界面）、clientcommands（仅共存探测，**无 API 耦合**） |
 | 许可证 | **GPL-3.0** |
 
 ## 安装
 
-1. 安装 Fabric Loader，把 **Fabric API** 放进 `mods/`；默认 jar 还需 **maLiLib**；
-2. 把 `trade-master-1.0.0.jar`（需要 maLiLib）或 `trade-master-1.0.0-nomalilib.jar`（maLiLib 可选）放进 `mods/`；
+1. 安装 Fabric Loader，把 **Fabric API** 放进 `mods/`；
+2. 把 `trade-master-1.0.0.jar` 放进 `mods/`；想用 maLiLib 的配置界面/可编辑热键，再把 **maLiLib** 放进 `mods/`（可选）；
 3. 启动游戏。
 
 ## 快速上手
@@ -305,7 +305,7 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 | 反作弊 | 见上表 | — | — |
 | 位置 | 见「装置与坐标」 | — | — |
 | 箱子 | 动态列表 | 空 | 可增删 |
-| 热键 | 开始/停止、拾取坐标 | — | 有 maLiLib 时**只能在 maLiLib 界面修改**；无 maLiLib 时为固定默认键 R/P |
+| 热键 | 开始/停止、拾取坐标 | — | 有 maLiLib 时在 **maLiLib 界面**修改；无 maLiLib 时和 V 一样在原版**控制**里改（默认 R/P） |
 
 ## 命令与热键
 
@@ -344,10 +344,9 @@ Minecraft **26.2**（Fabric、**纯客户端**）的图书管理员附魔书交�
 ```bash
 # 需要 JDK 25
 ./gradlew build
-# 产物（26.2 两种）：
-#   build/libs/trade-master-1.0.0.jar           需要 maLiLib，完整热键/maLiLib 配置界面
-#   build/libs/trade-master-1.0.0-nomalilib.jar 不依赖 maLiLib；装了 maLiLib 仍会自动启用集成
-# 无 maLiLib 时 R/P 仍可用（固定默认键，不可在 maLiLib 界面改）；也可用界面 Start/Stop 与 [pick] 按钮
+# 产物：build/libs/trade-master-1.0.0.jar（单一 jar，26.2）
+# maLiLib 是 recommends：装了自动启用 maLiLib 配置界面/热键；没装自动使用自带界面
+# 无 maLiLib 时 R/P/V 都是原版按键，可在“选项 → 控制 → 按键绑定”里改（默认 R/P/V）
 ```
 
 ## 许可证与致谢

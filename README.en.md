@@ -29,7 +29,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3) |
 | Java | **≥ 25** |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
-| Required | Fabric API (0.154.2+26.2); the default jar also needs **maLiLib** (0.29.3), the `-nomalilib` variant does not |
+| Required | Fabric API (0.154.2+26.2); **maLiLib** (>=0.29.3) is optional/recommended: with it you get its config UI/hotkeys, without it the built-in UI |
 | Build | Gradle 9.6.1 + Fabric Loom **1.17.21** |
 | Optional | Mod Menu (opens the maLiLib config screen when maLiLib is present, otherwise the built-in six-tab screen), clientcommands (coexistence probe only, **no API coupling**) |
 | License | **GPL-3.0** |
@@ -326,7 +326,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | Anti-cheat | see the table above | — | — |
 | Positions | see "The rig and coordinates" | — | — |
 | Chests | dynamic list | empty | add/remove rows |
-| Hotkeys | start/stop, pick coordinate | — | **editable only inside maLiLib**; without maLiLib they are fixed R/P |
+| Hotkeys | start/stop, pick coordinate | — | with maLiLib: editable in its UI; without: rebindable in vanilla Controls like V (defaults R/P) |
 
 ## Commands and hotkeys
 
@@ -365,10 +365,9 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 ```bash
 # requires JDK 25
 ./gradlew build
-# outputs (two 26.2 jars):
-#   build/libs/trade-master-1.0.0.jar           requires maLiLib (full hotkeys / maLiLib config UI)
-#   build/libs/trade-master-1.0.0-nomalilib.jar no maLiLib dependency; still auto-integrates if installed
-# without maLiLib R/P still work as fixed defaults (not editable in maLiLib); the Start/Stop and [pick] buttons also work
+# output: build/libs/trade-master-1.0.0.jar (single 26.2 jar)
+# maLiLib is a "recommends" dependency: installed -> its config UI/hotkeys; absent -> built-in UI
+# without maLiLib R/P/V are ordinary key mappings, rebindable in Options -> Controls (defaults R/P/V)
 ```
 
 ## License and credits
