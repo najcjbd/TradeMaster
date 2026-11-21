@@ -35,22 +35,52 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 		String filterName, List<GoodEnchant> filterEnchantments, String filterNbt,
 		List<GoodEnchant> excludedEnchantments, String filterNbtExclude) {
 
-	/** One structured enchantment requirement. {@code level <= 0} means presence only;
-	 * a positive level is exact unless {@code atLeast} is set. */
-	public record GoodEnchant(ResourceLocation id, int level, boolean atLeast) {
+	/** One structured enchantment requirement. {@code minLevel=0,maxLevel=0} is
+	 * absence; {@code minLevel>=1,maxLevel=0} is any present level; a positive maxLevel
+	 * is an inclusive upper bound. */
+	public record GoodEnchant(ResourceLocation id, int minLevel, int maxLevel) {
 		public GoodEnchant {
-			level = Math.max(0, Math.min(99, level));
-			if (level == 0) atLeast = false;
+			minLevel = Math.max(0, Math.min(99, minLevel));
+			maxLevel = Math.max(0, Math.min(99, maxLevel));
+			if (minLevel == 0 && maxLevel == 0) {
+				// absence
+			} else if (minLevel == 0) {
+				minLevel = 1;
+			} else if (maxLevel > 0 && maxLevel < minLevel) {
+				maxLevel = minLevel;
+			}
 		}
 
+		/** Legacy two-arg form: a positive level is exact, 0 is absence. */
 		public GoodEnchant(ResourceLocation id, int level) {
-			this(id, level, false);
+			this(id, level <= 0 ? 0 : level, level <= 0 ? 0 : level);
 		}
 
-		/** Whether a live enchantment level satisfies this requirement. */
+		public static GoodEnchant present(ResourceLocation id) {
+			return new GoodEnchant(id, 1, 0);
+		}
+
+		public static GoodEnchant absent(ResourceLocation id) {
+			return new GoodEnchant(id, 0, 0);
+		}
+
+		public static GoodEnchant exact(ResourceLocation id, int level) {
+			return new GoodEnchant(id, level, level);
+		}
+
+		public static GoodEnchant range(ResourceLocation id, int min, int max) {
+			return new GoodEnchant(id, min, max);
+		}
+
+		public boolean absent() {
+			return this.minLevel == 0 && this.maxLevel == 0;
+		}
+
+		/** Whether a live enchantment level (0 = not present) satisfies this range. */
 		public boolean levelMatches(int liveLevel) {
-			if (this.level <= 0) return true;
-			return this.atLeast ? liveLevel >= this.level : liveLevel == this.level;
+			if (absent()) return liveLevel == 0;
+			if (liveLevel <= 0 || liveLevel < this.minLevel) return false;
+			return this.maxLevel == 0 || liveLevel <= this.maxLevel;
 		}
 	}
 
@@ -117,23 +147,12 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 				? null : McEnchantments.of(stack);
 		if (!this.filterEnchantments.isEmpty()) {
 			for (GoodEnchant wanted : this.filterEnchantments) {
-				int level = -1;
-				for (var entry : live.entrySet()) {
-					ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
-					if (id != null && id.equals(wanted.id())) {
-						level = entry.getValue();
-						break;
-					}
-				}
-				if (level < 0 || !wanted.levelMatches(level)) return false;
+				if (!wanted.levelMatches(liveLevel(live, wanted.id()))) return false;
 			}
 		}
 		if (!this.excludedEnchantments.isEmpty()) {
 			for (GoodEnchant unwanted : this.excludedEnchantments) {
-				for (var entry : live.entrySet()) {
-					ResourceLocation id = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
-					if (id != null && id.equals(unwanted.id())) return false;
-				}
+				if (unwanted.levelMatches(liveLevel(live, unwanted.id()))) return false;
 			}
 		}
 		if (!this.filterNbt.isBlank()) {
@@ -142,9 +161,20 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 		}
 		if (!this.filterNbtExclude.isBlank()) {
 			var filter = McNbt.parse(this.filterNbtExclude);
-			if (filter == null || McNbt.contains(stack, filter)) return false;
+			if (filter == null) return false;
+			if (!filter.isEmpty() && McNbt.contains(stack, filter)) return false;
 		}
 		return true;
+	}
+
+	private static int liveLevel(java.util.Map<net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment>, Integer> live,
+			ResourceLocation id) {
+		if (live == null) return 0;
+		for (var entry : live.entrySet()) {
+			ResourceLocation found = entry.getKey().unwrapKey().map(McRegistry::keyId).orElse(null);
+			if (found != null && found.equals(id)) return entry.getValue();
+		}
+		return 0;
 	}
 
 	/** A rough "most specific wins" score when several variants match one offer. */
@@ -211,11 +241,9 @@ public record GoodSpec(ResourceLocation key, ResourceLocation result, int result
 	}
 
 	private static List<GoodEnchant> cleanEnchants(List<GoodEnchant> enchantments) {
-		Set<String> seen = new LinkedHashSet<>();
 		List<GoodEnchant> clean = new ArrayList<>();
 		for (GoodEnchant enchantment : enchantments) {
 			if (enchantment == null || enchantment.id() == null) continue;
-			if (!seen.add(enchantment.id().toString())) continue;
 			clean.add(enchantment);
 		}
 		return List.copyOf(clean);

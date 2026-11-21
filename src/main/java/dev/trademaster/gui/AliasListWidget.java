@@ -131,8 +131,8 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 	 * never be offered adds no index keys, so enabling it cannot create a collision. */
 	public static @Nullable String enableConflict(GoodSpec spec) {
 		if (spec == null || !TradeMatcher.goodMatchable(spec)) return null;
-		String refusal = AliasRow.conflictKey(spec.id(), spec.displayName(), false);
-		if (refusal == null) refusal = AliasRow.conflictKey(spec.id(), spec.path(), true);
+		String refusal = AliasRow.conflictKey(spec.id(), spec.displayName(), false, spec.result());
+		if (refusal == null) refusal = AliasRow.conflictKey(spec.id(), spec.path(), true, spec.result());
 		return refusal != null ? refusal : historyConflict(spec.id());
 	}
 
@@ -453,6 +453,12 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 		 * probe must not run through the alias sanitizer (digits are valid in ids but
 		 * would become superscripts and never match the raw key). */
 		static @Nullable String conflictKey(ResourceLocation id, String value, boolean rawValue) {
+			GoodSpec candidate = TradeMasterConfig.INSTANCE.goodFor(id);
+			return conflictKey(id, value, rawValue, candidate == null ? null : candidate.result());
+		}
+
+		static @Nullable String conflictKey(ResourceLocation id, String value, boolean rawValue,
+				@Nullable ResourceLocation sameResult) {
 			TradeMasterConfig config = TradeMasterConfig.INSTANCE;
 			// aliases/names take the SAME two transformations the index applies: sanitize
 			// ('+' -> '*', digits -> superscripts) AND canonical (collapse whitespace
@@ -487,7 +493,10 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 				if (good.id().equals(id)) continue;
 				// dead goods add no index key (see buildDisplayNameIndex)
 				if (!TradeMatcher.goodMatchable(good)) continue;
-				String refusal = collision(probe, good.id(), good.displayName(), good.path());
+				// several variants of one result share the same registry path; that
+				// path is not a collision between them (their display names still are)
+				String otherPath = sameResult != null && good.result().equals(sameResult) ? null : good.path();
+				String refusal = collision(probe, good.id(), good.displayName(), otherPath);
 				if (refusal != null) return refusal;
 			}
 			for (Map.Entry<String, ResourceLocation> entry : config.nameHistory.entrySet()) {
@@ -521,7 +530,7 @@ public class AliasListWidget extends AbstractSelectionList<AliasListWidget.Alias
 			if (alias != null && EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(alias)).equals(probe)) {
 				return "trademaster.alias.duplicate_alias";
 			}
-			if (EnchantmentNamer.canonical(path).equals(probe)
+			if ((path != null && EnchantmentNamer.canonical(path).equals(probe))
 					|| EnchantmentNamer.canonical(EnchantmentNamer.sanitizeAlias(displayName)).equals(probe)) {
 				return "trademaster.alias.duplicate_name";
 			}

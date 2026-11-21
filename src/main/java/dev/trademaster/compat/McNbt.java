@@ -100,7 +100,7 @@ public final class McNbt {
 			enchantments.add(enchantment);
 		}
 		if (!enchantments.isEmpty()) legacy.put("Enchantments", enchantments);
-		legacy.putInt("Damage", stack.getDamageValue());
+		if (stack.isDamageableItem()) legacy.putInt("Damage", stack.getDamageValue());
 		if (stack.get(net.minecraft.core.component.DataComponents.UNBREAKABLE) != null) {
 			legacy.putByte("Unbreakable", (byte) 1);
 		}
@@ -120,7 +120,7 @@ public final class McNbt {
 			if (id != null) enchantments.putInt(id.toString(), entry.getValue());
 		}
 		if (!enchantments.isEmpty()) view.put("minecraft:enchantments", enchantments);
-		view.putInt("minecraft:damage", stack.getDamageValue());
+		if (stack.isDamageableItem()) view.putInt("minecraft:damage", stack.getDamageValue());
 		CompoundTag tag = stack.getTag();
 		if (tag != null && tag.contains("Unbreakable")) {
 			view.put("minecraft:unbreakable", new CompoundTag());

@@ -2638,11 +2638,13 @@ public final class RerollController {
 			h = h * 31 + good.filterNbtExclude().hashCode();
 			for (GoodSpec.GoodEnchant enchantment : good.filterEnchantments()) {
 				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
-				h = h * 31 + enchantment.level();
-				h = h * 31 + (enchantment.atLeast() ? 1 : 0);
+				h = h * 31 + enchantment.minLevel();
+				h = h * 31 + enchantment.maxLevel();
 			}
 			for (GoodSpec.GoodEnchant enchantment : good.excludedEnchantments()) {
 				h = h * 31 + (enchantment.id() == null ? 0 : enchantment.id().hashCode());
+				h = h * 31 + enchantment.minLevel();
+				h = h * 31 + enchantment.maxLevel();
 			}
 			for (TradeOfferSpec.TradeCost cost : good.costs()) {
 				h = h * 31 + (cost == null || cost.item() == null ? 0 : cost.item().hashCode());

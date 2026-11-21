@@ -241,8 +241,8 @@ class ConfigRoundTripTest {
 				TradeOfferSpec.defaultGoodCosts(), "Excalibur",
 				List.of(new GoodSpec.GoodEnchant(McIds.mc("sharpness"), 3),
 						new GoodSpec.GoodEnchant(McIds.mc("mending"), 0),
-						new GoodSpec.GoodEnchant(McIds.mc("efficiency"), 5, true)),
-				"{Damage:0}", List.of(new GoodSpec.GoodEnchant(McIds.mc("unbreaking"), 0)), "{Damage:1}"));
+						GoodSpec.GoodEnchant.present(McIds.mc("efficiency"))),
+				"{Damage:0}", List.of(GoodSpec.GoodEnchant.present(McIds.mc("unbreaking"))), "{Damage:1}"));
 
 		JsonObject root = ConfigTest.write(c());
 		JsonObject written = root.getAsJsonObject("offers")
@@ -250,7 +250,8 @@ class ConfigRoundTripTest {
 		assertEquals(key.toString(), written.get("id").getAsString());
 		assertEquals("Excalibur", written.get("name").getAsString());
 		assertTrue(written.getAsJsonArray("enchantments").toString().contains("sharpness:3"));
-		assertTrue(written.getAsJsonArray("enchantments").toString().contains("efficiency:5.."));
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("mending:0"));
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("efficiency"));
 		assertEquals("minecraft:unbreaking", written.getAsJsonArray("excludeEnchantments").get(0).getAsString());
 		assertEquals("{Damage:0}", written.get("nbt").getAsString());
 
@@ -262,10 +263,11 @@ class ConfigRoundTripTest {
 		assertEquals(result, read.result());
 		assertEquals("Excalibur", read.filterName());
 		assertEquals(3, read.filterEnchantments().size());
-		assertFalse(read.filterEnchantments().get(0).atLeast());
-		assertEquals(3, read.filterEnchantments().get(0).level());
-		assertTrue(read.filterEnchantments().get(2).atLeast());
-		assertEquals(5, read.filterEnchantments().get(2).level());
+		assertEquals(3, read.filterEnchantments().get(0).minLevel());
+		assertEquals(3, read.filterEnchantments().get(0).maxLevel());
+		assertTrue(read.filterEnchantments().get(1).absent());
+		assertEquals(1, read.filterEnchantments().get(2).minLevel());
+		assertEquals(0, read.filterEnchantments().get(2).maxLevel());
 		assertEquals("{Damage:0}", read.filterNbt());
 		assertEquals(1, read.excludedEnchantments().size());
 		assertEquals("{Damage:1}", read.filterNbtExclude());

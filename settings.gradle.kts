@@ -34,19 +34,19 @@ stonecutter {
         fun mc(mcVersion: String, name: String = mcVersion, loaders: Iterable<String>) =
             loaders.forEach { version("$name-$it", mcVersion) }
 
-        // Loaders per era: fabric everywhere; forge for <=1.20.1; neoforge for >=1.20.2.
+        // Fabric only: Forge/NeoForge targets are intentionally not built.
         // NB: 1.14-1.16 are Java 8, which cannot compile records/switch-expressions; the
         // shared codebase is modern, so those versions are out of scope (1.18.2+ = Java 17+).
-        mc("1.18.2", loaders = listOf("fabric", "forge"))
-        mc("1.19.2", loaders = listOf("fabric", "forge"))
-        mc("1.20.1", loaders = listOf("fabric", "forge"))
-        mc("1.21.1", loaders = listOf("fabric", "neoforge"))
-        mc("1.21.4", loaders = listOf("fabric", "neoforge"))
-        mc("1.21.5", loaders = listOf("fabric", "neoforge"))
-        mc("1.21.8", loaders = listOf("fabric", "neoforge"))
-        mc("26.1", loaders = listOf("fabric", "neoforge"))
-        mc("26.2", loaders = listOf("fabric", "neoforge"))
-        mc("26.3", loaders = listOf("fabric", "neoforge"))
+        mc("1.18.2", loaders = listOf("fabric"))
+        mc("1.19.2", loaders = listOf("fabric"))
+        mc("1.20.1", loaders = listOf("fabric"))
+        mc("1.21.1", loaders = listOf("fabric"))
+        mc("1.21.4", loaders = listOf("fabric"))
+        mc("1.21.5", loaders = listOf("fabric"))
+        mc("1.21.8", loaders = listOf("fabric"))
+        mc("26.1", loaders = listOf("fabric"))
+        mc("26.2", loaders = listOf("fabric"))
+        mc("26.3", loaders = listOf("fabric"))
 
         // Default target for the IDE / plain `./gradlew build`.
         vcsVersion = "1.21.4-fabric"
