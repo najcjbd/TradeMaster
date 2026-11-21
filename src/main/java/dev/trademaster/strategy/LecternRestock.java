@@ -121,14 +121,12 @@ public final class LecternRestock {
 	 * when a guardian retries a batch in the SAME run; resetting the tool lock there
 	 * would make the hotbar restorer lose the slot it captured at run start. */
 	public static void resetRestockState() {
-		Minecraft mc = Minecraft.getInstance();
-		LocalPlayer player = mc == null ? null : mc.player;
-		boolean resumable = player != null && restockInFlightTicks >= 0
-				&& player.containerMenu == player.inventoryMenu
-				&& !player.containerMenu.getCarried().isEmpty();
-		if (resumable) {
-			// a partially-applied batch may have left its stack on the cursor: keep the
-			// source slot and displaced snapshot so the retry can return it
+		boolean inFlight = restockInFlightTicks >= 0;
+		if (inFlight) {
+			// a batch may have been applied only partially (or not yet synced): keep the
+			// source slot and displaced snapshot so the retry can return a cursor stack.
+			// Testing the client cursor here looked safer but cleared the snapshot before
+			// the broadcast arrived, stranding exactly that stack.
 			restockInFlightTicks = 0;
 			restockRecoverTicks = 0;
 		} else {
@@ -516,6 +514,37 @@ public final class LecternRestock {
 		if (!level.noCollision(box)) return false;
 		return level.getEntitiesOfClass(LivingEntity.class, box,
 				e -> e != player && e.isAlive()).isEmpty();
+	}
+
+	/** Shared "restock reported failure" gate. The raw batch updates slots only when the
+	 * server broadcast arrives, so a first false reading right after a stop/start (or a
+	 * server hitch) is not proof the stock is gone — the same race the guardian already
+	 * waits out. After 100 ticks the batch state is reset once and the wait repeats; a
+	 * player with no work item left still fails immediately. */
+	public static final class RestockWait {
+		private int ticks = 0;
+		private boolean resetTried = false;
+
+		public enum Result { WAIT, WAIT_AFTER_RESET, FAIL }
+
+		public Result tick(LocalPlayer player, boolean restocked) {
+			if (restocked) {
+				this.ticks = 0;
+				this.resetTried = false;
+				return Result.WAIT;
+			}
+			var work = RigTarget.workItem();
+			boolean carried = work != null && Preconditions.countItem(player, work) > 0;
+			if (!carried) return Result.FAIL;
+			if (this.ticks++ < 100) return Result.WAIT;
+			if (!this.resetTried) {
+				this.resetTried = true;
+				this.ticks = 0;
+				resetRestockState();
+				return Result.WAIT_AFTER_RESET;
+			}
+			return Result.FAIL;
+		}
 	}
 
 	/** One main-hand breaking tick on the block, swinging visibly and server-side. */

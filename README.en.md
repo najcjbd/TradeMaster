@@ -25,7 +25,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 | Item | Value |
 |---|---|
-| Game version | Minecraft **1.18.2–26.3** (10 Fabric nodes; Forge/NeoForge targets are declared but not built/verified) |
+| Game version | Minecraft **1.18.2–26.3** (10 Fabric nodes; Forge/NeoForge targets were removed) |
 | Loader | Fabric Loader (version depends on the MC node) |
 | Java | **JDK 25 to build**; runtime Java follows the MC version (17+ for 1.18.2) |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
@@ -177,7 +177,7 @@ something else into a librarian's trade).
 - Five editable rows sit below each good (filters are optional):
   - **Result item**: change it in place; the stable key, trade shape and filters survive.
   - **Item name**: the result's custom name must equal this text exactly; blank = any.
-  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id or an include/exclude conflict is invalid and is not saved. Extra enchantments are allowed.
+  - **Enchantments**: `id` = presence (any level); `id:0` = **absent**; `id:N` = **exact N**; `id:N..` = **N or above**; `id:N..M` / `id:..M` / `id:0..M` = **inclusive N..M** (`..M`/`0..M` = present and ≤M; `0..` = present at any level); `!id...` excludes the same condition. A repeated id, an include/exclude conflict, or an unparseable range is invalid: the good is marked unusable and its text is preserved for fixing (it never degrades into matching everything). Extra enchantments are allowed.
   - **Raw NBT**: an SNBT compound matched as a **subset**. On 1.20.5+ the native form
     is the **component map** (e.g. `{"minecraft:enchantments":{"minecraft:sharpness":5}}`);
     on 1.20.4- it is the **item tag** (e.g.

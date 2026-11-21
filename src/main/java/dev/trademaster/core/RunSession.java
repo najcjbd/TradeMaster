@@ -39,6 +39,10 @@ public class RunSession {
 	public @Nullable Villager villager = null;
 	public int tries = 0;
 	public @Nullable TradeMatcher.MatchedTrade matchedTrade = null;
+	/** Whether the current match's unproven purchase was already vouched: a second
+	 * voucher (e.g. a forced stop after a lock failure) would double the expected
+	 * produced count and make the depositor take the player's own copies. */
+	public boolean unprovenPurchaseVouchered = false;
 
 	public RunSession(BlockPos lecternPos, BlockPos summonButtonPos, BlockPos sendAwayButtonPos) {
 		this.lecternPos = lecternPos.immutable();

@@ -41,6 +41,20 @@ class McNbtContainsTest {
 	}
 
 	@Test
+	void enchantmentComponentShapesMatchEitherEra() {
+		// 1.20.5-1.21.4 wrap the map in levels; 1.21.5+ store it flat
+		var wrapped = McNbt.parse("{'minecraft:enchantments':{levels:{'minecraft:sharpness':5},show_in_tooltip:1b}}");
+		var flat = McNbt.parse("{'minecraft:enchantments':{'minecraft:sharpness':5}}");
+		var flatFilter = McNbt.parse("{'minecraft:enchantments':{'minecraft:sharpness':5}}");
+		var wrappedFilter = McNbt.parse("{'minecraft:enchantments':{levels:{'minecraft:sharpness':5}}}");
+		assertNotNull(wrapped);
+		assertNotNull(flat);
+		assertTrue(McNbt.enchantmentShapes(wrapped).stream().anyMatch(shape -> McNbt.contains(shape, flatFilter)));
+		assertTrue(McNbt.enchantmentShapes(flat).stream().anyMatch(shape -> McNbt.contains(shape, wrappedFilter)));
+		assertTrue(McNbt.enchantmentShapes(McNbt.parse("{Custom:1}")).isEmpty());
+	}
+
+	@Test
 	void blankAndInvalidTextBehaviour() {
 		assertTrue(McNbt.valid(""));
 		assertTrue(McNbt.valid("{Custom:1}"));

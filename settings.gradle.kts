@@ -9,9 +9,6 @@ pluginManagement {
         // Fabric Loom platform
         maven("https://maven.fabricmc.net/")
 
-        // MDG platform (NeoForge / Forge)
-        maven("https://maven.neoforged.net/releases/")
-
         // Stonecutter
         maven("https://maven.kikugie.dev/releases")
         maven("https://maven.kikugie.dev/snapshots")
@@ -29,7 +26,7 @@ stonecutter {
     create(rootProject) {
         /**
          * @param mcVersion the base Minecraft version
-         * @param loaders   "fabric" (1.14+), "neoforge" (1.20.2+), "forge" (<=1.20.1), "vanilla"
+         * @param loaders   "fabric" (1.14+), "vanilla" (Forge/NeoForge were dropped)
          */
         fun mc(mcVersion: String, name: String = mcVersion, loaders: Iterable<String>) =
             loaders.forEach { version("$name-$it", mcVersion) }

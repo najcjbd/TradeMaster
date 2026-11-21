@@ -275,6 +275,61 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void invalidGoodEnchantmentTokenMarksTheWholeFilterUnusableAndIsPreserved() {
+		JsonObject root = parse("""
+				{"offers":{"goods":[{"id":"trademaster:bad","result":"minecraft:diamond_sword",
+				  "enchantments":["minecraft:sharpness:3..1","minecraft:mending"],
+				  "excludeEnchantments":["minecraft:fire_aspect"]}]}}
+				""");
+		ConfigTest.read(c(), root);
+		assertEquals(1, c().goods.size());
+		GoodSpec bad = c().goods.get(0);
+		assertEquals("trademaster:bad", bad.id().toString());
+		// the bad token must never degrade into "no filter" (match every sword)
+		assertFalse(bad.filterValid());
+		assertTrue(bad.filterInvalid());
+
+		// a real save seeds the on-disk entry, so the unparseable text survives for
+		// the user to fix instead of being erased
+		ConfigTest.writeInto(c(), root);
+		JsonObject written = root.getAsJsonObject("offers")
+				.getAsJsonArray("goods").get(0).getAsJsonObject();
+		assertTrue(written.getAsJsonArray("enchantments").toString().contains("sharpness:3..1"));
+		assertTrue(written.getAsJsonArray("excludeEnchantments").toString().contains("fire_aspect"));
+	}
+
+	@Test
+	void objectEnchantmentFormsHonourAtLeastAndExplicitRanges() {
+		JsonObject root = parse("""
+				{"offers":{"goods":[{"result":"minecraft:diamond_sword","enchantments":[
+				  {"id":"minecraft:sharpness","level":5,"atLeast":true},
+				  {"id":"minecraft:mending","minLevel":1,"maxLevel":2},
+				  {"id":"minecraft:unbreaking","level":0}]}]}}
+				""");
+		ConfigTest.read(c(), root);
+		assertEquals(1, c().goods.size());
+		GoodSpec good = c().goods.get(0);
+		assertTrue(good.filterValid());
+		assertEquals(List.of(5, 1, 0), good.filterEnchantments().stream()
+				.map(GoodSpec.GoodEnchant::minLevel).toList());
+		assertEquals(List.of(0, 2, 0), good.filterEnchantments().stream()
+				.map(GoodSpec.GoodEnchant::maxLevel).toList());
+		// level 0 is absence, per the documented syntax
+		assertTrue(good.filterEnchantments().get(2).absent());
+	}
+
+	@Test
+	void aReversedObjectRangeMarksTheFilterInvalid() {
+		JsonObject root = parse("""
+				{"offers":{"goods":[{"result":"minecraft:diamond_sword","enchantments":[
+				  {"id":"minecraft:sharpness","minLevel":5,"maxLevel":2}]}]}}
+				""");
+		ConfigTest.read(c(), root);
+		GoodSpec good = c().goods.get(0);
+		assertFalse(good.filterValid());
+	}
+
+	@Test
 	void goodsRejectAirAndBookAndAllowSameItemVariants() {
 		// air and enchanted-book results are skipped; two entries with the same result
 		// are now two variants, each with its own stable key

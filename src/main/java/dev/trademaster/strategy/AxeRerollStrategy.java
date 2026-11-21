@@ -47,6 +47,7 @@ public class AxeRerollStrategy implements RerollStrategy {
 	/** Server-confirmation gate for the break: a client-predicted break must not be
 	 * placed over. Per strategy instance, so it cannot leak across rerolls. */
 	private final LecternRestock.BreakGate breakGate = new LecternRestock.BreakGate();
+	private final LecternRestock.RestockWait restockWait = new LecternRestock.RestockWait();
 
 	@Override
 	public void begin(RunSession session) {
@@ -261,7 +262,8 @@ public class AxeRerollStrategy implements RerollStrategy {
 		// leave the displaced item on the cursor even though the lectern is already in
 		// the offhand, and the recovery lives inside restock()
 		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
-			if (!LecternRestock.restock(player)) {
+			boolean restocked = LecternRestock.restock(player);
+			if (this.restockWait.tick(player, restocked) == LecternRestock.RestockWait.Result.FAIL) {
 				return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 			}
 			return StepResult.RUNNING;

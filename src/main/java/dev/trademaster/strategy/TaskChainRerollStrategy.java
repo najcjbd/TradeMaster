@@ -240,6 +240,7 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		int delay = TradeMasterConfig.INSTANCE.placeDelay;
 		int placeCooldown = 0;
 		int placeAttempts = 0;
+		final LecternRestock.RestockWait restockWait = new LecternRestock.RestockWait();
 
 		@Override
 		public StepResult tick(RunSession session) {
@@ -284,7 +285,8 @@ public class TaskChainRerollStrategy implements RerollStrategy {
 		// leave the displaced item on the cursor even though the lectern is already in
 		// the offhand, and the recovery lives inside restock()
 		if (!LecternRestock.offhandHasWorkItem(player) || LecternRestock.hasPendingBatch()) {
-				if (!LecternRestock.restock(player)) {
+				boolean restocked = LecternRestock.restock(player);
+				if (this.restockWait.tick(player, restocked) == LecternRestock.RestockWait.Result.FAIL) {
 					return StepResult.failed(McText.translatable("trademaster.message.lectern_lost"));
 				}
 				// restock clicks only take effect on the server next tick
