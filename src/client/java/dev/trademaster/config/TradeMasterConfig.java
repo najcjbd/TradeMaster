@@ -92,6 +92,13 @@ public final class TradeMasterConfig {
 	/** Display names actually used at naming time, mapped back to their enchantment.
 	 * Keeps named-villager deduction working across game-language switches. */
 	public final LinkedHashMap<String, Identifier> nameHistory = new LinkedHashMap<>();
+	/** An unconfirmed purchase's targets carried past the next start; persisted so a
+	 * client restart cannot re-demand (and re-buy) an item that may already have been
+	 * delivered. Consumed by the next successful start. */
+	public final java.util.LinkedHashSet<Identifier> pendingUnprovenMatches =
+			new java.util.LinkedHashSet<>();
+	public @Nullable Identifier pendingUnprovenDimension = null;
+	public @Nullable String pendingUnprovenWorld = null;
 
 	// ---- trade offers: unusual cost shapes ---------------------------------
 	/** Item ids that mean "this cost slot is not charged at all". Applied to BOTH

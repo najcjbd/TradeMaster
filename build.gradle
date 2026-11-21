@@ -48,7 +48,13 @@ dependencies {
 	// remapped automatically
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-	implementation "maven.modrinth:malilib:${project.malilib_version}"
+	// maLiLib is optional at runtime ("recommends"). compileOnly keeps it on the
+	// compile classpath; the noMalilibRuntime property removes it from the dev
+	// runtime so the no-maLiLib path can be launched for real.
+	compileOnly "maven.modrinth:malilib:${project.malilib_version}"
+	if (!project.hasProperty("noMalilibRuntime")) {
+		runtimeOnly "maven.modrinth:malilib:${project.malilib_version}"
+	}
 
 	compileOnly "maven.modrinth:modmenu:${project.mod_menu_version}"
 	runtimeOnly "maven.modrinth:modmenu:${project.mod_menu_version}"

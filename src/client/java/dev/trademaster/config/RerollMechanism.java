@@ -1,26 +1,17 @@
 package dev.trademaster.config;
 
-import fi.dy.masa.malilib.config.IConfigOptionListEntry;
-import net.minecraft.client.resources.language.I18n;
-
-public enum RerollMechanism implements IConfigOptionListEntry {
+public enum RerollMechanism {
 	AXE("trademaster.settings.mechanism.axe"),
 	TASK_CHAIN("trademaster.settings.mechanism.task_chain");
 
 	private final String translationKey;
 
-	RerollMechanism(String translationKey) { this.translationKey = translationKey; }
-
-	@Override public String getStringValue() { return this.name(); }
-	@Override public String getDisplayName() { return I18n.get(this.translationKey); }
-	@Override public IConfigOptionListEntry cycle(boolean forward) {
-		return values()[(this.ordinal() + (forward ? 1 : values().length - 1)) % values().length];
+	RerollMechanism(String translationKey) {
+		this.translationKey = translationKey;
 	}
-	@Override public IConfigOptionListEntry fromString(String value) {
-		try {
-			return valueOf(value);
-		} catch (IllegalArgumentException e) {
-			return this;
-		}
+
+	/** Lang key for the maLiLib option list display (the enum itself is maLiLib-free). */
+	public String translationKey() {
+		return this.translationKey;
 	}
 }

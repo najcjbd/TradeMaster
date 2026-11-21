@@ -233,6 +233,33 @@ class ConfigRoundTripTest {
 	}
 
 	@Test
+	void pendingUnprovenRoundTripsAndClears() {
+		c().pendingUnprovenMatches.clear();
+		c().pendingUnprovenMatches.add(Identifier.withDefaultNamespace("sharpness"));
+		c().pendingUnprovenMatches.add(Identifier.withDefaultNamespace("mending"));
+		c().pendingUnprovenDimension = Identifier.withDefaultNamespace("overworld");
+		c().pendingUnprovenWorld = "sp:rig";
+		JsonObject root = ConfigTest.write(c());
+		JsonObject pending = root.getAsJsonObject("pendingUnproven");
+		assertEquals("sp:rig", pending.get("world").getAsString());
+		assertEquals("minecraft:overworld", pending.get("dimension").getAsString());
+		assertTrue(pending.getAsJsonArray("targets").toString().contains("minecraft:sharpness"));
+
+		c().pendingUnprovenMatches.clear();
+		c().pendingUnprovenDimension = null;
+		c().pendingUnprovenWorld = null;
+		ConfigTest.read(c(), root);
+		assertEquals(2, c().pendingUnprovenMatches.size());
+		assertEquals(Identifier.withDefaultNamespace("overworld"), c().pendingUnprovenDimension);
+		assertEquals("sp:rig", c().pendingUnprovenWorld);
+
+		c().pendingUnprovenMatches.clear();
+		c().pendingUnprovenDimension = null;
+		c().pendingUnprovenWorld = null;
+		assertFalse(ConfigTest.write(c()).has("pendingUnproven"));
+	}
+
+	@Test
 	void aliasChoicesRoundTrip() {
 		c().aliasChoices.clear();
 		c().aliasChoices.put("diamond sword", Identifier.withDefaultNamespace("trade_good"));

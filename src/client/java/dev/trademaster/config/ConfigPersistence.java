@@ -316,6 +316,22 @@ public final class ConfigPersistence {
 		naming.add("nameHistory", nameHistory);
 		root.add("naming", naming);
 
+		if (c.pendingUnprovenMatches.isEmpty()) {
+			root.remove("pendingUnproven");
+		} else {
+			JsonObject pending = new JsonObject();
+			if (c.pendingUnprovenWorld != null) pending.addProperty("world", c.pendingUnprovenWorld);
+			if (c.pendingUnprovenDimension != null) {
+				pending.addProperty("dimension", c.pendingUnprovenDimension.toString());
+			}
+			JsonArray targets = new JsonArray();
+			for (Identifier id : c.pendingUnprovenMatches) {
+				if (id != null) targets.add(id.toString());
+			}
+			pending.add("targets", targets);
+			root.add("pendingUnproven", pending);
+		}
+
 		JsonObject positions = sectionForWrite(root, "positions");
 		positions.add("lectern", writePos(c.lecternPos));
 		positions.add("summonButton", writePos(c.summonButtonPos));
@@ -515,6 +531,26 @@ public final class ConfigPersistence {
 					c.nameHistory.remove(c.nameHistory.keySet().iterator().next());
 				}
 			}
+		}
+
+		JsonElement pendingElement = root.get("pendingUnproven");
+		if (pendingElement != null && pendingElement.isJsonObject()) {
+			JsonObject pending = pendingElement.getAsJsonObject();
+			c.pendingUnprovenMatches.clear();
+			JsonElement targets = pending.get("targets");
+			if (targets != null && targets.isJsonArray()) {
+				for (JsonElement target : targets.getAsJsonArray()) {
+					if (!target.isJsonPrimitive()) continue;
+					Identifier id = TradeMasterConfig.parseId(target.getAsString());
+					if (id != null) c.pendingUnprovenMatches.add(id);
+				}
+			}
+			String world = pending.has("world") && pending.get("world").isJsonPrimitive()
+					? pending.get("world").getAsString().trim() : null;
+			c.pendingUnprovenWorld = world == null || world.isEmpty() ? null : world;
+			String dimension = pending.has("dimension") && pending.get("dimension").isJsonPrimitive()
+					? pending.get("dimension").getAsString() : null;
+			c.pendingUnprovenDimension = dimension == null ? null : TradeMasterConfig.parseId(dimension);
 		}
 
 		JsonObject positions = sectionOrRoot(root, "positions");

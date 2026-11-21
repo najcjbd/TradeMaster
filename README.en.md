@@ -26,7 +26,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 | Item | Value |
 |---|---|
 | Game version | Minecraft **26.2** |
-| Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3) |
+| Loader | Fabric Loader **≥ 0.19.0** (built against 0.19.3); Fabric may log a soft "recommends" warning when maLiLib is absent — not an error |
 | Java | **≥ 25** |
 | Side | **Client only** (`"environment": "client"`, no server installation) |
 | Required | Fabric API (0.154.2+26.2); **maLiLib** (>=0.29.3) is optional/recommended: with it you get its config UI/hotkeys, without it the built-in UI |
@@ -36,7 +36,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 ## Installation
 
-1. Install Fabric Loader and put **Fabric API** and **maLiLib** into `mods/`;
+1. Install Fabric Loader and put **Fabric API** into `mods/`; optionally add **maLiLib** for its config screen/editable hotkeys;
 2. Put `trade-master-1.0.jar` into `mods/`;
 3. Launch the game.
 
@@ -66,7 +66,7 @@ Set up a lectern and two buttons (summon / send-away) and the mod will:
 
 ### Dispenser and minecart supply (the summon gate)
 
-When a dispenser is configured, the mod **opens it before every summon** and checks that **at least one minecart** sits in its first nine slots. With no cart it does not summon; it re-checks every 60 seconds (refills are normally transient). A position without a dispenser, or one that repeatedly refuses to open, stops the run.
+When a dispenser is configured, the mod **opens it before every summon** and checks that **at least one minecart** sits in its first nine slots. With no cart it does not summon; it re-checks every 60 seconds (refills are normally transient) and shows a notice. A position without a dispenser, or one that repeatedly refuses to open, **degrades this run to pressing the summon button directly** (cart check disabled); if the villager still does not arrive, it presses again about every 2 seconds until it does.
 
 The mod **never crafts, dispenses or collects minecarts** — it only checks and presses buttons. The machinery behind the summon button (redstone / command blocks / the dispenser) delivers the villager, so you must keep **at least one minecart in the dispenser**. Common ways (pick one or combine):
 
@@ -216,7 +216,7 @@ something else into a librarian's trade).
   - an affordable qualifying book exists → buy the cheapest one;
   - no qualifying book is affordable, but some other book is → **emergency-buy the cheapest affordable book** just to lock the villager (yellow chat note: "this is not one of your targets");
   - nothing at all is affordable → stop with an out-of-materials message; if a combo book caused it, an extra hint suggests enabling the 64 floor.
-- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same world and dimension) skips those targets once** to avoid a duplicate purchase; start again to retry.
+- **The server's receipt decides**: after the purchase click the run waits until the **server has put the book into the inventory** (up to 3 extra seconds). If no receipt ever arrives the outcome is **unknown** (the trade may or may not have happened): the purchase is then **not retried** (that would buy a second copy) — the villager is sent away and the run continues, with a chat message; the target stays on the list. If the run is force-stopped (death, dimension change) during that unconfirmed window, the **next run (same world and dimension) skips those targets once** to avoid a duplicate purchase; start again to retry. The skip is persisted under `pendingUnproven` in the config, so it survives a client restart and is cleared by a successful start.
 - **After a successful lock**: **all** matched targets of that villager count as obtained → (optional) auto-disable them in the config, (optional) record each price into its price slot, (optional) naming.
 
 ## Naming
@@ -336,7 +336,7 @@ Grouped by topic (the grouping does not map one-to-one onto the in-game screen):
 | `/trademaster start` / `stop` / `status` | start / stop / show status |
 | `/trademaster goon` | **only** valid after a start was refused for incomplete staging-region coordinates: confirms the lectern-sphere fallback and starts; does nothing otherwise |
 | Hotkey `V` | Opens the main menu (six tabs: enchantments / settings / keybinds / **aliases** / **offers** / **villagers**) |
-| maLiLib hotkeys `R` / `P` | start-stop / capture the looked-at block for the pending coordinate slot |
+| Hotkeys `R` / `P` | start-stop / capture the looked-at block (managed by maLiLib when installed, vanilla key mappings otherwise) |
 
 ## Config entry points
 
@@ -348,7 +348,12 @@ All three share the **same** `config/trade-master.json`:
 
 > The **Aliases** tab lets you give any enchantment a custom display name (the name used when anvil-naming a villager). Blank = default name; the name **must not duplicate another ENABLED enchantment's alias or name** (a duplicate turns the row red and is not saved; the check covers enabled targets only, matching the deduction index). It only changes the display name, never any trade condition.
 
-> **Manual owner for a shared name**: if two demands (typically two variants of one result item) really must share a name, write it into `naming.customNames` by hand. The deduction index cannot tell which demand to decrement, so it drops the name and prints the candidate ids at start. To pick an owner, add the name to `naming.aliasChoices`, e.g. `"aliasChoices": {"diamond_sword": "trademaster:good_b"}`. The choice is persisted in the config; change it there.
+> **Manual owner for a shared name**: if two demands (typically two variants of one result item) really must share a name, give both the **same alias text** in `naming.customNames` by hand (the GUI refuses duplicate aliases). The deduction index cannot tell which demand to decrement, so it drops the name and prints the candidate ids at start. To pick an owner, add that alias text to `naming.aliasChoices`:
+> ```json
+> "customNames": {"trademaster:good_a": "Diamond Sword", "trademaster:good_b": "Diamond Sword"},
+> "aliasChoices": {"Diamond Sword": "trademaster:good_b"}
+> ```
+> The key must be a candidate name (the shared alias/display name, or a registry path unique to one demand); a `result` path shared by variants is not a candidate key. Multiple keys that normalize to the same name with different owners are ambiguous (the first is never silently chosen). The choice is persisted; hand edits take effect after a **restart/reload** (a mid-run save would overwrite them with the in-memory values).
 
 On first launch, when this mod's config does not exist yet, the **enchantment table** and **four of the anti-cheat flags** (`preventAxeBreaking`, `tpToVillager`, `legitMode`, `slowMode`) are migrated from the original **LibrarianTradeFinder** `librarian-trade-finder.json`; the remaining flags (`tpToItem`, `stopOnPlayerMove`, `placeDelay`, `interactDelay`) are not migrated and keep this mod's defaults.
 
@@ -368,6 +373,8 @@ On first launch, when this mod's config does not exist yet, the **enchantment ta
 # output: build/libs/trade-master-1.0.0.jar (single 26.2 jar)
 # maLiLib is a "recommends" dependency: installed -> its config UI/hotkeys; absent -> built-in UI
 # without maLiLib R/P/V are ordinary key mappings, rebindable in Options -> Controls (defaults R/P/V)
+# verify the real no-maLiLib path (removes maLiLib from the dev runtime):
+# ./gradlew runClient -PnoMalilibRuntime
 ```
 
 ## License and credits

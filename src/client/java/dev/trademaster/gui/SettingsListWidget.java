@@ -48,13 +48,13 @@ public class SettingsListWidget extends AbstractSelectionList<SettingsListWidget
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 
 		addEntry(new CycleRow("trademaster.settings.mechanism",
-				() -> c.rerollMechanism.getDisplayName(),
+				() -> Component.translatable(c.rerollMechanism.translationKey()).getString(),
 				cycle -> c.rerollMechanism = dev.trademaster.config.RerollMechanism.valueOf(nextEnum(c.rerollMechanism.name(), dev.trademaster.config.RerollMechanism.values(), cycle))));
 		addEntry(new CycleRow("trademaster.settings.nonBookDisposal",
-				() -> c.nonBookDisposal.getDisplayName(),
+				() -> Component.translatable(c.nonBookDisposal.translationKey()).getString(),
 				cycle -> c.nonBookDisposal = dev.trademaster.config.NonBookDisposal.valueOf(nextEnum(c.nonBookDisposal.name(), dev.trademaster.config.NonBookDisposal.values(), cycle))));
 		addEntry(new CycleRow("trademaster.settings.detection",
-				() -> c.detectionMode.getDisplayName(),
+				() -> Component.translatable(c.detectionMode.translationKey()).getString(),
 				cycle -> c.detectionMode = dev.trademaster.config.DetectionMode.valueOf(nextEnum(c.detectionMode.name(), dev.trademaster.config.DetectionMode.values(), cycle))));
 		addEntry(new BoolRow("trademaster.settings.compatibleWithVisibleTraders",
 				() -> c.compatibleWithVisibleTraders, v -> c.compatibleWithVisibleTraders = v));

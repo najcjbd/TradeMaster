@@ -5,16 +5,15 @@ import com.google.gson.JsonObject;
 import dev.trademaster.TradeMaster;
 import dev.trademaster.core.RerollController;
 import dev.trademaster.gui.PositionPicker;
-import fi.dy.masa.malilib.MaLiLibConfigs;
 import fi.dy.masa.malilib.config.ConfigManager;
 import fi.dy.masa.malilib.config.IConfigBase;
 import fi.dy.masa.malilib.config.IConfigHandler;
+import fi.dy.masa.malilib.config.IConfigOptionListEntry;
 import fi.dy.masa.malilib.config.options.ConfigBoolean;
 import fi.dy.masa.malilib.config.options.ConfigHotkey;
 import fi.dy.masa.malilib.config.options.ConfigInteger;
 import fi.dy.masa.malilib.config.options.ConfigOptionList;
 import fi.dy.masa.malilib.config.options.ConfigString;
-import fi.dy.masa.malilib.event.InitializationHandler;
 import fi.dy.masa.malilib.event.InputEventHandler;
 import fi.dy.masa.malilib.gui.GuiBase;
 import fi.dy.masa.malilib.gui.GuiConfigsBase;
@@ -27,11 +26,13 @@ import fi.dy.masa.malilib.registry.Registry;
 import fi.dy.masa.malilib.util.data.ModInfo;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
+import net.minecraft.client.resources.language.I18n;
 import net.minecraft.resources.Identifier;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -83,10 +84,10 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 
 	private MaliLibAdapter() {}
 
+	/** Called from maLiLib's InitializationHandler after maLiLib finished its own
+	 * init. The unified jar only "recommends" maLiLib, so the loader does NOT
+	 * guarantee our entrypoint runs after maLiLib's. */
 	public static void register() {
-		// All targets are maLiLib static singletons; our entrypoint runs after
-		// maLiLib's own (fabric.mod.json depends), so registering directly here
-		// is safe and happens before maLiLib's onGameInitDone loads configs.
 		ConfigManager.getInstance().registerConfigHandler(TradeMaster.MOD_ID, INSTANCE);
 		Registry.CONFIG_SCREEN.registerConfigScreenFactory(
 				new ModInfo(TradeMaster.MOD_ID, "Trade Master", INSTANCE));
@@ -110,11 +111,43 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		TradeMaster.LOGGER.info("Registered config screen and hotkeys with maLiLib");
 		TradeMaster.LOGGER.info("Config screen registry now contains: {}",
 				Registry.CONFIG_SCREEN.getAllModsWithConfigScreens().stream().map(ModInfo::modId).toList());
-		// Diagnostic: verify our entry survives until maLiLib finishes game init
-		InitializationHandler.getInstance().registerInitializationHandler(() ->
-				TradeMaster.LOGGER.info("After maLiLib init done; registry contains: {}, config switcher enabled: {}",
-						Registry.CONFIG_SCREEN.getAllModsWithConfigScreens().stream().map(ModInfo::modId).toList(),
-						MaLiLibConfigs.Generic.ENABLE_CONFIG_SWITCHER.getBooleanValue()));
+	}
+
+	/** maLiLib values are wrappers: the config enums stay free of maLiLib classes, so
+	 * the whole configuration can load on a vanilla loader without maLiLib. */
+	private static final class OptionEntry<T extends Enum<T>> implements IConfigOptionListEntry {
+		private final T value;
+		private final T[] values;
+		private final Function<T, String> translationKey;
+
+		private OptionEntry(T value, T[] values, Function<T, String> translationKey) {
+			this.value = value;
+			this.values = values;
+			this.translationKey = translationKey;
+		}
+
+		@Override public String getStringValue() { return this.value.name(); }
+		@Override public String getDisplayName() { return I18n.get(this.translationKey.apply(this.value)); }
+		@Override public IConfigOptionListEntry cycle(boolean forward) {
+			int next = Math.floorMod(this.value.ordinal() + (forward ? 1 : -1), this.values.length);
+			return new OptionEntry<>(this.values[next], this.values, this.translationKey);
+		}
+		@Override public IConfigOptionListEntry fromString(String text) {
+			for (T candidate : this.values) {
+				if (candidate.name().equals(text)) return new OptionEntry<>(candidate, this.values, this.translationKey);
+			}
+			return this;
+		}
+	}
+
+	private static <T extends Enum<T>> OptionEntry<T> option(T value, T[] values,
+			Function<T, String> translationKey) {
+		return new OptionEntry<>(value, values, translationKey);
+	}
+
+	@SuppressWarnings("unchecked")
+	private static <T extends Enum<T>> T optionValue(IConfigOptionListEntry entry) {
+		return ((OptionEntry<T>) entry).value;
 	}
 
 	@Override
@@ -148,11 +181,11 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 		TradeMasterConfig d = TradeMasterConfig.defaults();
 		this.genericOptions.clear();
 
-		this.optReroll = labeled(new ConfigOptionList("rerollMechanism", d.rerollMechanism, "", ""),
+		this.optReroll = labeled(new ConfigOptionList("rerollMechanism", option(d.rerollMechanism, RerollMechanism.values(), RerollMechanism::translationKey), "", ""),
 				"trademaster.settings.mechanism");
-		this.optDetection = labeled(new ConfigOptionList("detectionMode", d.detectionMode, "", ""),
+		this.optDetection = labeled(new ConfigOptionList("detectionMode", option(d.detectionMode, DetectionMode.values(), DetectionMode::translationKey), "", ""),
 				"trademaster.settings.detection");
-		this.optNonBookDisposal = labeled(new ConfigOptionList("nonBookDisposal", d.nonBookDisposal, "", ""),
+		this.optNonBookDisposal = labeled(new ConfigOptionList("nonBookDisposal", option(d.nonBookDisposal, NonBookDisposal.values(), NonBookDisposal::translationKey), "", ""),
 				"trademaster.settings.nonBookDisposal");
 
 		this.optReserveCheaper = labeled(new ConfigBoolean("reserveCheaperTraders", d.reserveCheaperTraders, "", ""),
@@ -258,9 +291,9 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 
 	private void refreshFromModel() {
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
-		this.optReroll.setOptionListValue(c.rerollMechanism);
-		this.optDetection.setOptionListValue(c.detectionMode);
-		this.optNonBookDisposal.setOptionListValue(c.nonBookDisposal);
+		this.optReroll.setOptionListValue(option(c.rerollMechanism, RerollMechanism.values(), RerollMechanism::translationKey));
+		this.optDetection.setOptionListValue(option(c.detectionMode, DetectionMode.values(), DetectionMode::translationKey));
+		this.optNonBookDisposal.setOptionListValue(option(c.nonBookDisposal, NonBookDisposal.values(), NonBookDisposal::translationKey));
 		this.optReserveCheaper.setBooleanValue(c.reserveCheaperTraders);
 		this.optMinLockEmeralds.setIntegerValue(c.minLockEmeralds);
 		this.optDiscountedPriceAsSalePrice.setBooleanValue(c.discountedPriceAsSalePrice);
@@ -314,9 +347,9 @@ public class MaliLibAdapter implements IConfigHandler, IKeybindProvider, Supplie
 	private void applyToModel() {
 		TradeMasterConfig c = TradeMasterConfig.INSTANCE;
 		boolean huntWasOn = c.huntCheaper;
-		c.rerollMechanism = (RerollMechanism) this.optReroll.getOptionListValue();
-		c.detectionMode = (DetectionMode) this.optDetection.getOptionListValue();
-		c.nonBookDisposal = (NonBookDisposal) this.optNonBookDisposal.getOptionListValue();
+		c.rerollMechanism = optionValue(this.optReroll.getOptionListValue());
+		c.detectionMode = optionValue(this.optDetection.getOptionListValue());
+		c.nonBookDisposal = optionValue(this.optNonBookDisposal.getOptionListValue());
 		c.reserveCheaperTraders = this.optReserveCheaper.getBooleanValue();
 		c.minLockEmeralds = this.optMinLockEmeralds.getIntegerValue();
 		boolean basisRequested = this.optDiscountedPriceAsSalePrice.getBooleanValue();
